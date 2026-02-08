@@ -48,6 +48,16 @@ README.md
    - `claw_claw_full.py` (single-file option), or
    - `claw_claw/main.py` (modular package).
 
+### If you downloaded the ZIP and only see GitHub Skills files
+You should see a `claw_claw/` folder and `claw_claw_full.py` at the repository root. If your ZIP only shows `.github/` and a generic GitHub Skills README, the bot files were not downloaded. In that case:
+
+1. **Confirm you downloaded the correct repo/branch** (the root should include `claw_claw/`).
+2. **Re-download the ZIP** from the correct branch on GitHub (use the branch selector on the repo page).
+3. If you still don’t see `claw_claw/`, the bot files haven’t been pushed to GitHub yet — ask the maintainer to push the latest changes.
+
+### MT5 disconnects when the bot starts
+If MT5 disconnects right when the bot initializes, keep `auto_login` set to `false` and log in manually in the MT5 terminal first. Auto-login can force MT5 to reconnect, which may drop the existing broker session on some setups. After you’re logged in, start the bot again and it should attach without reauthenticating.
+
 **Manual option (if you prefer):**
 1. **Clone the repository** and open it in PyCharm.
 2. **Create a virtual environment** (Python 3.9):

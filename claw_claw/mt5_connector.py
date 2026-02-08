@@ -12,6 +12,12 @@ def initialize(auto_login: bool = False) -> bool:
     if not auto_login:
         return mt5.initialize()
 
+    # Prefer attaching to the already logged-in terminal first to avoid forced reconnects.
+    if mt5.initialize():
+        terminal_info = mt5.terminal_info()
+        if terminal_info is not None and terminal_info.connected:
+            return True
+
     # WARNING: auto login reads credentials from environment variables only.
     login = os.getenv("MT5_LOGIN")
     password = os.getenv("MT5_PASSWORD")
