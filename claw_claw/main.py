@@ -144,6 +144,11 @@ def main() -> None:
         print("MT5 terminal is not ready (account info unavailable).")
         mt5_connector.shutdown()
         return
+    trading_ok, trading_message = mt5_connector.trading_permissions()
+    if not trading_ok:
+        print(trading_message)
+        mt5_connector.shutdown()
+        return
 
     resolved = resolve_symbol(config["symbol_preferred"])
     if resolved is None:
@@ -178,6 +183,11 @@ def main() -> None:
             continue
         if not mt5_connector.is_ready():
             trade_logger.info("MT5 not ready or disconnected; waiting.")
+            time.sleep(5)
+            continue
+        trading_ok, trading_message = mt5_connector.trading_permissions()
+        if not trading_ok:
+            trade_logger.info("MT5 trading not allowed: %s", trading_message)
             time.sleep(5)
             continue
 

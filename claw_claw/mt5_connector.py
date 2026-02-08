@@ -58,6 +58,24 @@ def is_ready() -> bool:
     return account is not None
 
 
+def trading_permissions() -> Tuple[bool, str]:
+    terminal_info = mt5.terminal_info()
+    if terminal_info is None:
+        return False, "MT5 terminal info unavailable."
+    if not terminal_info.connected:
+        return False, "MT5 terminal is not connected."
+    if not terminal_info.trade_allowed:
+        return False, "Terminal trading is disabled."
+    if hasattr(terminal_info, "trade_expert") and not terminal_info.trade_expert:
+        return False, "Algo trading is disabled in MT5 terminal settings."
+    account = mt5.account_info()
+    if account is None:
+        return False, "MT5 account info unavailable."
+    if not account.trade_allowed:
+        return False, "Trading is disabled for the account."
+    return True, "Trading permissions confirmed."
+
+
 def account_equity() -> Optional[float]:
     info = mt5.account_info()
     if info is None:

@@ -75,6 +75,8 @@ If you still see connection issues, the bot will retry MT5 initialization a few 
 
 > **Important:** The system uses `mt5.initialize()` without credentials by default. Do **not** store credentials in files. If you want to enable auto-login, set environment variables (`MT5_LOGIN`, `MT5_PASSWORD`, `MT5_SERVER`) and set `auto_login` to `true` in `config.json`.
 
+The bot also checks MT5 trading permissions (terminal and account settings). If algo trading is disabled in MT5, it will refuse to start until you enable it.
+
 ## Operating Modes
 
 - **paper** (default): no orders are sent; logs decisions only.
