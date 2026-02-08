@@ -132,12 +132,16 @@ def main() -> None:
     print("Please open MetaTrader 5 and log in to Deriv. Press Enter when ready.")
     input()
 
-    if not mt5_connector.initialize(auto_login=bool(config.get("auto_login"))):
-        print("MT5 initialize failed.")
+    connected, message = mt5_connector.connect(
+        auto_login=bool(config.get("auto_login")),
+        retries=int(config.get("connection_retries", 3)),
+        delay_seconds=float(config.get("connection_delay_seconds", 2.0)),
+    )
+    if not connected:
+        print(message)
         return
-
-    if not mt5_connector.is_connected():
-        print("MT5 terminal is not connected.")
+    if not mt5_connector.is_ready():
+        print("MT5 terminal is not ready (account info unavailable).")
         mt5_connector.shutdown()
         return
 
@@ -172,8 +176,8 @@ def main() -> None:
             trade_logger.info("Kill switch active: no new trades.")
             time.sleep(5)
             continue
-        if not mt5_connector.is_connected():
-            trade_logger.info("MT5 disconnected; waiting.")
+        if not mt5_connector.is_ready():
+            trade_logger.info("MT5 not ready or disconnected; waiting.")
             time.sleep(5)
             continue
 

@@ -58,6 +58,8 @@ You should see a `claw_claw/` folder and `claw_claw_full.py` at the repository r
 ### MT5 disconnects when the bot starts
 If MT5 disconnects right when the bot initializes, keep `auto_login` set to `false` and log in manually in the MT5 terminal first. Auto-login can force MT5 to reconnect, which may drop the existing broker session on some setups. After you’re logged in, start the bot again and it should attach without reauthenticating.
 
+If you still see connection issues, the bot will retry MT5 initialization a few times. You can tune this in `config.json` via `connection_retries` and `connection_delay_seconds`.
+
 **Manual option (if you prefer):**
 1. **Clone the repository** and open it in PyCharm.
 2. **Create a virtual environment** (Python 3.9):

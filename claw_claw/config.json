@@ -21,5 +21,7 @@
   "deviation_points": 20,
   "break_even_r_multiple": 1.5,
   "unlock_phrase": "I UNDERSTAND LIVE RISK",
-  "auto_login": false
+  "auto_login": false,
+  "connection_retries": 3,
+  "connection_delay_seconds": 2.0
 }
