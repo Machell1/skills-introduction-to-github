@@ -48,6 +48,10 @@ README.md
    - `claw_claw_full.py` (single-file option), or
    - `claw_claw/main.py` (modular package).
 
+**One-click setup + run (no PyCharm required):**
+1. Double-click `run_claw_claw_windows.bat`.
+2. It will create the `.venv`, install dependencies, and start the bot automatically.
+
 ### If you downloaded the ZIP and only see GitHub Skills files
 You should see a `claw_claw/` folder and `claw_claw_full.py` at the repository root. If your ZIP only shows `.github/` and a generic GitHub Skills README, the bot files were not downloaded. In that case:
 
