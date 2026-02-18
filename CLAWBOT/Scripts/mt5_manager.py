@@ -27,23 +27,21 @@ EA_FILES = [
 ]
 
 
-def find_mt5_terminal() -> Path:
+def find_all_mt5_terminals() -> list:
     """
-    Find the MetaTrader 5 terminal installation path.
-    Searches: env var, registry, standard install paths.
-    Returns the path to terminal64.exe or None.
+    Find ALL MetaTrader 5 terminals installed on this system.
+    Returns a list of dicts: [{"path": Path, "name": str}, ...]
     """
     # 0. Check environment variable override
     env_path = os.environ.get("MT5_TERMINAL_PATH")
     if env_path:
         p = Path(env_path)
         if p.exists() and p.name.lower() == "terminal64.exe":
-            return p
-        # Maybe they pointed to the folder
+            return [{"path": p, "name": f"(env) {p.parent.name}"}]
         if p.is_dir() and (p / "terminal64.exe").exists():
-            return p / "terminal64.exe"
+            return [{"path": p / "terminal64.exe", "name": f"(env) {p.name}"}]
 
-    candidates = []
+    candidate_dirs = []
 
     # 1. Check registry (most reliable on Windows)
     try:
@@ -58,7 +56,7 @@ def find_mt5_terminal() -> Path:
                         subkey = winreg.OpenKey(key, subkey_name)
                         install_path, _ = winreg.QueryValueEx(subkey, "InstallPath")
                         if install_path:
-                            candidates.append(Path(install_path))
+                            candidate_dirs.append(Path(install_path))
                         winreg.CloseKey(subkey)
                         i += 1
                     except OSError:
@@ -89,27 +87,90 @@ def find_mt5_terminal() -> Path:
         ]
         for p in standard_paths:
             if p.exists():
-                candidates.append(p)
+                candidate_dirs.append(p)
 
         # Glob for any MT5-like folders (covers broker-branded installs)
         try:
             for pattern in ["*MetaTrader*5*", "*Metatrader*5*", "*MT5*", "*mt5*"]:
                 for mt5_dir in base.glob(pattern):
                     if mt5_dir.is_dir():
-                        candidates.append(mt5_dir)
+                        candidate_dirs.append(mt5_dir)
         except (PermissionError, OSError):
             pass
 
-    # 3. Check each candidate for terminal64.exe
-    for candidate in candidates:
+    # 3. Deduplicate and find terminal64.exe in each
+    seen = set()
+    terminals = []
+
+    for candidate in candidate_dirs:
         terminal = candidate / "terminal64.exe"
         if terminal.exists():
-            return terminal
-        # Some installs nest it
-        for sub_terminal in candidate.rglob("terminal64.exe"):
-            return sub_terminal
+            resolved = terminal.resolve()
+            if resolved not in seen:
+                seen.add(resolved)
+                terminals.append({"path": terminal, "name": candidate.name})
+            continue
 
-    return None
+        # Some installs nest the exe
+        try:
+            for sub_terminal in candidate.rglob("terminal64.exe"):
+                resolved = sub_terminal.resolve()
+                if resolved not in seen:
+                    seen.add(resolved)
+                    terminals.append({"path": sub_terminal, "name": sub_terminal.parent.name})
+                break
+        except (PermissionError, OSError):
+            pass
+
+    return terminals
+
+
+# Keywords that indicate a Deriv-branded terminal (case-insensitive)
+_DERIV_KEYWORDS = ["deriv"]
+
+
+def _is_deriv_terminal(name: str) -> bool:
+    """Check if a terminal name looks like a Deriv installation."""
+    lower = name.lower()
+    return any(kw in lower for kw in _DERIV_KEYWORDS)
+
+
+def find_mt5_terminal() -> Path:
+    """
+    Find the best MetaTrader 5 terminal.
+    Prefers Deriv-branded terminals. If multiple are found, prompts the user.
+    Returns the path to terminal64.exe or None.
+    """
+    terminals = find_all_mt5_terminals()
+
+    if not terminals:
+        return None
+
+    if len(terminals) == 1:
+        return terminals[0]["path"]
+
+    # Multiple terminals found - check for Deriv first
+    deriv_terminals = [t for t in terminals if _is_deriv_terminal(t["name"])]
+    if len(deriv_terminals) == 1:
+        print(f"  [INFO] Multiple MT5 terminals found. Auto-selecting Deriv.")
+        return deriv_terminals[0]["path"]
+
+    # Multiple terminals and either 0 or 2+ Deriv matches - ask user
+    print(f"\n  Multiple MT5 terminals found:")
+    for i, t in enumerate(terminals):
+        label = " (Deriv)" if _is_deriv_terminal(t["name"]) else ""
+        print(f"    {i + 1}. {t['name']}{label}")
+        print(f"       {t['path']}")
+
+    while True:
+        choice = input(f"\n  Select terminal [1-{len(terminals)}]: ").strip()
+        try:
+            idx = int(choice) - 1
+            if 0 <= idx < len(terminals):
+                return terminals[idx]["path"]
+        except ValueError:
+            pass
+        print(f"  Invalid choice. Enter a number 1-{len(terminals)}.")
 
 
 def find_metaeditor(terminal_path: Path) -> Path:
@@ -351,11 +412,19 @@ def setup_mt5(project_root: Path) -> dict:
 
     print("\n[STEP 1] Detecting MetaTrader 5 installation...")
 
+    # Show all found terminals for transparency
+    all_terminals = find_all_mt5_terminals()
+    if all_terminals:
+        print(f"  Found {len(all_terminals)} MT5 installation(s):")
+        for t in all_terminals:
+            deriv_tag = " [DERIV]" if _is_deriv_terminal(t["name"]) else ""
+            print(f"    - {t['name']}{deriv_tag}: {t['path']}")
+
     terminal = find_mt5_terminal()
     if not terminal:
         print("  [ERROR] MetaTrader 5 not found on this system.")
         print("\n  To fix this:")
-        print("  1. Download MT5 from your Deriv account dashboard")
+        print("  1. Download Deriv MT5 from your Deriv account dashboard")
         print("  2. Install it to the default location")
         print("  3. Open MT5 at least once and log in")
         print("  4. Close MT5 and re-run this script")
@@ -364,7 +433,7 @@ def setup_mt5(project_root: Path) -> dict:
         return None
 
     result["terminal"] = terminal
-    print(f"  [OK] Found MT5: {terminal}")
+    print(f"  [OK] Selected: {terminal}")
 
     metaeditor = find_metaeditor(terminal)
     result["metaeditor"] = metaeditor
@@ -397,7 +466,7 @@ def setup_mt5(project_root: Path) -> dict:
         print("  Expected location: " + str(appdata_expected))
         print()
         print("  To fix this:")
-        print("  1. Open your HFM MetaTrader 5 (or any MT5 terminal)")
+        print("  1. Open your Deriv MT5 terminal")
         print("  2. Log into any account (even demo)")
         print("  3. Close MT5")
         print("  4. Re-run this script")
