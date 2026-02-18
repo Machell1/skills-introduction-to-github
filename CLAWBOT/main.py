@@ -168,7 +168,16 @@ def phase_analyze(reports, data_path) -> bool:
             print(f"  Result: {'PASSED' if passed else 'FAILED'}")
             return passed
 
+    report_path = reports.get("audit_report") if reports else None
+    print(f"  [ERROR] Report not found: {report_path}")
     print("  [ERROR] No results found. Check MT5 Journal tab for errors.")
+    print()
+    print("  Troubleshooting steps:")
+    print("    1. Open Deriv MT5 and log into your account (demo is fine)")
+    print("    2. Open a XAUUSD chart to ensure historical data is downloaded")
+    print("    3. Open MetaEditor (F4) -> open CLAWBOT.mq5 -> compile (F7)")
+    print("    4. Check the Journal tab and Experts tab in MT5 for error messages")
+    print("    5. Re-run main.py")
     return False
 
 

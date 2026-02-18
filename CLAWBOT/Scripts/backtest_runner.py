@@ -75,6 +75,8 @@ def _kill_mt5():
 def find_reports(data_path: Path) -> dict:
     """Search for CLAWBOT report files in the MT5 data tree."""
     found = {}
+
+    # Primary: EA writes via FileOpen() -> MQL5/Files/
     files_dir = data_path / "MQL5" / "Files" / "CLAWBOT_Reports"
     for name, key in [
         (AUDIT_REPORT, "audit_report"),
@@ -85,23 +87,59 @@ def find_reports(data_path: Path) -> dict:
         if p.exists():
             found[key] = p
 
-    # MT5-generated HTML
+    # Also search MQL5/Files/ root (EA may write there without subfolder)
+    files_root = data_path / "MQL5" / "Files"
+    if files_root.exists():
+        for name, key in [
+            (AUDIT_REPORT, "audit_report"),
+            (AUDIT_PASS,   "pass_report"),
+            (AUDIT_WEAK,   "weakness_report"),
+        ]:
+            if key not in found:
+                p = files_root / name
+                if p.exists():
+                    found[key] = p
+
+    # MT5-generated HTML report (from tester Report= setting)
     tester = data_path / "Tester"
     if tester.exists():
         for htm in tester.rglob("CLAWBOT*.htm"):
-            found["mt5_report"] = htm
+            found.setdefault("mt5_report", htm)
             break
 
-    # Alternate folder
-    alt = data_path / "CLAWBOT_Reports"
-    if alt.exists():
-        for csv in alt.glob("*.csv"):
-            if "Pass" in csv.name:
-                found.setdefault("pass_report", csv)
-            elif "Weakness" in csv.name:
-                found.setdefault("weakness_report", csv)
-            elif "Backtest" in csv.name:
-                found.setdefault("audit_report", csv)
+    # Also check for MT5 HTML in the report subfolder
+    report_dir = data_path / "CLAWBOT_Reports"
+    if report_dir.exists():
+        for htm in report_dir.glob("*.htm"):
+            found.setdefault("mt5_report", htm)
+            break
+
+    # Alternate folder (CSV reports)
+    for alt in [
+        data_path / "CLAWBOT_Reports",
+        data_path / "Tester" / "CLAWBOT_Reports",
+    ]:
+        if alt.exists():
+            for csv in alt.glob("*.csv"):
+                if "Pass" in csv.name:
+                    found.setdefault("pass_report", csv)
+                elif "Weakness" in csv.name:
+                    found.setdefault("weakness_report", csv)
+                elif "Backtest" in csv.name:
+                    found.setdefault("audit_report", csv)
+
+    # Deep search: find any CLAWBOT CSV anywhere under data_path
+    if not found:
+        try:
+            for csv in data_path.rglob("CLAWBOT_*_Report.csv"):
+                if "Pass" in csv.name:
+                    found.setdefault("pass_report", csv)
+                elif "Weakness" in csv.name:
+                    found.setdefault("weakness_report", csv)
+                elif "Backtest" in csv.name:
+                    found.setdefault("audit_report", csv)
+        except (PermissionError, OSError):
+            pass
 
     return found
 
@@ -184,6 +222,44 @@ def wait_for_mt5(timeout_min: int = 120) -> bool:
     return False
 
 
+def preflight_check(data_path: Path) -> list:
+    """Verify EA is compiled and ready before launching backtest."""
+    issues = []
+    ex5 = data_path / "MQL5" / "Experts" / "CLAWBOT" / "CLAWBOT.ex5"
+    mq5 = data_path / "MQL5" / "Experts" / "CLAWBOT" / "CLAWBOT.mq5"
+
+    if not mq5.exists():
+        issues.append("EA source not installed: " + str(mq5))
+    if not ex5.exists():
+        issues.append("EA not compiled: CLAWBOT.ex5 missing. Compile in MetaEditor (F7) first.")
+    elif mq5.exists() and mq5.stat().st_mtime > ex5.stat().st_mtime:
+        issues.append("EA source is newer than compiled .ex5. Recompile in MetaEditor (F7).")
+
+    return issues
+
+
+def read_tester_journal(data_path: Path) -> list:
+    """Read recent MT5 tester journal logs for error diagnostics."""
+    lines = []
+    for log_dir in [data_path / "Tester" / "logs", data_path / "logs"]:
+        if not log_dir.exists():
+            continue
+        logs = sorted(log_dir.glob("*.log"), key=lambda f: f.stat().st_mtime, reverse=True)
+        for log_file in logs[:2]:
+            try:
+                content = log_file.read_text(encoding="utf-16-le", errors="ignore")
+            except Exception:
+                try:
+                    content = log_file.read_text(encoding="utf-8", errors="ignore")
+                except Exception:
+                    continue
+            for line in content.splitlines()[-50:]:
+                stripped = line.strip()
+                if stripped:
+                    lines.append(stripped)
+    return lines
+
+
 def run_backtest(
     terminal: Path,
     data_path: Path,
@@ -195,6 +271,15 @@ def run_backtest(
     timeout_min=120,
 ) -> dict:
     """Full pipeline: config → clean → launch → wait → find reports."""
+
+    # Pre-flight check
+    issues = preflight_check(data_path)
+    if issues:
+        print("\n[PRE-FLIGHT CHECK]")
+        for issue in issues:
+            print(f"  [WARN] {issue}")
+        print("  The backtest may fail. Continuing anyway ...")
+        print()
 
     print("\n[STEP 5] Writing tester configuration ...")
     cfg = data_path / "tester" / "CLAWBOT_tester.ini"
@@ -238,5 +323,35 @@ def run_backtest(
         for k, v in reports.items():
             print(f"    {k}: {v.name}")
     else:
-        print("  [WARN] No reports found. Check MT5 Journal for errors.")
+        print("  [WARN] No reports found.")
+        print()
+        print("  --- DIAGNOSTICS ---")
+
+        # Check if .ex5 exists
+        ex5 = data_path / "MQL5" / "Experts" / "CLAWBOT" / "CLAWBOT.ex5"
+        if not ex5.exists():
+            print("  [!] CLAWBOT.ex5 NOT FOUND - EA was never compiled.")
+            print("      Open MetaEditor -> MQL5/Experts/CLAWBOT/CLAWBOT.mq5 -> press F7")
+        else:
+            print(f"  [OK] CLAWBOT.ex5 exists ({ex5.stat().st_size:,} bytes)")
+
+        # Check tester journal for errors
+        journal = read_tester_journal(data_path)
+        if journal:
+            print()
+            print("  Recent tester journal entries:")
+            for line in journal[-15:]:
+                print(f"    {line}")
+        else:
+            print("  [!] No tester journal logs found.")
+            print("      MT5 may not have started the backtest at all.")
+
+        # Suggest common fixes
+        print()
+        print("  Common causes:")
+        print("    1. EA not compiled (.ex5 missing) -> Compile in MetaEditor (F7)")
+        print("    2. No historical data for the symbol -> Open MT5, load XAUUSD chart first")
+        print("    3. Symbol name mismatch -> Check if your broker uses XAUUSDm or #XAUUSD")
+        print("    4. Not logged into any account -> Log into Deriv MT5 (demo is fine)")
+
     return reports
