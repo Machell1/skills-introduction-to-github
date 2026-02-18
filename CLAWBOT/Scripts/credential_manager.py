@@ -1,16 +1,9 @@
 #!/usr/bin/env python3
 """
 CLAWBOT Credential Manager
-===========================
-Securely stores Deriv MT5 login credentials in an encrypted .env file.
-Only runs after the bot passes backtesting with >=80% win rate.
-
-Security:
-  - Credentials encrypted with Fernet symmetric encryption (AES-128-CBC)
-  - Encryption key derived from machine-specific fingerprint + user passphrase
-  - .env file permissions restricted to owner-only (chmod 600)
-  - Credentials never stored in plaintext
-  - No credentials transmitted over network
+============================
+Encrypts and stores Deriv MT5 login credentials.
+Works both standalone (python credential_manager.py) and as an import.
 """
 
 import os
@@ -22,299 +15,122 @@ import platform
 import stat
 from pathlib import Path
 
-# Optional encryption dependencies
 try:
     from cryptography.fernet import Fernet
     HAS_CRYPTO = True
 except ImportError:
     HAS_CRYPTO = False
 
-# Paths
-SCRIPT_DIR = Path(__file__).parent.resolve()
-CONFIG_DIR = SCRIPT_DIR.parent / "Config"
-ENV_FILE = CONFIG_DIR / ".env.encrypted"
-KEY_FILE = CONFIG_DIR / ".clawbot.key"
-CREDENTIALS_INI = CONFIG_DIR / "credentials.ini"
+CONFIG_DIR = Path(__file__).parent.parent.resolve() / "Config"
+ENV_FILE   = CONFIG_DIR / ".env.encrypted"
 
 
-def get_machine_fingerprint():
-    """Generate a machine-specific fingerprint for key derivation."""
-    parts = [
-        platform.node(),
-        platform.machine(),
-        platform.processor(),
-        str(os.getuid()) if hasattr(os, 'getuid') else os.getlogin(),
-    ]
-    combined = "|".join(parts)
-    return hashlib.sha256(combined.encode()).hexdigest()[:32]
+# ── Key derivation ───────────────────────────────────────────────────
+def _machine_id() -> str:
+    parts = [platform.node(), platform.machine(), platform.processor()]
+    try:
+        parts.append(str(os.getuid()))
+    except AttributeError:
+        parts.append(os.getlogin())
+    return hashlib.sha256("|".join(parts).encode()).hexdigest()[:32]
 
 
-def derive_key(passphrase: str) -> bytes:
-    """Derive encryption key from passphrase + machine fingerprint."""
-    fingerprint = get_machine_fingerprint()
-    salt = (passphrase + fingerprint).encode()
-    # Use PBKDF2-like derivation
-    key_material = hashlib.pbkdf2_hmac('sha256', passphrase.encode(), salt, 100000)
-    # Fernet requires 32 url-safe base64 bytes
+def _derive_key(passphrase: str) -> bytes:
     import base64
-    return base64.urlsafe_b64encode(key_material[:32])
+    salt = (passphrase + _machine_id()).encode()
+    raw = hashlib.pbkdf2_hmac("sha256", passphrase.encode(), salt, 100000)
+    return base64.urlsafe_b64encode(raw[:32])
 
 
-def encrypt_credentials(credentials: dict, passphrase: str) -> bytes:
-    """Encrypt credentials dictionary using Fernet."""
-    if not HAS_CRYPTO:
-        # Fallback: base64 encoding with warning
-        import base64
-        print("\n[WARNING] 'cryptography' package not installed.")
-        print("Credentials will be encoded but NOT encrypted.")
-        print("Install it with: pip install cryptography")
-        data = json.dumps(credentials).encode()
-        return base64.b64encode(data)
-
-    key = derive_key(passphrase)
-    f = Fernet(key)
-    data = json.dumps(credentials).encode()
-    return f.encrypt(data)
-
-
-def decrypt_credentials(encrypted: bytes, passphrase: str) -> dict:
-    """Decrypt credentials from encrypted data."""
+# ── Encrypt / decrypt ────────────────────────────────────────────────
+def _encrypt(data: dict, passphrase: str) -> bytes:
     if not HAS_CRYPTO:
         import base64
-        data = base64.b64decode(encrypted)
-        return json.loads(data)
-
-    key = derive_key(passphrase)
-    f = Fernet(key)
-    data = f.decrypt(encrypted)
-    return json.loads(data)
+        print("  [WARN] 'cryptography' not installed - using base64 only.")
+        return base64.b64encode(json.dumps(data).encode())
+    return Fernet(_derive_key(passphrase)).encrypt(json.dumps(data).encode())
 
 
-def secure_file_permissions(filepath: Path):
-    """Set file permissions to owner-only read/write (600)."""
-    try:
-        os.chmod(filepath, stat.S_IRUSR | stat.S_IWUSR)
-    except (OSError, AttributeError):
-        pass  # Windows doesn't support chmod in the same way
+def _decrypt(blob: bytes, passphrase: str) -> dict:
+    if not HAS_CRYPTO:
+        import base64
+        return json.loads(base64.b64decode(blob))
+    return json.loads(Fernet(_derive_key(passphrase)).decrypt(blob))
 
 
-def check_backtest_passed() -> bool:
-    """Check if the backtest pass report exists."""
-    reports_dir = SCRIPT_DIR.parent / "Reports"
-    # Check MQL5 data folder paths as well
-    mql5_reports = [
-        reports_dir / "CLAWBOT_Pass_Report.csv",
-    ]
-
-    # Also check standard MT5 data paths
-    home = Path.home()
-    mt5_paths = [
-        home / "AppData" / "Roaming" / "MetaQuotes" / "Terminal",
-        home / ".wine" / "drive_c" / "Program Files" / "MetaTrader 5",
-        Path("/opt/mt5"),
-    ]
-
-    for report in mql5_reports:
-        if report.exists():
-            return True
-
-    # Search MT5 terminal data folders
-    for mt5_path in mt5_paths:
-        if mt5_path.exists():
-            for pass_report in mt5_path.rglob("CLAWBOT_Pass_Report.csv"):
-                return True
-
-    return False
-
-
-def save_credentials(credentials: dict, passphrase: str):
-    """Save encrypted credentials to file."""
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-
-    # Save encrypted .env
-    encrypted = encrypt_credentials(credentials, passphrase)
-    ENV_FILE.write_bytes(encrypted)
-    secure_file_permissions(ENV_FILE)
-
-    # Also generate an MT5-compatible .ini file for the EA to read
-    ini_content = f"""[CLAWBOT_Credentials]
-; This file is auto-generated by CLAWBOT credential manager
-; Credentials are for Deriv MT5 connection
-server={credentials['server']}
-login={credentials['login']}
-; Password is stored in encrypted .env only - not in this file
-; The EA reads connection settings from here
-"""
-    CREDENTIALS_INI.write_text(ini_content)
-    secure_file_permissions(CREDENTIALS_INI)
-
-    print(f"\n[OK] Credentials saved to: {ENV_FILE}")
-    print(f"[OK] Connection config saved to: {CREDENTIALS_INI}")
-    print("[OK] File permissions set to owner-only (600)")
-
-
-def load_credentials(passphrase: str) -> dict:
-    """Load and decrypt credentials from file."""
-    if not ENV_FILE.exists():
-        return None
-
-    encrypted = ENV_FILE.read_bytes()
-    try:
-        return decrypt_credentials(encrypted, passphrase)
-    except Exception as e:
-        print(f"[ERROR] Failed to decrypt credentials: {e}")
-        return None
-
-
+# ── Public API (imported by main.py) ─────────────────────────────────
 def collect_credentials() -> dict:
-    """Interactively collect Deriv MT5 credentials from the user."""
-    print("\n" + "=" * 60)
-    print("  CLAWBOT - Deriv MT5 Credential Setup")
-    print("=" * 60)
-    print("\nPlease enter your Deriv MT5 trading account credentials.")
-    print("These will be encrypted and stored locally.\n")
+    """Interactive prompt for Deriv MT5 credentials."""
+    print("\n  Deriv MT5 Servers:")
+    print("    1. Deriv-Demo")
+    print("    2. Deriv-Server")
+    print("    3. Deriv-Server-02")
+    print("    4. Custom")
 
-    # Server selection for Deriv
-    print("Deriv MT5 Servers:")
-    print("  1. Deriv-Demo        (Demo account)")
-    print("  2. Deriv-Server      (Real/Live account)")
-    print("  3. Deriv-Server-02   (Real/Live account)")
-    print("  4. Custom server")
+    server = ""
+    while not server:
+        c = input("\n  Select server [1-4]: ").strip()
+        server = {"1": "Deriv-Demo", "2": "Deriv-Server", "3": "Deriv-Server-02"}.get(c)
+        if c == "4":
+            server = input("  Enter server address: ").strip()
+        if not server:
+            print("  Invalid choice.")
 
     while True:
-        choice = input("\nSelect server [1-4]: ").strip()
-        if choice == "1":
-            server = "Deriv-Demo"
-            break
-        elif choice == "2":
-            server = "Deriv-Server"
-            break
-        elif choice == "3":
-            server = "Deriv-Server-02"
-            break
-        elif choice == "4":
-            server = input("Enter custom server address: ").strip()
-            if server:
-                break
-        print("Invalid choice. Please try again.")
-
-    # Login ID
-    while True:
-        login = input("\nEnter your MT5 Login ID (numeric): ").strip()
+        login = input("\n  MT5 Login ID (numeric): ").strip()
         if login.isdigit() and len(login) >= 4:
             break
-        print("Invalid login ID. Must be a numeric value (at least 4 digits).")
+        print("  Must be at least 4 digits.")
 
-    # Password
     while True:
-        password = getpass.getpass("\nEnter your MT5 Password: ")
-        if len(password) >= 4:
-            password_confirm = getpass.getpass("Confirm password: ")
-            if password == password_confirm:
+        pw = getpass.getpass("  MT5 Password: ")
+        if len(pw) >= 4:
+            if getpass.getpass("  Confirm password: ") == pw:
                 break
-            print("Passwords don't match. Try again.")
+            print("  Mismatch.")
         else:
-            print("Password too short.")
+            print("  Too short.")
 
-    return {
-        "server": server,
-        "login": login,
-        "password": password,
-        "broker": "Deriv",
-        "platform": "MT5"
-    }
+    return {"server": server, "login": login, "password": pw}
 
 
 def setup_encryption_passphrase() -> str:
-    """Set up or verify the encryption passphrase."""
-    print("\n--- Encryption Passphrase ---")
-    print("This passphrase encrypts your stored credentials.")
-    print("You will need it to access your credentials later.\n")
-
+    """Prompt for a passphrase to encrypt the credential file."""
     while True:
-        passphrase = getpass.getpass("Enter encryption passphrase: ")
-        if len(passphrase) < 6:
-            print("Passphrase must be at least 6 characters.")
+        pp = getpass.getpass("  Encryption passphrase (>=6 chars): ")
+        if len(pp) < 6:
+            print("  Too short.")
             continue
-
-        confirm = getpass.getpass("Confirm passphrase: ")
-        if passphrase == confirm:
-            return passphrase
-        print("Passphrases don't match. Try again.")
+        if getpass.getpass("  Confirm: ") == pp:
+            return pp
+        print("  Mismatch.")
 
 
-def main():
-    print("\n" + "=" * 60)
-    print("       CLAWBOT Credential Manager v1.0")
-    print("=" * 60)
-
-    # Check if backtest passed
-    print("\nChecking backtest results...")
-    backtest_passed = check_backtest_passed()
-
-    if not backtest_passed:
-        print("\n[BLOCKED] No passing backtest report found.")
-        print("The CLAWBOT must achieve >=80% win rate in backtesting")
-        print("before live trading credentials can be configured.")
-        print("\nSteps to proceed:")
-        print("  1. Open MT5 and load CLAWBOT EA on XAUUSD H1 chart")
-        print("  2. Run Strategy Tester with 2+ years of data")
-        print("  3. If backtest passes, a pass report will be generated")
-        print("  4. Run this script again after passing")
-        print("\nIf you have a pass report in a non-standard location,")
-
-        override = input("enter 'OVERRIDE' to bypass this check: ").strip()
-        if override != "OVERRIDE":
-            sys.exit(1)
-        print("\n[WARNING] Override accepted. Proceeding without verified backtest.")
-
-    else:
-        print("[OK] Backtest pass report found!")
-
-    # Check for existing credentials
-    if ENV_FILE.exists():
-        print(f"\n[INFO] Existing credentials found at: {ENV_FILE}")
-        choice = input("Overwrite existing credentials? (yes/no): ").strip().lower()
-        if choice != "yes":
-            print("Keeping existing credentials.")
-
-            # Offer to verify
-            verify = input("Verify existing credentials? (yes/no): ").strip().lower()
-            if verify == "yes":
-                passphrase = getpass.getpass("Enter encryption passphrase: ")
-                creds = load_credentials(passphrase)
-                if creds:
-                    print(f"\n[OK] Credentials valid!")
-                    print(f"  Server: {creds['server']}")
-                    print(f"  Login:  {creds['login']}")
-                    print(f"  Broker: {creds.get('broker', 'Deriv')}")
-                else:
-                    print("[ERROR] Could not decrypt. Wrong passphrase?")
-            return
-
-    # Collect new credentials
-    credentials = collect_credentials()
-
-    # Set up encryption
-    passphrase = setup_encryption_passphrase()
-
-    # Save
-    save_credentials(credentials, passphrase)
-
-    print("\n" + "=" * 60)
-    print("  SETUP COMPLETE")
-    print("=" * 60)
-    print("\nYour Deriv MT5 credentials have been securely stored.")
-    print("The CLAWBOT EA will use these credentials for live trading.")
-    print("\nNext steps:")
-    print("  1. Open your Deriv MT5 terminal")
-    print("  2. Log in to your trading account")
-    print("  3. Load CLAWBOT EA on XAUUSD H1 chart")
-    print("  4. Set Bot Mode to 'Live' in EA settings")
-    print("  5. Enable AutoTrading in MT5")
-    print("\n[IMPORTANT] Start with minimum lot sizes for the first")
-    print("2 weeks to validate live performance matches backtest.\n")
+def save_credentials(creds: dict, passphrase: str):
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    ENV_FILE.write_bytes(_encrypt(creds, passphrase))
+    try:
+        os.chmod(ENV_FILE, stat.S_IRUSR | stat.S_IWUSR)
+    except (OSError, AttributeError):
+        pass
+    print(f"  [OK] Credentials saved: {ENV_FILE}")
 
 
+def load_credentials(passphrase: str) -> dict:
+    if not ENV_FILE.exists():
+        return None
+    try:
+        return _decrypt(ENV_FILE.read_bytes(), passphrase)
+    except Exception as e:
+        print(f"  [ERROR] Decrypt failed: {e}")
+        return None
+
+
+# ── Standalone entry ─────────────────────────────────────────────────
 if __name__ == "__main__":
-    main()
+    print("\n  CLAWBOT Credential Manager")
+    print("  " + "=" * 40)
+    creds = collect_credentials()
+    pp = setup_encryption_passphrase()
+    save_credentials(creds, pp)
+    print("\n  Done. Re-run main.py to launch live trading.")

@@ -2,8 +2,8 @@
 """
 CLAWBOT MT5 Manager
 ====================
-Handles MetaTrader 5 detection, EA file installation, and compilation.
-Supports both standard and portable MT5 installations.
+Detects all MT5 terminals, prefers Deriv, resolves the writable user-data
+directory, copies EA source files, and compiles via MetaEditor CLI.
 """
 
 import os
@@ -11,11 +11,14 @@ import sys
 import shutil
 import subprocess
 import time
-import winreg
 from pathlib import Path
 
+try:
+    import winreg
+except ImportError:
+    winreg = None  # Not on Windows – handled at call-site
 
-# EA source files relative to the CLAWBOT project root
+# ── EA source files shipped with the project ──────────────────────────
 EA_FILES = [
     "CLAWBOT.mq5",
     "ClawUtils.mqh",
@@ -26,98 +29,101 @@ EA_FILES = [
     "ClawAudit.mqh",
 ]
 
+# ── Deriv detection keyword ──────────────────────────────────────────
+_DERIV_KEYWORDS = ["deriv"]
 
+
+def _is_deriv(name: str) -> bool:
+    low = name.lower()
+    return any(kw in low for kw in _DERIV_KEYWORDS)
+
+
+# =====================================================================
+#  Terminal discovery
+# =====================================================================
 def find_all_mt5_terminals() -> list:
     """
-    Find ALL MetaTrader 5 terminals installed on this system.
-    Returns a list of dicts: [{"path": Path, "name": str}, ...]
+    Return every MT5 terminal found on the machine.
+    Each entry: {"path": Path to terminal64.exe, "name": folder name}
     """
-    # 0. Check environment variable override
-    env_path = os.environ.get("MT5_TERMINAL_PATH")
-    if env_path:
-        p = Path(env_path)
-        if p.exists() and p.name.lower() == "terminal64.exe":
+    # env-var override
+    env = os.environ.get("MT5_TERMINAL_PATH")
+    if env:
+        p = Path(env)
+        if p.is_file() and p.name.lower() == "terminal64.exe":
             return [{"path": p, "name": f"(env) {p.parent.name}"}]
         if p.is_dir() and (p / "terminal64.exe").exists():
             return [{"path": p / "terminal64.exe", "name": f"(env) {p.name}"}]
 
-    candidate_dirs = []
+    candidate_dirs: list[Path] = []
 
-    # 1. Check registry (most reliable on Windows)
-    try:
+    # 1. Windows registry
+    if winreg:
         for hive in [winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER]:
             try:
-                key = winreg.OpenKey(hive, r"SOFTWARE\MetaQuotes\Terminal", 0,
-                                     winreg.KEY_READ | winreg.KEY_WOW64_64KEY)
+                key = winreg.OpenKey(
+                    hive, r"SOFTWARE\MetaQuotes\Terminal", 0,
+                    winreg.KEY_READ | winreg.KEY_WOW64_64KEY,
+                )
                 i = 0
                 while True:
                     try:
-                        subkey_name = winreg.EnumKey(key, i)
-                        subkey = winreg.OpenKey(key, subkey_name)
-                        install_path, _ = winreg.QueryValueEx(subkey, "InstallPath")
-                        if install_path:
-                            candidate_dirs.append(Path(install_path))
-                        winreg.CloseKey(subkey)
+                        sub = winreg.OpenKey(key, winreg.EnumKey(key, i))
+                        val, _ = winreg.QueryValueEx(sub, "InstallPath")
+                        if val:
+                            candidate_dirs.append(Path(val))
+                        winreg.CloseKey(sub)
                         i += 1
                     except OSError:
                         break
                 winreg.CloseKey(key)
             except OSError:
                 pass
-    except Exception:
-        pass
 
-    # 2. Standard installation paths
-    for base in [
+    # 2. Common install locations
+    bases = [
         Path(os.environ.get("ProgramFiles", r"C:\Program Files")),
         Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")),
-        Path(os.environ.get("LOCALAPPDATA", "")),
+        Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Local"))),
         Path.home() / "AppData" / "Local",
         Path("C:\\"),
         Path("D:\\"),
-    ]:
+    ]
+    for base in bases:
         if not base.exists():
             continue
-        standard_paths = [
-            base / "MetaTrader 5",
-            base / "Deriv MT5",
-            base / "HFM Metatrader 5",
-            base / "HFM MetaTrader 5",
-            base / "MetaQuotes" / "Terminal",
-        ]
-        for p in standard_paths:
+        for fixed in [
+            "MetaTrader 5", "Deriv MT5", "Deriv MetaTrader 5",
+            "HFM Metatrader 5", "HFM MetaTrader 5",
+        ]:
+            p = base / fixed
             if p.exists():
                 candidate_dirs.append(p)
-
-        # Glob for any MT5-like folders (covers broker-branded installs)
         try:
-            for pattern in ["*MetaTrader*5*", "*Metatrader*5*", "*MT5*", "*mt5*"]:
-                for mt5_dir in base.glob(pattern):
-                    if mt5_dir.is_dir():
-                        candidate_dirs.append(mt5_dir)
+            for pattern in ("*MetaTrader*5*", "*Metatrader*5*", "*MT5*", "*Deriv*"):
+                for d in base.glob(pattern):
+                    if d.is_dir():
+                        candidate_dirs.append(d)
         except (PermissionError, OSError):
             pass
 
-    # 3. Deduplicate and find terminal64.exe in each
-    seen = set()
+    # 3. De-duplicate and resolve terminal64.exe
+    seen: set[Path] = set()
     terminals = []
-
-    for candidate in candidate_dirs:
-        terminal = candidate / "terminal64.exe"
-        if terminal.exists():
-            resolved = terminal.resolve()
-            if resolved not in seen:
-                seen.add(resolved)
-                terminals.append({"path": terminal, "name": candidate.name})
+    for cand in candidate_dirs:
+        exe = cand / "terminal64.exe"
+        if exe.exists():
+            r = exe.resolve()
+            if r not in seen:
+                seen.add(r)
+                terminals.append({"path": exe, "name": cand.name})
             continue
-
-        # Some installs nest the exe
         try:
-            for sub_terminal in candidate.rglob("terminal64.exe"):
-                resolved = sub_terminal.resolve()
-                if resolved not in seen:
-                    seen.add(resolved)
-                    terminals.append({"path": sub_terminal, "name": sub_terminal.parent.name})
+            for sub in cand.rglob("terminal64.exe"):
+                r = sub.resolve()
+                if r not in seen:
+                    seen.add(r)
+                    terminals.append({"path": sub, "name": sub.parent.name})
                 break
         except (PermissionError, OSError):
             pass
@@ -125,381 +131,272 @@ def find_all_mt5_terminals() -> list:
     return terminals
 
 
-# Keywords that indicate a Deriv-branded terminal (case-insensitive)
-_DERIV_KEYWORDS = ["deriv"]
-
-
-def _is_deriv_terminal(name: str) -> bool:
-    """Check if a terminal name looks like a Deriv installation."""
-    lower = name.lower()
-    return any(kw in lower for kw in _DERIV_KEYWORDS)
-
-
-def find_mt5_terminal() -> Path:
+def pick_terminal(terminals: list) -> Path:
     """
-    Find the best MetaTrader 5 terminal.
-    Prefers Deriv-branded terminals. If multiple are found, prompts the user.
-    Returns the path to terminal64.exe or None.
+    Given a list of terminals, auto-pick Deriv or prompt.
     """
-    terminals = find_all_mt5_terminals()
-
     if not terminals:
         return None
-
     if len(terminals) == 1:
         return terminals[0]["path"]
 
-    # Multiple terminals found - check for Deriv first
-    deriv_terminals = [t for t in terminals if _is_deriv_terminal(t["name"])]
-    if len(deriv_terminals) == 1:
-        print(f"  [INFO] Multiple MT5 terminals found. Auto-selecting Deriv.")
-        return deriv_terminals[0]["path"]
+    deriv = [t for t in terminals if _is_deriv(t["name"])]
+    if len(deriv) == 1:
+        print(f"  [AUTO] Selecting Deriv terminal: {deriv[0]['name']}")
+        return deriv[0]["path"]
 
-    # Multiple terminals and either 0 or 2+ Deriv matches - ask user
-    print(f"\n  Multiple MT5 terminals found:")
-    for i, t in enumerate(terminals):
-        label = " (Deriv)" if _is_deriv_terminal(t["name"]) else ""
-        print(f"    {i + 1}. {t['name']}{label}")
-        print(f"       {t['path']}")
+    print("\n  Multiple MT5 terminals detected:")
+    for i, t in enumerate(terminals, 1):
+        tag = " [DERIV]" if _is_deriv(t["name"]) else ""
+        print(f"    {i}. {t['name']}{tag}  ({t['path']})")
 
     while True:
-        choice = input(f"\n  Select terminal [1-{len(terminals)}]: ").strip()
+        raw = input(f"\n  Select terminal [1-{len(terminals)}]: ").strip()
         try:
-            idx = int(choice) - 1
+            idx = int(raw) - 1
             if 0 <= idx < len(terminals):
                 return terminals[idx]["path"]
         except ValueError:
             pass
-        print(f"  Invalid choice. Enter a number 1-{len(terminals)}.")
+        print(f"  Enter a number between 1 and {len(terminals)}.")
 
 
 def find_metaeditor(terminal_path: Path) -> Path:
-    """Find metaeditor64.exe relative to the terminal."""
-    terminal_dir = terminal_path.parent
-    editor = terminal_dir / "metaeditor64.exe"
-    if editor.exists():
-        return editor
-    return None
+    editor = terminal_path.parent / "metaeditor64.exe"
+    return editor if editor.exists() else None
 
 
+# =====================================================================
+#  Data-path resolution
+# =====================================================================
 def _is_writable(path: Path) -> bool:
-    """Check if we can create files in this directory."""
     try:
-        test_file = path / ".clawbot_write_test"
-        test_file.write_text("test")
-        test_file.unlink()
+        tmp = path / ".clawbot_write_test"
+        tmp.write_text("ok")
+        tmp.unlink()
         return True
     except (OSError, PermissionError):
         return False
 
 
-def _find_appdata_data_path(terminal_dir: Path) -> Path:
-    """
-    Search AppData/Roaming/MetaQuotes/Terminal/ for the user data folder
-    that corresponds to this terminal installation.
-    """
+def _match_appdata_to_terminal(terminal_dir: Path) -> Path:
+    """Walk AppData/Roaming/MetaQuotes/Terminal/ and match origin.txt."""
     appdata = Path.home() / "AppData" / "Roaming" / "MetaQuotes" / "Terminal"
     if not appdata.exists():
         return None
 
-    # First pass: match by origin.txt (exact match to this terminal)
-    for data_dir in appdata.iterdir():
-        if not data_dir.is_dir() or not (data_dir / "MQL5").exists():
+    resolved_terminal = terminal_dir.resolve()
+
+    # Pass 1: exact origin.txt match
+    for d in appdata.iterdir():
+        if not d.is_dir() or not (d / "MQL5").exists():
             continue
-        origin = data_dir / "origin.txt"
+        origin = d / "origin.txt"
         if origin.exists():
             try:
-                origin_path = origin.read_text().strip()
-                if Path(origin_path).resolve() == terminal_dir.resolve():
-                    return data_dir
+                if Path(origin.read_text().strip()).resolve() == resolved_terminal:
+                    return d
             except (OSError, ValueError):
                 pass
 
-    # Second pass: return the most recently modified data folder
-    data_dirs = [d for d in appdata.iterdir()
-                 if d.is_dir() and (d / "MQL5").exists()]
-    if data_dirs:
-        return max(data_dirs, key=lambda d: d.stat().st_mtime)
+    # Pass 2: most-recently-modified data dir
+    dirs = [d for d in appdata.iterdir() if d.is_dir() and (d / "MQL5").exists()]
+    if dirs:
+        return max(dirs, key=lambda d: d.stat().st_mtime)
 
     return None
 
 
-def get_mt5_data_path(terminal_path: Path) -> Path:
+def get_data_path(terminal_path: Path) -> Path:
     """
-    Find the MT5 user data directory (where we can write MQL5/ files).
+    Return the *writable* MT5 user-data directory for this terminal.
 
-    MT5 has two directory layouts:
-      1. Standard install: terminal in Program Files, user data in
-         AppData/Roaming/MetaQuotes/Terminal/<hash>/
-      2. Portable mode: everything in one folder (terminal + MQL5/)
-
-    We ALWAYS prefer the AppData user data path because:
-      - Program Files is write-protected without admin
-      - The install dir may have MQL5/ but it's read-only
-      - AppData is where MT5 actually reads EA files from at runtime
+    Standard install → AppData/Roaming/MetaQuotes/Terminal/<hash>/
+    Portable install → same folder as terminal64.exe (only if writable)
     """
     terminal_dir = terminal_path.parent
 
-    # 1. Always check AppData first (works for standard installs)
-    appdata_path = _find_appdata_data_path(terminal_dir)
-    if appdata_path:
-        return appdata_path
+    # env-var override
+    env = os.environ.get("MT5_DATA_PATH")
+    if env:
+        p = Path(env)
+        if p.exists() and (p / "MQL5").exists():
+            print(f"  [OK] Using MT5_DATA_PATH: {p}")
+            return p
+        else:
+            print(f"  [WARNING] MT5_DATA_PATH is set but invalid: {env}")
 
-    # 2. Portable mode: MQL5/ next to terminal AND we can write to it
-    portable_mql5 = terminal_dir / "MQL5"
-    if portable_mql5.exists() and _is_writable(terminal_dir):
+    # 1. Always try AppData first (standard installs, e.g. Program Files)
+    appdata = _match_appdata_to_terminal(terminal_dir)
+    if appdata:
+        return appdata
+
+    # 2. Portable mode: MQL5/ beside terminal AND writable
+    if (terminal_dir / "MQL5").exists() and _is_writable(terminal_dir):
         return terminal_dir
 
-    # 3. MQL5/ exists next to terminal but isn't writable (e.g. Program Files)
-    #    Create the AppData structure ourselves so MT5 can find it
-    if portable_mql5.exists():
-        appdata_base = Path.home() / "AppData" / "Roaming" / "MetaQuotes" / "Terminal"
-        print(f"  [INFO] Install dir ({terminal_dir}) is read-only.")
-        print(f"  [INFO] MT5 stores user data in: {appdata_base}")
-        print(f"  [INFO] Open MT5 at least once so it creates the data folder,")
-        print(f"         then re-run this script.")
-
+    # 3. Not found – give clear instructions
+    expected = Path.home() / "AppData" / "Roaming" / "MetaQuotes" / "Terminal"
+    print(f"  [ERROR] Writable MT5 data directory not found.")
+    print()
+    print(f"  The install folder ({terminal_dir}) is read-only.")
+    print(f"  MT5 creates a writable data folder the first time you open it.")
+    print(f"  Expected: {expected}\\<hash>\\")
+    print()
+    print(f"  Fix:")
+    print(f"    1. Open your Deriv MT5 terminal")
+    print(f"    2. Log into any account (demo is fine)")
+    print(f"    3. Close MT5")
+    print(f"    4. Re-run this script")
     return None
 
 
-def install_ea_files(project_root: Path, data_path: Path) -> bool:
-    """
-    Copy CLAWBOT EA files from the project to the MT5 data directory.
-    Creates the destination folder if it doesn't exist.
-    """
-    source_dir = project_root / "MQL5" / "Experts" / "CLAWBOT"
-    dest_dir = data_path / "MQL5" / "Experts" / "CLAWBOT"
+# =====================================================================
+#  EA installation
+# =====================================================================
+def install_ea(project_root: Path, data_path: Path) -> bool:
+    """Copy EA source files into the MT5 data directory."""
+    src_dir = project_root / "MQL5" / "Experts" / "CLAWBOT"
+    dst_dir = data_path / "MQL5" / "Experts" / "CLAWBOT"
 
-    if not source_dir.exists():
-        print(f"  [ERROR] EA source directory not found: {source_dir}")
+    if not src_dir.exists():
+        print(f"  [ERROR] Source not found: {src_dir}")
         return False
 
-    # Create destination (with permission error handling)
     try:
-        dest_dir.mkdir(parents=True, exist_ok=True)
+        dst_dir.mkdir(parents=True, exist_ok=True)
     except PermissionError:
-        print(f"  [ERROR] Permission denied writing to: {dest_dir}")
-        print(f"  This path is read-only (likely Program Files).")
-        print(f"  The EA must be installed to your MT5 user data folder instead.")
-        print(f"  Open MT5 once, close it, then re-run this script.")
+        print(f"  [ERROR] Cannot write to: {dst_dir}")
+        print(f"  This folder is read-only. Check data-path detection above.")
         return False
 
-    # Copy each file
     copied = 0
-    for filename in EA_FILES:
-        src = source_dir / filename
-        dst = dest_dir / filename
-
-        if not src.exists():
-            print(f"  [WARNING] Missing source file: {filename}")
+    for name in EA_FILES:
+        s, d = src_dir / name, dst_dir / name
+        if not s.exists():
+            print(f"  [WARN] Missing: {name}")
             continue
-
-        # Check if file is already up to date
-        if dst.exists():
-            if src.stat().st_mtime <= dst.stat().st_mtime:
-                print(f"  [SKIP] {filename} (up to date)")
-                continue
-
-        shutil.copy2(src, dst)
-        print(f"  [COPY] {filename}")
+        if d.exists() and s.stat().st_mtime <= d.stat().st_mtime:
+            print(f"  [SKIP] {name} (up to date)")
+            continue
+        shutil.copy2(s, d)
+        print(f"  [COPY] {name}")
         copied += 1
 
     if copied == 0:
-        print("  All EA files are already up to date.")
+        print("  All files up to date.")
     else:
-        print(f"  Installed {copied} file(s) to {dest_dir}")
-
+        print(f"  Installed {copied} file(s) → {dst_dir}")
     return True
 
 
-def compile_ea(metaeditor_path: Path, data_path: Path) -> bool:
-    """
-    Compile CLAWBOT.mq5 using MetaEditor CLI.
-    Returns True if compilation succeeds.
-    """
-    mq5_file = data_path / "MQL5" / "Experts" / "CLAWBOT" / "CLAWBOT.mq5"
-
-    if not mq5_file.exists():
-        print(f"  [ERROR] Source file not found: {mq5_file}")
-        return False
-
-    print(f"  Compiling {mq5_file.name}...")
-
-    # MetaEditor CLI: /compile:"path" /log
-    log_file = mq5_file.parent / "compile.log"
-    cmd = [
-        str(metaeditor_path),
-        f"/compile:{mq5_file}",
-        f"/log:{log_file}",
-        "/include:" + str(data_path / "MQL5"),
-    ]
-
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=120,
-            cwd=str(metaeditor_path.parent),
-        )
-
-        # Check for the compiled .ex5 file
-        ex5_file = mq5_file.with_suffix(".ex5")
-
-        # Give MetaEditor a moment to finish writing
-        time.sleep(2)
-
-        if ex5_file.exists():
-            print(f"  [OK] Compilation successful: {ex5_file.name}")
-            # Show log if available
-            if log_file.exists():
-                log_content = log_file.read_text(encoding="utf-16-le", errors="ignore")
-                if "error" in log_content.lower():
-                    print("\n  --- Compiler Warnings ---")
-                    for line in log_content.split("\n"):
-                        if line.strip():
-                            print(f"  {line.strip()}")
-                    print("  --- End Warnings ---\n")
-            return True
-        else:
-            print(f"  [ERROR] Compilation failed. No .ex5 file produced.")
-            if log_file.exists():
-                log_content = log_file.read_text(encoding="utf-16-le", errors="ignore")
-                print("\n  --- Compiler Output ---")
-                for line in log_content.split("\n"):
-                    if line.strip():
-                        print(f"  {line.strip()}")
-                print("  --- End Output ---\n")
-            return False
-
-    except subprocess.TimeoutExpired:
-        print("  [ERROR] Compilation timed out after 120 seconds")
-        return False
-    except FileNotFoundError:
-        print(f"  [ERROR] MetaEditor not found at: {metaeditor_path}")
-        return False
-    except Exception as e:
-        print(f"  [ERROR] Compilation failed: {e}")
-        return False
-
-
-def check_compiled_ea(data_path: Path) -> bool:
-    """Check if the compiled EA (.ex5) exists and is recent."""
+# =====================================================================
+#  Compilation
+# =====================================================================
+def _ea_is_current(data_path: Path) -> bool:
     ex5 = data_path / "MQL5" / "Experts" / "CLAWBOT" / "CLAWBOT.ex5"
     mq5 = data_path / "MQL5" / "Experts" / "CLAWBOT" / "CLAWBOT.mq5"
-
     if not ex5.exists():
         return False
-
-    # Check if .ex5 is newer than .mq5
     if mq5.exists() and mq5.stat().st_mtime > ex5.stat().st_mtime:
-        return False  # Source is newer, needs recompilation
-
+        return False
     return True
 
 
+def compile_ea(metaeditor: Path, data_path: Path) -> bool:
+    mq5 = data_path / "MQL5" / "Experts" / "CLAWBOT" / "CLAWBOT.mq5"
+    if not mq5.exists():
+        print(f"  [ERROR] Source not found: {mq5}")
+        return False
+
+    print(f"  Compiling {mq5.name} ...")
+    log = mq5.parent / "compile.log"
+
+    try:
+        subprocess.run(
+            [str(metaeditor), f"/compile:{mq5}", f"/log:{log}",
+             "/include:" + str(data_path / "MQL5")],
+            capture_output=True, text=True, timeout=120,
+            cwd=str(metaeditor.parent),
+        )
+        time.sleep(2)
+
+        ex5 = mq5.with_suffix(".ex5")
+        if ex5.exists():
+            print(f"  [OK] Compiled: {ex5.name}")
+            return True
+
+        print("  [ERROR] No .ex5 produced.")
+        if log.exists():
+            for line in log.read_text(encoding="utf-16-le", errors="ignore").splitlines():
+                if line.strip():
+                    print(f"    {line.strip()}")
+        return False
+    except subprocess.TimeoutExpired:
+        print("  [ERROR] Compilation timed out.")
+        return False
+    except Exception as e:
+        print(f"  [ERROR] {e}")
+        return False
+
+
+# =====================================================================
+#  Public entry point
+# =====================================================================
 def setup_mt5(project_root: Path) -> dict:
     """
-    Complete MT5 setup pipeline.
-    Returns dict with paths or raises SystemExit on failure.
+    Full setup pipeline.  Returns {"terminal","metaeditor","data_path","compiled"}
+    or None on fatal error.
     """
-    result = {
-        "terminal": None,
-        "metaeditor": None,
-        "data_path": None,
-        "compiled": False,
-    }
+    info = {"terminal": None, "metaeditor": None, "data_path": None, "compiled": False}
 
-    print("\n[STEP 1] Detecting MetaTrader 5 installation...")
+    # Step 1 – find terminals
+    print("\n[STEP 1] Scanning for MetaTrader 5 ...")
+    all_terms = find_all_mt5_terminals()
+    if all_terms:
+        print(f"  Found {len(all_terms)} installation(s):")
+        for t in all_terms:
+            tag = " [DERIV]" if _is_deriv(t["name"]) else ""
+            print(f"    - {t['name']}{tag}: {t['path']}")
+    else:
+        print("  [ERROR] No MT5 installations found.")
+        print("  Install Deriv MT5 from your Deriv dashboard, open it once, then re-run.")
+        return None
 
-    # Show all found terminals for transparency
-    all_terminals = find_all_mt5_terminals()
-    if all_terminals:
-        print(f"  Found {len(all_terminals)} MT5 installation(s):")
-        for t in all_terminals:
-            deriv_tag = " [DERIV]" if _is_deriv_terminal(t["name"]) else ""
-            print(f"    - {t['name']}{deriv_tag}: {t['path']}")
-
-    terminal = find_mt5_terminal()
+    terminal = pick_terminal(all_terms)
     if not terminal:
-        print("  [ERROR] MetaTrader 5 not found on this system.")
-        print("\n  To fix this:")
-        print("  1. Download Deriv MT5 from your Deriv account dashboard")
-        print("  2. Install it to the default location")
-        print("  3. Open MT5 at least once and log in")
-        print("  4. Close MT5 and re-run this script")
-        print("\n  Or set the MT5_TERMINAL_PATH environment variable:")
-        print('  set MT5_TERMINAL_PATH=C:\\path\\to\\terminal64.exe')
+        return None
+    info["terminal"] = terminal
+    print(f"  [OK] Using: {terminal}")
+
+    me = find_metaeditor(terminal)
+    info["metaeditor"] = me
+    if me:
+        print(f"  [OK] MetaEditor: {me}")
+
+    # Step 2 – data path
+    print("\n[STEP 2] Locating writable data directory ...")
+    dp = get_data_path(terminal)
+    if not dp:
+        return None
+    info["data_path"] = dp
+    print(f"  [OK] Data path: {dp}")
+
+    # Step 3 – install EA
+    print("\n[STEP 3] Installing EA files ...")
+    if not install_ea(project_root, dp):
         return None
 
-    result["terminal"] = terminal
-    print(f"  [OK] Selected: {terminal}")
-
-    metaeditor = find_metaeditor(terminal)
-    result["metaeditor"] = metaeditor
-    if metaeditor:
-        print(f"  [OK] Found MetaEditor: {metaeditor}")
+    # Step 4 – compile
+    print("\n[STEP 4] Compiling EA ...")
+    if _ea_is_current(dp):
+        print("  [OK] CLAWBOT.ex5 is up to date.")
+        info["compiled"] = True
+    elif me:
+        info["compiled"] = compile_ea(me, dp)
+        if not info["compiled"]:
+            print("  [FALLBACK] Compile manually: open MetaEditor → MQL5/Experts/CLAWBOT/CLAWBOT.mq5 → F7")
     else:
-        print("  [WARNING] MetaEditor not found. Manual compilation may be needed.")
+        print("  [WARN] MetaEditor not found. Compile CLAWBOT.mq5 manually (F7).")
 
-    print("\n[STEP 2] Locating MT5 data directory...")
-
-    # Check for manual override first
-    env_data_path = os.environ.get("MT5_DATA_PATH")
-    if env_data_path:
-        override = Path(env_data_path)
-        if override.exists() and (override / "MQL5").exists():
-            print(f"  [OK] Using MT5_DATA_PATH override: {override}")
-            result["data_path"] = override
-            data_path = override
-        else:
-            print(f"  [WARNING] MT5_DATA_PATH set but invalid: {env_data_path}")
-            print(f"  (Must contain an MQL5/ subfolder)")
-            data_path = get_mt5_data_path(terminal)
-    else:
-        data_path = get_mt5_data_path(terminal)
-    if not data_path:
-        appdata_expected = Path.home() / "AppData" / "Roaming" / "MetaQuotes" / "Terminal"
-        print("  [ERROR] MT5 user data directory not found.")
-        print()
-        print("  MT5 creates its writable data folder the first time you open it.")
-        print("  Expected location: " + str(appdata_expected))
-        print()
-        print("  To fix this:")
-        print("  1. Open your Deriv MT5 terminal")
-        print("  2. Log into any account (even demo)")
-        print("  3. Close MT5")
-        print("  4. Re-run this script")
-        print()
-        print("  If you've already done this, set the path manually:")
-        print('  set MT5_DATA_PATH=C:\\Users\\YourName\\AppData\\Roaming\\MetaQuotes\\Terminal\\<hash>')
-        return None
-
-    result["data_path"] = data_path
-    print(f"  [OK] Data path: {data_path}")
-
-    print("\n[STEP 3] Installing EA files...")
-
-    if not install_ea_files(project_root, data_path):
-        print("  [ERROR] Failed to install EA files.")
-        return None
-
-    print("\n[STEP 4] Compiling EA...")
-
-    if check_compiled_ea(data_path):
-        print("  [OK] Compiled EA is up to date. Skipping compilation.")
-        result["compiled"] = True
-    elif metaeditor:
-        result["compiled"] = compile_ea(metaeditor, data_path)
-        if not result["compiled"]:
-            print("\n  [FALLBACK] Automatic compilation failed.")
-            print("  Please compile manually:")
-            print(f"  1. Open MetaEditor (in MT5: Tools > MetaQuotes Language Editor)")
-            print(f"  2. Open: MQL5/Experts/CLAWBOT/CLAWBOT.mq5")
-            print(f"  3. Press F7 to compile")
-            print(f"  4. Re-run this script after compilation")
-    else:
-        print("  [WARNING] Cannot auto-compile (MetaEditor not found).")
-        print("  Please compile CLAWBOT.mq5 manually in MetaEditor (F7).")
-
-    return result
+    return info
