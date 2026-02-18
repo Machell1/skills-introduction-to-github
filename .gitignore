@@ -35,3 +35,22 @@
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# CLAWBOT Security #
+####################
+# Never commit credentials or encryption keys
+.env
+.env.encrypted
+.env.local
+*.key
+.clawbot.key
+CLAWBOT/Config/.env.encrypted
+CLAWBOT/Config/.clawbot.key
+CLAWBOT/Config/credentials.ini
+
+# CLAWBOT Build Artifacts #
+############################
+*.ex5
+*.ex4
+__pycache__/
+*.pyc
