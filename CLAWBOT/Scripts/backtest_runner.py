@@ -26,7 +26,6 @@ def generate_tester_config(
     template: Path,
     output: Path,
     *,
-    login="0", password="", server="Deriv-Demo",
     symbol="XAUUSD", period="H1",
     from_date=None, to_date=None,
     deposit=10000, leverage=100,
@@ -37,7 +36,6 @@ def generate_tester_config(
         from_date = (datetime.now() - timedelta(days=730)).strftime("%Y.%m.%d")
 
     text = template.read_text().format(
-        login=login, password=password, server=server,
         symbol=symbol, period=period,
         from_date=from_date, to_date=to_date,
         deposit=deposit, leverage=leverage,
@@ -191,7 +189,6 @@ def run_backtest(
     data_path: Path,
     config_template: Path,
     *,
-    login="0", password="", server="Deriv-Demo",
     symbol="XAUUSD",
     from_date=None, to_date=None,
     deposit=10000, leverage=100,
@@ -203,7 +200,6 @@ def run_backtest(
     cfg = data_path / "tester" / "CLAWBOT_tester.ini"
     generate_tester_config(
         config_template, cfg,
-        login=login, password=password, server=server,
         symbol=symbol, from_date=from_date, to_date=to_date,
         deposit=deposit, leverage=leverage,
     )

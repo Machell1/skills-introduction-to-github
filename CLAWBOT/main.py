@@ -20,7 +20,6 @@
 import os
 import sys
 import subprocess
-import getpass
 from pathlib import Path
 from datetime import datetime
 
@@ -90,6 +89,10 @@ def phase_backtest(mt5):
     print("\n" + "=" * 55)
     print("  PHASE 2: BACKTEST")
     print("=" * 55)
+    print()
+    print("  Make sure you are logged into Deriv MT5 before")
+    print("  starting. The backtest uses your active session.")
+    print()
 
     symbol = input("  Symbol [XAUUSD]: ").strip() or "XAUUSD"
 
@@ -102,13 +105,6 @@ def phase_backtest(mt5):
     deposit  = int((input("  Deposit [$10000]: ").strip() or "10000").replace("$","").replace(",",""))
     leverage = int((input("  Leverage [100]: ").strip() or "100").replace("1:",""))
 
-    print("\n  Demo account for backtest (Enter to skip):")
-    demo_login = input("  Demo Login: ").strip() or "0"
-    demo_pw, demo_srv = "", "Deriv-Demo"
-    if demo_login != "0":
-        demo_pw  = getpass.getpass("  Demo Password: ")
-        demo_srv = input("  Demo Server [Deriv-Demo]: ").strip() or "Deriv-Demo"
-
     print(f"\n  {symbol} | {from_date} -> {to_date} | ${deposit:,} | 1:{leverage}")
     if input("  Start? [Y/n]: ").strip().lower() == "n":
         return None
@@ -117,10 +113,10 @@ def phase_backtest(mt5):
     if not tpl.exists():
         sys.exit(f"  [FATAL] Missing: {tpl}")
 
+    # No demo login needed - backtest uses the currently logged-in MT5 session
     return run_backtest(
         terminal=mt5["terminal"], data_path=mt5["data_path"],
         config_template=tpl,
-        login=demo_login, password=demo_pw, server=demo_srv,
         symbol=symbol, from_date=from_date, to_date=to_date,
         deposit=deposit, leverage=leverage, timeout_min=120,
     )
@@ -145,7 +141,6 @@ def phase_analyze(reports, data_path) -> bool:
             passed = analyzer.evaluate()
             txt = analyzer.generate_pass_report() if passed else analyzer.generate_weakness_report()
             print("\n" + txt)
-            # Save report
             out = data_path / "MQL5" / "Files" / "CLAWBOT_Reports"
             out.mkdir(parents=True, exist_ok=True)
             tag = "PASS" if passed else "WEAK"

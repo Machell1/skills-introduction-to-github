@@ -10,7 +10,6 @@ import os
 import sys
 import json
 import hashlib
-import getpass
 import platform
 import stat
 from pathlib import Path
@@ -82,10 +81,14 @@ def collect_credentials() -> dict:
             break
         print("  Must be at least 4 digits.")
 
+    # NOTE: using input() instead of getpass because PyCharm console
+    # does not support hidden input and getpass hangs silently.
+    print("\n  (Password will be visible in console - this is normal in PyCharm)")
     while True:
-        pw = getpass.getpass("  MT5 Password: ")
+        pw = input("  MT5 Password: ").strip()
         if len(pw) >= 4:
-            if getpass.getpass("  Confirm password: ") == pw:
+            pw2 = input("  Confirm password: ").strip()
+            if pw2 == pw:
                 break
             print("  Mismatch.")
         else:
@@ -97,11 +100,11 @@ def collect_credentials() -> dict:
 def setup_encryption_passphrase() -> str:
     """Prompt for a passphrase to encrypt the credential file."""
     while True:
-        pp = getpass.getpass("  Encryption passphrase (>=6 chars): ")
+        pp = input("  Encryption passphrase (>=6 chars): ").strip()
         if len(pp) < 6:
             print("  Too short.")
             continue
-        if getpass.getpass("  Confirm: ") == pp:
+        if input("  Confirm passphrase: ").strip() == pp:
             return pp
         print("  Mismatch.")
 
