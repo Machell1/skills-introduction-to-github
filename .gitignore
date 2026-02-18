@@ -54,3 +54,21 @@ CLAWBOT/Config/credentials.ini
 *.ex4
 __pycache__/
 *.pyc
+compile.log
+
+# CLAWBOT Generated Configs (contain credentials) #
+####################################################
+CLAWBOT/Config/clawbot_live.ini
+**/tester/CLAWBOT_tester.ini
+**/config/clawbot_live.ini
+
+# MT5 Reports (generated, not source) #
+########################################
+CLAWBOT/Reports/
+*_Analysis_*.txt
+
+# IDE #
+#######
+.idea/
+*.iml
+.vscode/
