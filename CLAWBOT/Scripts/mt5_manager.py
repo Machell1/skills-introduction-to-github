@@ -30,9 +30,19 @@ EA_FILES = [
 def find_mt5_terminal() -> Path:
     """
     Find the MetaTrader 5 terminal installation path.
-    Searches: registry, standard install paths, running processes.
+    Searches: env var, registry, standard install paths.
     Returns the path to terminal64.exe or None.
     """
+    # 0. Check environment variable override
+    env_path = os.environ.get("MT5_TERMINAL_PATH")
+    if env_path:
+        p = Path(env_path)
+        if p.exists() and p.name.lower() == "terminal64.exe":
+            return p
+        # Maybe they pointed to the folder
+        if p.is_dir() and (p / "terminal64.exe").exists():
+            return p / "terminal64.exe"
+
     candidates = []
 
     # 1. Check registry (most reliable on Windows)
@@ -73,20 +83,20 @@ def find_mt5_terminal() -> Path:
         standard_paths = [
             base / "MetaTrader 5",
             base / "Deriv MT5",
+            base / "HFM Metatrader 5",
+            base / "HFM MetaTrader 5",
             base / "MetaQuotes" / "Terminal",
         ]
         for p in standard_paths:
             if p.exists():
                 candidates.append(p)
 
-        # Glob for any MT5-like folders
+        # Glob for any MT5-like folders (covers broker-branded installs)
         try:
-            for mt5_dir in base.glob("*MetaTrader*5*"):
-                if mt5_dir.is_dir():
-                    candidates.append(mt5_dir)
-            for mt5_dir in base.glob("*Deriv*MT5*"):
-                if mt5_dir.is_dir():
-                    candidates.append(mt5_dir)
+            for pattern in ["*MetaTrader*5*", "*Metatrader*5*", "*MT5*", "*mt5*"]:
+                for mt5_dir in base.glob(pattern):
+                    if mt5_dir.is_dir():
+                        candidates.append(mt5_dir)
         except (PermissionError, OSError):
             pass
 
@@ -111,41 +121,82 @@ def find_metaeditor(terminal_path: Path) -> Path:
     return None
 
 
+def _is_writable(path: Path) -> bool:
+    """Check if we can create files in this directory."""
+    try:
+        test_file = path / ".clawbot_write_test"
+        test_file.write_text("test")
+        test_file.unlink()
+        return True
+    except (OSError, PermissionError):
+        return False
+
+
+def _find_appdata_data_path(terminal_dir: Path) -> Path:
+    """
+    Search AppData/Roaming/MetaQuotes/Terminal/ for the user data folder
+    that corresponds to this terminal installation.
+    """
+    appdata = Path.home() / "AppData" / "Roaming" / "MetaQuotes" / "Terminal"
+    if not appdata.exists():
+        return None
+
+    # First pass: match by origin.txt (exact match to this terminal)
+    for data_dir in appdata.iterdir():
+        if not data_dir.is_dir() or not (data_dir / "MQL5").exists():
+            continue
+        origin = data_dir / "origin.txt"
+        if origin.exists():
+            try:
+                origin_path = origin.read_text().strip()
+                if Path(origin_path).resolve() == terminal_dir.resolve():
+                    return data_dir
+            except (OSError, ValueError):
+                pass
+
+    # Second pass: return the most recently modified data folder
+    data_dirs = [d for d in appdata.iterdir()
+                 if d.is_dir() and (d / "MQL5").exists()]
+    if data_dirs:
+        return max(data_dirs, key=lambda d: d.stat().st_mtime)
+
+    return None
+
+
 def get_mt5_data_path(terminal_path: Path) -> Path:
     """
-    Find the MT5 data directory (where MQL5/ lives).
-    This is usually in AppData/Roaming/MetaQuotes/Terminal/<hash>/
-    or in the terminal directory itself (portable mode).
+    Find the MT5 user data directory (where we can write MQL5/ files).
+
+    MT5 has two directory layouts:
+      1. Standard install: terminal in Program Files, user data in
+         AppData/Roaming/MetaQuotes/Terminal/<hash>/
+      2. Portable mode: everything in one folder (terminal + MQL5/)
+
+    We ALWAYS prefer the AppData user data path because:
+      - Program Files is write-protected without admin
+      - The install dir may have MQL5/ but it's read-only
+      - AppData is where MT5 actually reads EA files from at runtime
     """
     terminal_dir = terminal_path.parent
 
-    # Check portable mode first (MQL5 folder next to terminal)
+    # 1. Always check AppData first (works for standard installs)
+    appdata_path = _find_appdata_data_path(terminal_dir)
+    if appdata_path:
+        return appdata_path
+
+    # 2. Portable mode: MQL5/ next to terminal AND we can write to it
     portable_mql5 = terminal_dir / "MQL5"
-    if portable_mql5.exists():
+    if portable_mql5.exists() and _is_writable(terminal_dir):
         return terminal_dir
 
-    # Standard mode: AppData/Roaming/MetaQuotes/Terminal/<hash>/
-    appdata = Path.home() / "AppData" / "Roaming" / "MetaQuotes" / "Terminal"
-    if appdata.exists():
-        # Find the data folder that matches this terminal
-        # The hash is derived from the terminal path
-        for data_dir in appdata.iterdir():
-            if data_dir.is_dir() and (data_dir / "MQL5").exists():
-                # Check origin.txt if it exists
-                origin = data_dir / "origin.txt"
-                if origin.exists():
-                    try:
-                        origin_path = origin.read_text().strip()
-                        if Path(origin_path).resolve() == terminal_dir.resolve():
-                            return data_dir
-                    except (OSError, ValueError):
-                        pass
-
-        # If no exact match, return the most recently modified one
-        data_dirs = [d for d in appdata.iterdir()
-                     if d.is_dir() and (d / "MQL5").exists()]
-        if data_dirs:
-            return max(data_dirs, key=lambda d: d.stat().st_mtime)
+    # 3. MQL5/ exists next to terminal but isn't writable (e.g. Program Files)
+    #    Create the AppData structure ourselves so MT5 can find it
+    if portable_mql5.exists():
+        appdata_base = Path.home() / "AppData" / "Roaming" / "MetaQuotes" / "Terminal"
+        print(f"  [INFO] Install dir ({terminal_dir}) is read-only.")
+        print(f"  [INFO] MT5 stores user data in: {appdata_base}")
+        print(f"  [INFO] Open MT5 at least once so it creates the data folder,")
+        print(f"         then re-run this script.")
 
     return None
 
@@ -162,8 +213,15 @@ def install_ea_files(project_root: Path, data_path: Path) -> bool:
         print(f"  [ERROR] EA source directory not found: {source_dir}")
         return False
 
-    # Create destination
-    dest_dir.mkdir(parents=True, exist_ok=True)
+    # Create destination (with permission error handling)
+    try:
+        dest_dir.mkdir(parents=True, exist_ok=True)
+    except PermissionError:
+        print(f"  [ERROR] Permission denied writing to: {dest_dir}")
+        print(f"  This path is read-only (likely Program Files).")
+        print(f"  The EA must be installed to your MT5 user data folder instead.")
+        print(f"  Open MT5 once, close it, then re-run this script.")
+        return False
 
     # Copy each file
     copied = 0
@@ -317,10 +375,35 @@ def setup_mt5(project_root: Path) -> dict:
 
     print("\n[STEP 2] Locating MT5 data directory...")
 
-    data_path = get_mt5_data_path(terminal)
+    # Check for manual override first
+    env_data_path = os.environ.get("MT5_DATA_PATH")
+    if env_data_path:
+        override = Path(env_data_path)
+        if override.exists() and (override / "MQL5").exists():
+            print(f"  [OK] Using MT5_DATA_PATH override: {override}")
+            result["data_path"] = override
+            data_path = override
+        else:
+            print(f"  [WARNING] MT5_DATA_PATH set but invalid: {env_data_path}")
+            print(f"  (Must contain an MQL5/ subfolder)")
+            data_path = get_mt5_data_path(terminal)
+    else:
+        data_path = get_mt5_data_path(terminal)
     if not data_path:
-        print("  [ERROR] MT5 data directory not found.")
-        print("  Make sure you have opened MT5 at least once.")
+        appdata_expected = Path.home() / "AppData" / "Roaming" / "MetaQuotes" / "Terminal"
+        print("  [ERROR] MT5 user data directory not found.")
+        print()
+        print("  MT5 creates its writable data folder the first time you open it.")
+        print("  Expected location: " + str(appdata_expected))
+        print()
+        print("  To fix this:")
+        print("  1. Open your HFM MetaTrader 5 (or any MT5 terminal)")
+        print("  2. Log into any account (even demo)")
+        print("  3. Close MT5")
+        print("  4. Re-run this script")
+        print()
+        print("  If you've already done this, set the path manually:")
+        print('  set MT5_DATA_PATH=C:\\Users\\YourName\\AppData\\Roaming\\MetaQuotes\\Terminal\\<hash>')
         return None
 
     result["data_path"] = data_path
