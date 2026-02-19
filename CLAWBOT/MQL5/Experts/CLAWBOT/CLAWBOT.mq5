@@ -53,21 +53,21 @@ input ENUM_BOT_MODE   Inp_BotMode   = MODE_BACKTEST;                   // Bot Mo
 
 //--- Risk Management
 input string   Inp_Separator2       = "=== RISK MANAGEMENT ===";       // ----
-input double   Inp_RiskPerTrade     = 1.0;     // Risk per trade (%)
+input double   Inp_RiskPerTrade     = 0.8;     // Risk per trade (%)
 input double   Inp_MaxDailyLoss     = 5.0;     // Max daily loss (%)
 input double   Inp_MaxDrawdown      = 15.0;    // Max total drawdown (%)
 input int      Inp_MaxConcurrent    = 3;       // Max concurrent trades
-input int      Inp_MaxDailyTrades   = 8;       // Max trades per day
-input double   Inp_MinRiskReward    = 0.3;     // Minimum Risk:Reward ratio
+input int      Inp_MaxDailyTrades   = 10;      // Max trades per day
+input double   Inp_MinRiskReward    = 0.2;     // Minimum Risk:Reward ratio
 
 //--- Stop Loss / Take Profit
 input string   Inp_Separator3       = "=== SL/TP SETTINGS ===";        // ----
 input double   Inp_SL_ATR           = 3.0;     // SL ATR multiplier
-input double   Inp_TP_ATR           = 1.0;     // TP ATR multiplier
+input double   Inp_TP_ATR           = 0.8;     // TP ATR multiplier
 input double   Inp_MinSL            = 200.0;   // Minimum SL (points)
 input double   Inp_MaxSL            = 800.0;   // Maximum SL (points)
-input double   Inp_TrailActivation  = 0.5;     // Trailing activation (ATR mult)
-input double   Inp_TrailDistance    = 0.8;     // Trailing distance (ATR mult)
+input double   Inp_TrailActivation  = 0.3;     // Trailing activation (ATR mult)
+input double   Inp_TrailDistance    = 0.5;     // Trailing distance (ATR mult)
 input double   Inp_MaxSpread        = 40.0;    // Max allowed spread (points)
 
 //--- Trend Strategy (Strategy 1)
@@ -105,8 +105,11 @@ input int      Inp_ExitHour         = 20;      // Session exit hour (UTC)
 
 //--- Confluence Settings
 input string   Inp_Separator7       = "=== CONFLUENCE SETTINGS ===";   // ----
-input int      Inp_MinScore         = 25;      // Minimum total score for entry
+input int      Inp_MinScore         = 45;      // Minimum total score for entry
 input int      Inp_MinStrategies    = 2;       // Min strategies agreeing
+input int      Inp_MinStrategyScore = 15;      // Min individual strategy score to count
+input int      Inp_CooldownAfterLosses = 3;    // Consecutive losses before cooldown
+input int      Inp_CooldownBars     = 2;       // Bars to skip during cooldown
 
 //--- Backtest / Audit Settings
 input string   Inp_Separator8       = "=== AUDIT SETTINGS ===";        // ----
@@ -126,6 +129,8 @@ CClawAudit            g_audit;
 bool   g_initialized = false;
 string g_activeSymbol;
 int    g_serverUTCOffset = 0;
+int    g_consecutiveLosses = 0;
+int    g_cooldownRemaining = 0;
 
 //+------------------------------------------------------------------+
 //| Validate input parameters                                          |
@@ -371,6 +376,13 @@ void OnTick()
    // Pre-check: can we open any trade at all?
    if(!g_riskManager.CanOpenTrade()) return;
 
+   // Cooldown check: skip if cooling down after consecutive losses
+   if(g_cooldownRemaining > 0)
+   {
+      g_cooldownRemaining--;
+      return;
+   }
+
    // Spread filter: skip if spread is too wide
    double currentSpread = GetCurrentSpread(g_activeSymbol);
    if(currentSpread > Inp_MaxSpread)
@@ -391,31 +403,32 @@ void OnTick()
    if(Inp_EnableSession)  sessionSignal  = g_sessionStrategy.Evaluate();
 
    // === CONFLUENCE ENGINE ===
+   // Only count strategy votes that meet minimum individual score threshold
    int buyVotes  = 0, sellVotes = 0;
    int buyScore  = 0, sellScore = 0;
    string buyReasons = "", sellReasons = "";
 
-   // Trend vote
-   if(trendSignal.direction == SIGNAL_BUY)
+   // Trend vote (only if score >= MinStrategyScore)
+   if(trendSignal.direction == SIGNAL_BUY && trendSignal.score >= Inp_MinStrategyScore)
    {  buyVotes++; buyScore += trendSignal.score;
       buyReasons += "[TREND:" + IntegerToString(trendSignal.score) + "] " + trendSignal.reason + " | "; }
-   else if(trendSignal.direction == SIGNAL_SELL)
+   else if(trendSignal.direction == SIGNAL_SELL && trendSignal.score >= Inp_MinStrategyScore)
    {  sellVotes++; sellScore += trendSignal.score;
       sellReasons += "[TREND:" + IntegerToString(trendSignal.score) + "] " + trendSignal.reason + " | "; }
 
-   // Momentum vote
-   if(momentumSignal.direction == SIGNAL_BUY)
+   // Momentum vote (only if score >= MinStrategyScore)
+   if(momentumSignal.direction == SIGNAL_BUY && momentumSignal.score >= Inp_MinStrategyScore)
    {  buyVotes++; buyScore += momentumSignal.score;
       buyReasons += "[MOM:" + IntegerToString(momentumSignal.score) + "] " + momentumSignal.reason + " | "; }
-   else if(momentumSignal.direction == SIGNAL_SELL)
+   else if(momentumSignal.direction == SIGNAL_SELL && momentumSignal.score >= Inp_MinStrategyScore)
    {  sellVotes++; sellScore += momentumSignal.score;
       sellReasons += "[MOM:" + IntegerToString(momentumSignal.score) + "] " + momentumSignal.reason + " | "; }
 
-   // Session vote
-   if(sessionSignal.direction == SIGNAL_BUY)
+   // Session vote (only if score >= MinStrategyScore)
+   if(sessionSignal.direction == SIGNAL_BUY && sessionSignal.score >= Inp_MinStrategyScore)
    {  buyVotes++; buyScore += sessionSignal.score;
       buyReasons += "[SESS:" + IntegerToString(sessionSignal.score) + "] " + sessionSignal.reason + " | "; }
-   else if(sessionSignal.direction == SIGNAL_SELL)
+   else if(sessionSignal.direction == SIGNAL_SELL && sessionSignal.score >= Inp_MinStrategyScore)
    {  sellVotes++; sellScore += sessionSignal.score;
       sellReasons += "[SESS:" + IntegerToString(sessionSignal.score) + "] " + sessionSignal.reason + " | "; }
 
@@ -605,6 +618,20 @@ void OnTrade()
 
          g_audit.RecordTrade(profit, rr, dealType, strategy, dt.hour, dt.day_of_week);
          g_audit.UpdateBalance(AccountInfoDouble(ACCOUNT_BALANCE));
+
+         // Track consecutive losses for cooldown
+         if(profit >= 0)
+            g_consecutiveLosses = 0;
+         else
+         {
+            g_consecutiveLosses++;
+            if(g_consecutiveLosses >= Inp_CooldownAfterLosses)
+            {
+               g_cooldownRemaining = Inp_CooldownBars;
+               LogMessage("CLOSED", "Cooldown activated after " + IntegerToString(g_consecutiveLosses) + " consecutive losses");
+               g_consecutiveLosses = 0;
+            }
+         }
 
          string profitStr = (profit >= 0) ? "+" : "";
          LogMessage("CLOSED", "Deal #" + IntegerToString((int)dealTicket) +
