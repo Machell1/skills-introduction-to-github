@@ -72,49 +72,61 @@ def _kill_mt5():
 # =====================================================================
 #  Report discovery
 # =====================================================================
-def find_reports(data_path: Path) -> dict:
-    """Search for CLAWBOT report files in the MT5 data tree."""
-    found = {}
-
-    # Primary: EA writes via FileOpen() -> MQL5/Files/
-    files_dir = data_path / "MQL5" / "Files" / "CLAWBOT_Reports"
+def _check_dir_for_reports(directory: Path, found: dict):
+    """Helper: check a directory for CLAWBOT report CSVs."""
     for name, key in [
         (AUDIT_REPORT, "audit_report"),
         (AUDIT_PASS,   "pass_report"),
         (AUDIT_WEAK,   "weakness_report"),
     ]:
-        p = files_dir / name
-        if p.exists():
-            found[key] = p
+        if key not in found:
+            p = directory / name
+            if p.exists():
+                found[key] = p
 
-    # Also search MQL5/Files/ root (EA may write there without subfolder)
-    files_root = data_path / "MQL5" / "Files"
-    if files_root.exists():
-        for name, key in [
-            (AUDIT_REPORT, "audit_report"),
-            (AUDIT_PASS,   "pass_report"),
-            (AUDIT_WEAK,   "weakness_report"),
-        ]:
-            if key not in found:
-                p = files_root / name
-                if p.exists():
-                    found[key] = p
 
-    # MT5-generated HTML report (from tester Report= setting)
+def find_reports(data_path: Path) -> dict:
+    """Search for CLAWBOT report files in the MT5 data tree.
+
+    MT5 Strategy Tester runs EA in a sandbox, so FileOpen() writes to
+    different locations depending on flags:
+      - FILE_COMMON  -> C:/Users/<user>/AppData/Roaming/MetaQuotes/Terminal/Common/Files/
+      - No flag      -> {data_path}/Tester/Agent-<ip>-<port>/MQL5/Files/  (tester sandbox)
+      - Live mode    -> {data_path}/MQL5/Files/
+
+    We search ALL of these locations.
+    """
+    found = {}
+
+    # 1. FILE_COMMON location: Terminal/Common/Files/
+    common_files = Path.home() / "AppData" / "Roaming" / "MetaQuotes" / "Terminal" / "Common" / "Files"
+    if common_files.exists():
+        _check_dir_for_reports(common_files / "CLAWBOT_Reports", found)
+        _check_dir_for_reports(common_files, found)
+
+    # 2. Standard location: {data_path}/MQL5/Files/
+    _check_dir_for_reports(data_path / "MQL5" / "Files" / "CLAWBOT_Reports", found)
+    _check_dir_for_reports(data_path / "MQL5" / "Files", found)
+
+    # 3. Tester agent sandboxes: {data_path}/Tester/Agent-*/MQL5/Files/
     tester = data_path / "Tester"
+    if tester.exists():
+        try:
+            for agent_dir in tester.iterdir():
+                if agent_dir.is_dir() and agent_dir.name.startswith("Agent"):
+                    agent_files = agent_dir / "MQL5" / "Files" / "CLAWBOT_Reports"
+                    _check_dir_for_reports(agent_files, found)
+                    _check_dir_for_reports(agent_dir / "MQL5" / "Files", found)
+        except (PermissionError, OSError):
+            pass
+
+    # 4. MT5-generated HTML report (from tester Report= setting)
     if tester.exists():
         for htm in tester.rglob("CLAWBOT*.htm"):
             found.setdefault("mt5_report", htm)
             break
 
-    # Also check for MT5 HTML in the report subfolder
-    report_dir = data_path / "CLAWBOT_Reports"
-    if report_dir.exists():
-        for htm in report_dir.glob("*.htm"):
-            found.setdefault("mt5_report", htm)
-            break
-
-    # Alternate folder (CSV reports)
+    # 5. Other alternate locations
     for alt in [
         data_path / "CLAWBOT_Reports",
         data_path / "Tester" / "CLAWBOT_Reports",
@@ -128,7 +140,14 @@ def find_reports(data_path: Path) -> dict:
                 elif "Backtest" in csv.name:
                     found.setdefault("audit_report", csv)
 
-    # Deep search: find any CLAWBOT CSV anywhere under data_path
+    # 6. HTML in CLAWBOT_Reports folder
+    for loc in [data_path / "CLAWBOT_Reports", common_files / "CLAWBOT_Reports" if common_files.exists() else None]:
+        if loc and loc.exists():
+            for htm in loc.glob("*.htm"):
+                found.setdefault("mt5_report", htm)
+                break
+
+    # 7. Deep search fallback: find any CLAWBOT CSV anywhere under data_path
     if not found:
         try:
             for csv in data_path.rglob("CLAWBOT_*_Report.csv"):
@@ -314,14 +333,15 @@ def run_backtest(
 
     print("\n[STEP 8] Waiting for backtest ...")
     wait_for_mt5(timeout_min)
-    time.sleep(3)
+    # Give MT5 extra time to flush file writes before searching
+    time.sleep(8)
 
     print("\n[STEP 9] Collecting results ...")
     reports = find_reports(data_path)
     if reports:
         print(f"  Found {len(reports)} report(s):")
         for k, v in reports.items():
-            print(f"    {k}: {v.name}")
+            print(f"    {k}: {v}")
     else:
         print("  [WARN] No reports found.")
         print()
@@ -331,27 +351,53 @@ def run_backtest(
         ex5 = data_path / "MQL5" / "Experts" / "CLAWBOT" / "CLAWBOT.ex5"
         if not ex5.exists():
             print("  [!] CLAWBOT.ex5 NOT FOUND - EA was never compiled.")
+            print("      IMPORTANT: You must recompile after every code update!")
             print("      Open MetaEditor -> MQL5/Experts/CLAWBOT/CLAWBOT.mq5 -> press F7")
         else:
             print(f"  [OK] CLAWBOT.ex5 exists ({ex5.stat().st_size:,} bytes)")
+
+        # Show where we searched
+        common_files = Path.home() / "AppData" / "Roaming" / "MetaQuotes" / "Terminal" / "Common" / "Files"
+        print()
+        print("  Searched locations:")
+        print(f"    1. Common files: {common_files / 'CLAWBOT_Reports'}")
+        print(f"    2. Data files:   {data_path / 'MQL5' / 'Files' / 'CLAWBOT_Reports'}")
+        tester_dir = data_path / "Tester"
+        if tester_dir.exists():
+            agents = [d.name for d in tester_dir.iterdir()
+                      if d.is_dir() and d.name.startswith("Agent")]
+            if agents:
+                print(f"    3. Agent dirs:   {', '.join(agents)}")
+            else:
+                print("    3. Agent dirs:   (none found)")
+        else:
+            print("    3. Tester dir:   (does not exist)")
 
         # Check tester journal for errors
         journal = read_tester_journal(data_path)
         if journal:
             print()
-            print("  Recent tester journal entries:")
-            for line in journal[-15:]:
+            print("  Recent tester/journal entries:")
+            for line in journal[-20:]:
                 print(f"    {line}")
         else:
+            print()
             print("  [!] No tester journal logs found.")
             print("      MT5 may not have started the backtest at all.")
 
         # Suggest common fixes
         print()
-        print("  Common causes:")
-        print("    1. EA not compiled (.ex5 missing) -> Compile in MetaEditor (F7)")
-        print("    2. No historical data for the symbol -> Open MT5, load XAUUSD chart first")
-        print("    3. Symbol name mismatch -> Check if your broker uses XAUUSDm or #XAUUSD")
-        print("    4. Not logged into any account -> Log into Deriv MT5 (demo is fine)")
+        print("  IMPORTANT - after pulling new code, you MUST recompile:")
+        print("    1. Open Deriv MT5")
+        print("    2. Press F4 to open MetaEditor")
+        print("    3. Navigate to MQL5/Experts/CLAWBOT/CLAWBOT.mq5")
+        print("    4. Press F7 to compile")
+        print("    5. Close MetaEditor and MT5")
+        print("    6. Re-run main.py")
+        print()
+        print("  Other causes:")
+        print("    - No historical data -> Open XAUUSD H1 chart in MT5 first")
+        print("    - Symbol mismatch -> Deriv may use XAUUSDm or #XAUUSD")
+        print("    - Not logged in -> Log into Deriv MT5 (demo is fine)")
 
     return reports

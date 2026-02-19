@@ -132,8 +132,10 @@ bool CClawAudit::Init(double initialBalance, string reportPath)
    m_stats.peakBalance = initialBalance;
    m_reportPath = reportPath;
 
-   // Create report directory
-   FolderCreate(m_reportPath);
+   // Create report directory in COMMON files area so reports are
+   // accessible from both live mode AND Strategy Tester (tester sandbox
+   // normally writes to Agent-xxx/MQL5/Files/ which Python can't find)
+   FolderCreate(m_reportPath, FILE_COMMON);
 
    m_initialized = true;
    LogMessage("AUDIT", "Audit module initialized. Initial balance: " + DoubleToString(initialBalance, 2));
@@ -564,12 +566,19 @@ bool CClawAudit::GenerateFullReport()
       header += "\n" + IntegerToString(i + 1) + "," + DoubleToString(m_balanceHistory[i], 2);
    }
 
-   // Write to file
-   int handle = FileOpen(filename, FILE_WRITE | FILE_ANSI);
+   // Write to FILE_COMMON so reports land in the shared MQL5/Files/ area
+   // (not the tester agent sandbox which Python cannot easily find)
+   int handle = FileOpen(filename, FILE_WRITE | FILE_ANSI | FILE_COMMON);
    if(handle == INVALID_HANDLE)
    {
-      LogMessage("AUDIT", "Failed to create report file. Error: " + IntegerToString(GetLastError()));
-      return false;
+      // Fallback: try without FILE_COMMON (some broker builds restrict it)
+      handle = FileOpen(filename, FILE_WRITE | FILE_ANSI);
+      if(handle == INVALID_HANDLE)
+      {
+         LogMessage("AUDIT", "Failed to create report file. Error: " + IntegerToString(GetLastError()));
+         return false;
+      }
+      LogMessage("AUDIT", "Warning: Report written to tester sandbox (FILE_COMMON failed).");
    }
 
    FileWriteString(handle, header);
@@ -639,12 +648,16 @@ bool CClawAudit::GenerateWeaknessReport()
    report += "\n4. Consider disabling strategies with consistently negative performance";
    report += "\n5. Re-run backtest after adjustments to verify improvement";
 
-   // Write to file
-   int handle = FileOpen(filename, FILE_WRITE | FILE_ANSI);
+   // Write to FILE_COMMON area for Python access
+   int handle = FileOpen(filename, FILE_WRITE | FILE_ANSI | FILE_COMMON);
    if(handle == INVALID_HANDLE)
    {
-      LogMessage("AUDIT", "Failed to create weakness report. Error: " + IntegerToString(GetLastError()));
-      return false;
+      handle = FileOpen(filename, FILE_WRITE | FILE_ANSI);
+      if(handle == INVALID_HANDLE)
+      {
+         LogMessage("AUDIT", "Failed to create weakness report. Error: " + IntegerToString(GetLastError()));
+         return false;
+      }
    }
 
    FileWriteString(handle, report);
@@ -684,8 +697,12 @@ bool CClawAudit::GeneratePassReport()
 
    report += "\n\nPROCEED TO LIVE TRADING SETUP";
 
-   int handle = FileOpen(filename, FILE_WRITE | FILE_ANSI);
-   if(handle == INVALID_HANDLE) return false;
+   int handle = FileOpen(filename, FILE_WRITE | FILE_ANSI | FILE_COMMON);
+   if(handle == INVALID_HANDLE)
+   {
+      handle = FileOpen(filename, FILE_WRITE | FILE_ANSI);
+      if(handle == INVALID_HANDLE) return false;
+   }
 
    FileWriteString(handle, report);
    FileClose(handle);
