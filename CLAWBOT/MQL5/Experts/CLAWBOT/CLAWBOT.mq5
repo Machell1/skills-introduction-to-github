@@ -146,6 +146,20 @@ input bool     Inp_UsePendingOrders = true;    // Use limit orders instead of ma
 input int      Inp_PendingExpBars   = 4;       // Pending order expiry (bars)
 input double   Inp_PullbackATR      = 0.3;     // Pullback distance for limit entry (ATR)
 
+//--- Dynamic Position Closure
+input string   Inp_Separator6h      = "=== DYNAMIC CLOSURE ===";        // ----
+input bool     Inp_EnableDynClosure = true;    // Enable dynamic position closure
+input double   Inp_DynCls_MaxLossATR = 1.5;   // Max loss cap (ATR multiplier) before forced close
+input double   Inp_DynCls_StaleBars  = 10;    // Bars before stale trade check
+input double   Inp_DynCls_StaleRange = 0.3;   // Stale P/L range (ATR mult) for exit
+input double   Inp_DynCls_AdverseMom = 0.5;   // Adverse momentum loss threshold (ATR mult)
+
+//--- Dynamic Take Profit
+input string   Inp_Separator6i      = "=== DYNAMIC TP ===";             // ----
+input bool     Inp_EnableDynamicTP  = true;    // Enable SMC-aware dynamic TP
+input double   Inp_DynTP_TrendMult  = 1.3;    // TP regime multiplier for trending
+input double   Inp_DynTP_RangeMult  = 0.9;    // TP regime multiplier for ranging
+
 //--- Partial Close / Profit Locking
 input string   Inp_Separator6e      = "=== PROFIT LOCKING ===";         // ----
 input bool     Inp_EnablePartialClose = true;  // Enable partial close at TP1
@@ -421,6 +435,9 @@ void OnTick()
    if(!g_initialized) return;
 
    // === PHASE 1: MANAGE EXISTING POSITIONS (every tick) ===
+   if(Inp_EnableDynClosure)
+      g_riskManager.ManageDynamicClosure(Inp_DynCls_MaxLossATR, Inp_DynCls_StaleBars,
+                                          Inp_DynCls_StaleRange, Inp_DynCls_AdverseMom);
    if(Inp_EnablePartialClose)
       g_riskManager.ManagePartialClose(Inp_TP1_ATR, Inp_PartialClosePct);
    g_riskManager.ManageBreakeven();
@@ -623,11 +640,62 @@ void PlaceOrder(ENUM_SIGNAL_TYPE direction, int score, string reason,
    else if(usePending)
    {
       double atr = g_riskManager.GetCurrentATR();
-      double pullback = atr * Inp_PullbackATR;
-      if(direction == SIGNAL_BUY)
-         entryPrice = NormalizeDouble(ask - pullback, digits);
-      else
-         entryPrice = NormalizeDouble(bid + pullback, digits);
+
+      // === RETRACEMENT ENTRY LOGIC ===
+      // Priority 1: OTE zone (0.618-0.786 Fibonacci retracement)
+      if(Inp_EnableSMC && g_smc.IsOTEActive())
+      {
+         int oteDir = g_smc.GetOTEDirection();
+         if((direction == SIGNAL_BUY && oteDir == 1) ||
+            (direction == SIGNAL_SELL && oteDir == -1))
+         {
+            // Enter at midpoint of OTE zone
+            entryPrice = NormalizeDouble((g_smc.GetOTEHigh() + g_smc.GetOTELow()) / 2.0, digits);
+         }
+      }
+
+      // Priority 2: Fibonacci retracement from recent swing
+      if(entryPrice <= 0 && Inp_EnableSMC)
+      {
+         double swHigh = g_smc.GetSwingRangeHigh();
+         double swLow  = g_smc.GetSwingRangeLow();
+         double swRange = swHigh - swLow;
+
+         if(swRange > atr * 0.5) // Valid swing range
+         {
+            if(direction == SIGNAL_BUY)
+            {
+               // Buy at 61.8% retracement from swing high (deeper = better entry)
+               double fib618 = swHigh - swRange * 0.618;
+               double fib500 = swHigh - swRange * 0.500;
+               // Use 61.8% if price hasn't reached it yet, else use 50%
+               if(ask > fib618)
+                  entryPrice = NormalizeDouble(fib618, digits);
+               else if(ask > fib500)
+                  entryPrice = NormalizeDouble(fib500, digits);
+            }
+            else
+            {
+               // Sell at 61.8% retracement from swing low (higher = better entry)
+               double fib618 = swLow + swRange * 0.618;
+               double fib500 = swLow + swRange * 0.500;
+               if(bid < fib618)
+                  entryPrice = NormalizeDouble(fib618, digits);
+               else if(bid < fib500)
+                  entryPrice = NormalizeDouble(fib500, digits);
+            }
+         }
+      }
+
+      // Priority 3: ATR pullback fallback
+      if(entryPrice <= 0)
+      {
+         double pullback = atr * Inp_PullbackATR;
+         if(direction == SIGNAL_BUY)
+            entryPrice = NormalizeDouble(ask - pullback, digits);
+         else
+            entryPrice = NormalizeDouble(bid + pullback, digits);
+      }
    }
 
    double minStopPts = GetMinStopLevel(g_activeSymbol);
@@ -668,9 +736,47 @@ void PlaceOrder(ENUM_SIGNAL_TYPE direction, int score, string reason,
          slPrice = NormalizeDouble(entryPrice + minStopPts * point, digits);
    }
 
-   // --- Calculate TP: prefer suggested, fallback to ATR ---
+   // --- Calculate TP: dynamic TP with SMC targets ---
    double tpPrice = 0;
-   if(suggestedTP > 0)
+   if(Inp_EnableDynamicTP && Inp_EnableSMC)
+   {
+      // Find nearest SMC structural target for TP
+      double smcTarget = 0;
+      if(direction == SIGNAL_BUY)
+         smcTarget = g_smc.GetNearestBuyTarget(entryPrice);
+      else
+         smcTarget = g_smc.GetNearestSellTarget(entryPrice);
+
+      // Determine regime multiplier for TP scaling
+      double regimeMult = 1.0;
+      if(Inp_EnableBrain)
+      {
+         string regime = g_brain.GetRegimeName();
+         if(StringFind(regime, "TREND") >= 0)
+            regimeMult = Inp_DynTP_TrendMult;
+         else if(StringFind(regime, "RANG") >= 0)
+            regimeMult = Inp_DynTP_RangeMult;
+      }
+
+      // Use suggested TP from strategies if available, otherwise use SMC target
+      if(suggestedTP > 0)
+      {
+         // Blend: use the closer of suggestedTP and dynamic TP
+         double dynTP = g_riskManager.CalculateDynamicTP(direction, entryPrice, slPrice, smcTarget, regimeMult);
+         if(dynTP > 0)
+         {
+            double sugDist = MathAbs(suggestedTP - entryPrice);
+            double dynDist = MathAbs(dynTP - entryPrice);
+            // Use the more conservative (closer) target
+            tpPrice = (sugDist < dynDist) ? suggestedTP : dynTP;
+         }
+         else
+            tpPrice = NormalizeDouble(suggestedTP, digits);
+      }
+      else
+         tpPrice = g_riskManager.CalculateDynamicTP(direction, entryPrice, slPrice, smcTarget, regimeMult);
+   }
+   else if(suggestedTP > 0)
       tpPrice = NormalizeDouble(suggestedTP, digits);
    else
       tpPrice = g_riskManager.CalculateTPPriceFromEntry(direction, entryPrice, slPrice);

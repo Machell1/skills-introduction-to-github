@@ -60,6 +60,7 @@ private:
 
    void   UpdateDailyTracking();
    double GetDailyPL();
+   bool   ClosePosition(ulong ticket);
 
 public:
    CClawRiskManager();
@@ -111,6 +112,14 @@ public:
    // SL/TP from a specific entry price (for pending orders)
    double CalculateSLPriceFromEntry(ENUM_SIGNAL_TYPE direction, double entryPrice);
    double CalculateTPPriceFromEntry(ENUM_SIGNAL_TYPE direction, double entryPrice, double slPrice);
+
+   // Dynamic position closure - reduces average loss
+   void   ManageDynamicClosure(double maxLossATR, double staleBarsThreshold,
+                               double staleRangeATR, double adverseMomATR);
+
+   // Dynamic TP using SMC targets
+   double CalculateDynamicTP(ENUM_SIGNAL_TYPE direction, double entryPrice,
+                             double slPrice, double smcTarget, double regimeMult);
 };
 
 //+------------------------------------------------------------------+
@@ -709,6 +718,255 @@ double CClawRiskManager::CalculateTPPriceFromEntry(ENUM_SIGNAL_TYPE direction, d
       tpDistance = minTPDistance;
 
    int digits = (int)SymbolInfoInteger(m_symbol, SYMBOL_DIGITS);
+
+   if(direction == SIGNAL_BUY)
+      return NormalizeDouble(entryPrice + tpDistance, digits);
+   else if(direction == SIGNAL_SELL)
+      return NormalizeDouble(entryPrice - tpDistance, digits);
+
+   return 0;
+}
+
+//+------------------------------------------------------------------+
+//| Close a specific position by ticket                               |
+//+------------------------------------------------------------------+
+bool CClawRiskManager::ClosePosition(ulong ticket)
+{
+   if(!PositionSelectByTicket(ticket)) return false;
+
+   MqlTradeRequest request = {};
+   MqlTradeResult  result  = {};
+
+   request.action   = TRADE_ACTION_DEAL;
+   request.position = ticket;
+   request.symbol   = m_symbol;
+   request.volume   = PositionGetDouble(POSITION_VOLUME);
+   request.deviation = 50;
+   request.magic    = m_magicNumber;
+
+   long posType = PositionGetInteger(POSITION_TYPE);
+   if(posType == POSITION_TYPE_BUY)
+   {  request.type = ORDER_TYPE_SELL; request.price = SymbolInfoDouble(m_symbol, SYMBOL_BID); }
+   else
+   {  request.type = ORDER_TYPE_BUY; request.price = SymbolInfoDouble(m_symbol, SYMBOL_ASK); }
+
+   long fillPolicy = SymbolInfoInteger(m_symbol, SYMBOL_FILLING_MODE);
+   if((fillPolicy & SYMBOL_FILLING_FOK) != 0)
+      request.type_filling = ORDER_FILLING_FOK;
+   else if((fillPolicy & SYMBOL_FILLING_IOC) != 0)
+      request.type_filling = ORDER_FILLING_IOC;
+   else
+      request.type_filling = ORDER_FILLING_RETURN;
+
+   OrderSend(request, result);
+   return (result.retcode == TRADE_RETCODE_DONE || result.retcode == TRADE_RETCODE_PLACED);
+}
+
+//+------------------------------------------------------------------+
+//| Dynamic Position Closure - Reduces average loss significantly     |
+//|                                                                    |
+//| 1. Max Loss Cap: close if unrealized loss > maxLossATR * ATR      |
+//| 2. Adverse Momentum Exit: close if losing > adverseMomATR*ATR AND |
+//|    last bar closed strongly against position direction             |
+//| 3. Stale Trade Exit: close if position age > staleBars AND P/L    |
+//|    is within ±staleRangeATR * ATR (going nowhere)                 |
+//| 4. Progressive SL Tightening: move SL closer as bars elapse       |
+//|    - After 4 bars: tighten SL to 75% of original distance        |
+//|    - After 8 bars: tighten to 50%                                 |
+//|    - After 12 bars: tighten to 30%                                 |
+//+------------------------------------------------------------------+
+void CClawRiskManager::ManageDynamicClosure(double maxLossATR, double staleBarsThreshold,
+                                             double staleRangeATR, double adverseMomATR)
+{
+   if(!m_initialized) return;
+
+   double atr = GetCurrentATR();
+   if(atr <= 0) return;
+
+   int digits = (int)SymbolInfoInteger(m_symbol, SYMBOL_DIGITS);
+
+   // Get last completed bar data for momentum check
+   double lastClose = iClose(m_symbol, m_timeframe, 1);
+   double lastOpen  = iOpen(m_symbol, m_timeframe, 1);
+   double lastHigh  = iHigh(m_symbol, m_timeframe, 1);
+   double lastLow   = iLow(m_symbol, m_timeframe, 1);
+   double barRange  = lastHigh - lastLow;
+   if(lastClose <= 0 || lastOpen <= 0) return;
+
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket <= 0) continue;
+      if(PositionGetString(POSITION_SYMBOL) != m_symbol) continue;
+      if(PositionGetInteger(POSITION_MAGIC) != (long)m_magicNumber) continue;
+
+      double openPrice = PositionGetDouble(POSITION_PRICE_OPEN);
+      double currentSL = PositionGetDouble(POSITION_SL);
+      double currentTP = PositionGetDouble(POSITION_TP);
+      long   posType   = PositionGetInteger(POSITION_TYPE);
+      datetime openTime = (datetime)PositionGetInteger(POSITION_TIME);
+
+      // Calculate position age in bars
+      int barsSinceOpen = (int)((TimeCurrent() - openTime) / PeriodSeconds(m_timeframe));
+
+      // Calculate unrealized P/L in price terms
+      double unrealizedPL = 0;
+      if(posType == POSITION_TYPE_BUY)
+         unrealizedPL = SymbolInfoDouble(m_symbol, SYMBOL_BID) - openPrice;
+      else
+         unrealizedPL = openPrice - SymbolInfoDouble(m_symbol, SYMBOL_ASK);
+
+      double originalSLDist = MathAbs(openPrice - currentSL);
+      if(originalSLDist <= 0) originalSLDist = atr * m_slATRMultiplier;
+
+      // === CHECK 1: Max Loss Cap ===
+      if(unrealizedPL < -(maxLossATR * atr))
+      {
+         if(ClosePosition(ticket))
+            LogMessage("DYNCLS", "MAX LOSS CAP closed #" + IntegerToString((int)ticket) +
+                       " | Loss: " + DoubleToString(unrealizedPL, digits) +
+                       " | Cap: " + DoubleToString(-maxLossATR * atr, digits));
+         continue;
+      }
+
+      // === CHECK 2: Adverse Momentum Exit ===
+      if(unrealizedPL < -(adverseMomATR * atr))
+      {
+         bool adverseBar = false;
+         if(posType == POSITION_TYPE_BUY)
+         {
+            // Strong bearish bar: closed in bottom 30% of range
+            if(lastClose < lastOpen && barRange > 0 &&
+               (lastClose - lastLow) < barRange * 0.3)
+               adverseBar = true;
+         }
+         else
+         {
+            // Strong bullish bar: closed in top 30% of range
+            if(lastClose > lastOpen && barRange > 0 &&
+               (lastHigh - lastClose) < barRange * 0.3)
+               adverseBar = true;
+         }
+
+         if(adverseBar)
+         {
+            if(ClosePosition(ticket))
+               LogMessage("DYNCLS", "ADVERSE MOMENTUM closed #" + IntegerToString((int)ticket) +
+                          " | Loss: " + DoubleToString(unrealizedPL, digits) +
+                          " | Bars: " + IntegerToString(barsSinceOpen));
+            continue;
+         }
+      }
+
+      // === CHECK 3: Stale Trade Exit ===
+      if(barsSinceOpen >= (int)staleBarsThreshold &&
+         MathAbs(unrealizedPL) < staleRangeATR * atr)
+      {
+         if(ClosePosition(ticket))
+            LogMessage("DYNCLS", "STALE TRADE closed #" + IntegerToString((int)ticket) +
+                       " | P/L: " + DoubleToString(unrealizedPL, digits) +
+                       " | Bars: " + IntegerToString(barsSinceOpen));
+         continue;
+      }
+
+      // === CHECK 4: Progressive SL Tightening ===
+      if(unrealizedPL < atr * 0.5 && currentSL > 0)
+      {
+         double tightenFactor = 1.0;
+         if(barsSinceOpen >= 12)
+            tightenFactor = 0.30;
+         else if(barsSinceOpen >= 8)
+            tightenFactor = 0.50;
+         else if(barsSinceOpen >= 4)
+            tightenFactor = 0.75;
+
+         if(tightenFactor < 1.0)
+         {
+            double newSLDist = originalSLDist * tightenFactor;
+            double minDist = SymbolInfoDouble(m_symbol, SYMBOL_POINT) * m_minSLPoints * 0.5;
+            if(newSLDist < minDist) newSLDist = minDist;
+
+            double newSL = 0;
+            if(posType == POSITION_TYPE_BUY)
+            {
+               newSL = NormalizeDouble(openPrice - newSLDist, digits);
+               if(newSL <= currentSL) continue;
+            }
+            else
+            {
+               newSL = NormalizeDouble(openPrice + newSLDist, digits);
+               if(currentSL > 0 && newSL >= currentSL) continue;
+            }
+
+            MqlTradeRequest req = {};
+            MqlTradeResult  res = {};
+            req.action   = TRADE_ACTION_SLTP;
+            req.position = ticket;
+            req.symbol   = m_symbol;
+            req.sl       = newSL;
+            req.tp       = currentTP;
+
+            if(OrderSend(req, res) && (res.retcode == TRADE_RETCODE_DONE))
+            {
+               LogMessage("DYNCLS", "SL TIGHTENED #" + IntegerToString((int)ticket) +
+                          " to " + DoubleToString(newSL, digits) +
+                          " (factor=" + DoubleToString(tightenFactor, 2) +
+                          ", bars=" + IntegerToString(barsSinceOpen) + ")");
+            }
+         }
+      }
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Calculate Dynamic Take Profit                                      |
+//|                                                                    |
+//| Uses SMC structural targets when available, with regime scaling.   |
+//| Enforces minimum TP of 1.0 * ATR and minimum R:R of 0.8.         |
+//+------------------------------------------------------------------+
+double CClawRiskManager::CalculateDynamicTP(ENUM_SIGNAL_TYPE direction, double entryPrice,
+                                             double slPrice, double smcTarget, double regimeMult)
+{
+   double atr = GetCurrentATR();
+   if(atr <= 0 || slPrice <= 0) return 0;
+
+   int digits = (int)SymbolInfoInteger(m_symbol, SYMBOL_DIGITS);
+   double slDistance = MathAbs(entryPrice - slPrice);
+
+   // Base TP: ATR multiplier scaled by regime
+   double baseTpDist = atr * m_tpATRMultiplier * regimeMult;
+
+   // If SMC target is valid, calculate distance to it
+   double smcTpDist = 0;
+   if(smcTarget > 0)
+   {
+      if(direction == SIGNAL_BUY && smcTarget > entryPrice)
+         smcTpDist = smcTarget - entryPrice;
+      else if(direction == SIGNAL_SELL && smcTarget < entryPrice)
+         smcTpDist = entryPrice - smcTarget;
+   }
+
+   // Choose the best TP distance
+   double tpDistance = baseTpDist;
+
+   if(smcTpDist > 0)
+   {
+      // Use SMC target if it's within reasonable range (0.8x to 2.5x base)
+      if(smcTpDist >= baseTpDist * 0.8 && smcTpDist <= baseTpDist * 2.5)
+         tpDistance = smcTpDist;
+      else if(smcTpDist > baseTpDist * 2.5)
+         tpDistance = baseTpDist;
+      else
+         tpDistance = MathMax(smcTpDist, baseTpDist);
+   }
+
+   // Enforce minimum TP: at least 1.0 * ATR
+   double minTP = atr * 1.0;
+   if(tpDistance < minTP) tpDistance = minTP;
+
+   // Enforce minimum R:R of 0.8
+   double minRRDist = slDistance * 0.8;
+   if(tpDistance < minRRDist) tpDistance = minRRDist;
 
    if(direction == SIGNAL_BUY)
       return NormalizeDouble(entryPrice + tpDistance, digits);

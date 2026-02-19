@@ -206,6 +206,10 @@ public:
    // Composite SMC signal
    SignalResult Evaluate();
 
+   // Target finding for dynamic TP
+   double GetNearestBuyTarget(double currentPrice);
+   double GetNearestSellTarget(double currentPrice);
+
    string GetName() { return "SMC"; }
 };
 
@@ -1194,4 +1198,134 @@ SignalResult CClawSMC::Evaluate()
       result.strength = STRENGTH_WEAK;
 
    return result;
+}
+
+//+------------------------------------------------------------------+
+//| Find nearest resistance target above currentPrice for BUY TP      |
+//| Checks: bearish OBs, bearish FVGs, swing highs, round numbers    |
+//+------------------------------------------------------------------+
+double CClawSMC::GetNearestBuyTarget(double currentPrice)
+{
+   if(!m_initialized || currentPrice <= 0) return 0;
+
+   double bestTarget = 0;
+   double bestDist   = DBL_MAX;
+
+   // Check bearish (supply) order blocks above price
+   for(int i = 0; i < m_obCount; i++)
+   {
+      if(m_orderBlocks[i].direction != -1) continue;  // Only bearish OBs
+      if(m_orderBlocks[i].mitigated) continue;
+      double obLevel = m_orderBlocks[i].bodyLow;  // Bottom of supply zone
+      if(obLevel > currentPrice)
+      {
+         double dist = obLevel - currentPrice;
+         if(dist < bestDist)
+         { bestDist = dist; bestTarget = obLevel; }
+      }
+   }
+
+   // Check bearish FVGs above price
+   for(int i = 0; i < m_fvgCount; i++)
+   {
+      if(m_fvgs[i].direction != -1) continue;  // Only bearish FVGs
+      if(m_fvgs[i].mitigated) continue;
+      double fvgLevel = m_fvgs[i].gapLow;  // Bottom of bearish FVG
+      if(fvgLevel > currentPrice)
+      {
+         double dist = fvgLevel - currentPrice;
+         if(dist < bestDist)
+         { bestDist = dist; bestTarget = fvgLevel; }
+      }
+   }
+
+   // Check swing highs above price
+   for(int i = 0; i < m_swingCount; i++)
+   {
+      if(!m_swingPoints[i].isHigh) continue;
+      if(m_swingPoints[i].broken) continue;
+      double swLevel = m_swingPoints[i].price;
+      if(swLevel > currentPrice)
+      {
+         double dist = swLevel - currentPrice;
+         if(dist < bestDist)
+         { bestDist = dist; bestTarget = swLevel; }
+      }
+   }
+
+   // Check nearest round number above
+   double roundAbove = GetNearestRoundNumber(currentPrice, 1);
+   if(roundAbove > currentPrice)
+   {
+      double dist = roundAbove - currentPrice;
+      if(dist < bestDist)
+      { bestDist = dist; bestTarget = roundAbove; }
+   }
+
+   return NormalizeDouble(bestTarget, m_digits);
+}
+
+//+------------------------------------------------------------------+
+//| Find nearest support target below currentPrice for SELL TP        |
+//| Checks: bullish OBs, bullish FVGs, swing lows, round numbers     |
+//+------------------------------------------------------------------+
+double CClawSMC::GetNearestSellTarget(double currentPrice)
+{
+   if(!m_initialized || currentPrice <= 0) return 0;
+
+   double bestTarget = 0;
+   double bestDist   = DBL_MAX;
+
+   // Check bullish (demand) order blocks below price
+   for(int i = 0; i < m_obCount; i++)
+   {
+      if(m_orderBlocks[i].direction != 1) continue;  // Only bullish OBs
+      if(m_orderBlocks[i].mitigated) continue;
+      double obLevel = m_orderBlocks[i].bodyHigh;  // Top of demand zone
+      if(obLevel < currentPrice)
+      {
+         double dist = currentPrice - obLevel;
+         if(dist < bestDist)
+         { bestDist = dist; bestTarget = obLevel; }
+      }
+   }
+
+   // Check bullish FVGs below price
+   for(int i = 0; i < m_fvgCount; i++)
+   {
+      if(m_fvgs[i].direction != 1) continue;  // Only bullish FVGs
+      if(m_fvgs[i].mitigated) continue;
+      double fvgLevel = m_fvgs[i].gapHigh;  // Top of bullish FVG
+      if(fvgLevel < currentPrice)
+      {
+         double dist = currentPrice - fvgLevel;
+         if(dist < bestDist)
+         { bestDist = dist; bestTarget = fvgLevel; }
+      }
+   }
+
+   // Check swing lows below price
+   for(int i = 0; i < m_swingCount; i++)
+   {
+      if(m_swingPoints[i].isHigh) continue;
+      if(m_swingPoints[i].broken) continue;
+      double swLevel = m_swingPoints[i].price;
+      if(swLevel < currentPrice)
+      {
+         double dist = currentPrice - swLevel;
+         if(dist < bestDist)
+         { bestDist = dist; bestTarget = swLevel; }
+      }
+   }
+
+   // Check nearest round number below
+   double roundBelow = GetNearestRoundNumber(currentPrice, -1);
+   if(roundBelow > 0 && roundBelow < currentPrice)
+   {
+      double dist = currentPrice - roundBelow;
+      if(dist < bestDist)
+      { bestDist = dist; bestTarget = roundBelow; }
+   }
+
+   return NormalizeDouble(bestTarget, m_digits);
 }
