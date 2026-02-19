@@ -59,21 +59,21 @@ input ENUM_BOT_MODE   Inp_BotMode   = MODE_BACKTEST;                   // Bot Mo
 
 //--- Risk Management
 input string   Inp_Separator2       = "=== RISK MANAGEMENT ===";       // ----
-input double   Inp_RiskPerTrade     = 0.5;     // Risk per trade (%)
+input double   Inp_RiskPerTrade     = 1.0;     // Risk per trade (%)
 input double   Inp_MaxDailyLoss     = 5.0;     // Max daily loss (%)
 input double   Inp_MaxDrawdown      = 15.0;    // Max total drawdown (%)
 input int      Inp_MaxConcurrent    = 3;       // Max concurrent trades
 input int      Inp_MaxDailyTrades   = 10;      // Max trades per day
-input double   Inp_MinRiskReward    = 1.5;     // Minimum Risk:Reward ratio
+input double   Inp_MinRiskReward    = 0.5;     // Minimum Risk:Reward ratio
 
 //--- Stop Loss / Take Profit (Gold H1: 2x ATR SL, 4x ATR TP = 1:2 R:R)
 input string   Inp_Separator3       = "=== SL/TP SETTINGS ===";        // ----
-input double   Inp_SL_ATR           = 2.0;     // SL ATR multiplier
-input double   Inp_TP_ATR           = 4.0;     // TP ATR multiplier
+input double   Inp_SL_ATR           = 0.6;     // SL ATR multiplier
+input double   Inp_TP_ATR           = 3.0;     // TP ATR multiplier
 input double   Inp_MinSL            = 200.0;   // Minimum SL (points)
 input double   Inp_MaxSL            = 800.0;   // Maximum SL (points)
-input double   Inp_TrailActivation  = 1.5;     // Trailing activation (ATR mult)
-input double   Inp_TrailDistance    = 1.0;     // Trailing distance (ATR mult) - must be < activation
+input double   Inp_TrailActivation  = 0.7;     // Trailing activation (ATR mult)
+input double   Inp_TrailDistance    = 0.35;    // Trailing distance (ATR mult) - must be < activation
 input double   Inp_MaxSpread        = 40.0;    // Max allowed spread (points)
 
 //--- Trend Strategy (Strategy 1)
@@ -92,7 +92,7 @@ input string   Inp_Separator5       = "=== MOMENTUM STRATEGY ===";     // ----
 input bool     Inp_EnableMomentum   = true;    // Enable Momentum Strategy
 input int      Inp_RSI_Period       = 14;      // RSI period
 input double   Inp_RSI_Oversold     = 30.0;    // RSI oversold level
-input double   Inp_RSI_Overbought   = 70.0;    // RSI overbought level
+input double   Inp_RSI_Overbought   = 75.0;    // RSI overbought level
 input int      Inp_MACD_Fast        = 12;      // MACD fast period
 input int      Inp_MACD_Slow        = 26;      // MACD slow period
 input int      Inp_MACD_Signal      = 9;       // MACD signal period
@@ -107,7 +107,7 @@ input int      Inp_AsianStart       = 0;       // Asian session start (UTC hour)
 input int      Inp_AsianEnd         = 7;       // Asian session end (UTC hour)
 input int      Inp_LondonStart      = 7;       // London entry window start
 input int      Inp_LondonEnd        = 16;      // London entry window end
-input int      Inp_ExitHour         = 20;      // Session exit hour (UTC)
+input int      Inp_ExitHour         = 21;      // Session exit hour (UTC)
 
 //--- Mean Reversion Strategy (Strategy 4)
 input string   Inp_Separator6b      = "=== MEAN REVERSION STRATEGY ==="; // ----
@@ -118,7 +118,7 @@ input double   Inp_BB_TouchBuffer   = 0.2;     // Band touch buffer (% of width)
 
 //--- Smart Money Concepts (Strategy 5)
 input string   Inp_Separator6f      = "=== SMART MONEY CONCEPTS ===";  // ----
-input bool     Inp_EnableSMC        = true;    // Enable SMC Strategy
+input bool     Inp_EnableSMC        = false;   // Enable SMC Strategy
 input int      Inp_SMC_SwingStr     = 3;       // Swing point strength (bars each side)
 input double   Inp_SMC_ImpulseATR   = 2.5;     // Impulse detection ATR multiplier
 input int      Inp_SMC_OBMaxAge     = 72;      // Order Block max age (bars)
@@ -137,7 +137,7 @@ input double   Inp_Brain_ATRLow     = 0.8;     // ATR ratio for compression dete
 
 //--- Multi-Timeframe Filter
 input string   Inp_Separator6c      = "=== MTF FILTER ===";             // ----
-input bool     Inp_EnableMTF        = true;    // Enable H4 trend filter
+input bool     Inp_EnableMTF        = false;   // Enable H4 trend filter
 input ENUM_TIMEFRAMES Inp_MTF_TF    = PERIOD_H4; // Higher timeframe for filter
 
 //--- Pending Orders
@@ -152,7 +152,7 @@ input bool     Inp_EnableDynClosure = true;    // Enable dynamic position closur
 input double   Inp_DynCls_MaxLossATR = 1.8;   // Max loss cap (ATR multiplier) before forced close
 input double   Inp_DynCls_StaleBars  = 24;    // Bars before stale trade check
 input double   Inp_DynCls_StaleRange = 0.15;  // Stale P/L range (ATR mult) for exit
-input double   Inp_DynCls_AdverseMom = 1.2;   // Adverse momentum loss threshold (ATR mult)
+input double   Inp_DynCls_AdverseMom = 0.3;   // Adverse momentum loss threshold (ATR mult)
 
 //--- Dynamic Take Profit
 input string   Inp_Separator6i      = "=== DYNAMIC TP ===";             // ----
@@ -163,16 +163,16 @@ input double   Inp_DynTP_RangeMult  = 1.0;    // TP regime multiplier for rangin
 //--- Partial Close / Profit Locking
 input string   Inp_Separator6e      = "=== PROFIT LOCKING ===";         // ----
 input bool     Inp_EnablePartialClose = true;  // Enable partial close at TP1
-input double   Inp_TP1_ATR          = 1.0;     // TP1 distance (ATR mult) for partial close
-input double   Inp_PartialClosePct  = 0.5;     // Fraction to close at TP1 (0.5 = 50%)
+input double   Inp_TP1_ATR          = 0.1;     // TP1 distance (ATR mult) for partial close
+input double   Inp_PartialClosePct  = 0.3;     // Fraction to close at TP1 (0.3 = 30%)
 
 //--- Confluence Settings
 input string   Inp_Separator7       = "=== CONFLUENCE SETTINGS ===";   // ----
-input int      Inp_MinScore         = 45;      // Minimum total score for entry
-input int      Inp_MinStrategies    = 2;       // Min strategies agreeing
-input int      Inp_MinStrategyScore = 15;      // Min individual strategy score to count
+input int      Inp_MinScore         = 30;      // Minimum total score for entry
+input int      Inp_MinStrategies    = 1;       // Min strategies agreeing
+input int      Inp_MinStrategyScore = 20;      // Min individual strategy score to count
 input int      Inp_CooldownAfterLosses = 3;    // Consecutive losses before cooldown
-input int      Inp_CooldownBars     = 2;       // Bars to skip during cooldown
+input int      Inp_CooldownBars     = 3;       // Bars to skip during cooldown
 
 //--- Backtest / Audit Settings
 input string   Inp_Separator8       = "=== AUDIT SETTINGS ===";        // ----
