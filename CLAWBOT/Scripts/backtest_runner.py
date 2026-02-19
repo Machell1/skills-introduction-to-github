@@ -351,10 +351,13 @@ def preflight_check(data_path: Path, metaeditor: Path = None) -> bool:
     if needs_compile and metaeditor and metaeditor.exists():
         print(f"  [AUTO] Compiling via MetaEditor ...")
         log = mq5.parent / "compile.log"
+        include_dir = data_path / "MQL5"
+        # Use a single command string with explicit quoting so that paths
+        # with spaces (e.g. "Sanique Richards") are handled correctly.
+        cmd = f'"{metaeditor}" /compile:"{mq5}" /log:"{log}" /include:"{include_dir}"'
         try:
             subprocess.run(
-                [str(metaeditor), f"/compile:{mq5}", f"/log:{log}",
-                 "/include:" + str(data_path / "MQL5")],
+                cmd,
                 capture_output=True, text=True, timeout=120,
                 cwd=str(metaeditor.parent),
             )
@@ -364,13 +367,18 @@ def preflight_check(data_path: Path, metaeditor: Path = None) -> bool:
                 return True
             else:
                 print("  [ERROR] Compilation failed. MetaEditor did not produce .ex5")
+                # Try to read compile log with multiple encodings
                 if log.exists():
-                    try:
-                        for line in log.read_text(encoding="utf-16-le", errors="ignore").splitlines():
-                            if line.strip():
-                                print(f"    {line.strip()}")
-                    except Exception:
-                        pass
+                    for enc in ["utf-16-le", "utf-16", "utf-8", "latin-1"]:
+                        try:
+                            lines = [l.strip() for l in log.read_text(encoding=enc, errors="ignore").splitlines() if l.strip()]
+                            if lines:
+                                print(f"  Compile log:")
+                                for line in lines[-15:]:
+                                    print(f"    {line}")
+                                break
+                        except Exception:
+                            continue
                 print()
                 print("  You must compile manually:")
                 print("    1. Open MetaEditor (press F4 in MT5)")

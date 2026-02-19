@@ -312,25 +312,34 @@ def compile_ea(metaeditor: Path, data_path: Path) -> bool:
     print(f"  Compiling {mq5.name} ...")
     log = mq5.parent / "compile.log"
 
+    # MetaEditor needs paths with spaces quoted inside the /compile: argument.
+    # Using a single command string with explicit quoting (not a list) so that
+    # paths like "C:\Users\Sanique Richards\..." are handled correctly.
+    include_dir = data_path / "MQL5"
+    cmd = f'"{metaeditor}" /compile:"{mq5}" /log:"{log}" /include:"{include_dir}"'
+    print(f"  CMD: {cmd}")
+
     try:
-        subprocess.run(
-            [str(metaeditor), f"/compile:{mq5}", f"/log:{log}",
-             "/include:" + str(data_path / "MQL5")],
+        result = subprocess.run(
+            cmd,
             capture_output=True, text=True, timeout=120,
             cwd=str(metaeditor.parent),
         )
-        time.sleep(2)
+        time.sleep(3)
+
+        # Show any stdout/stderr from MetaEditor
+        if result.stdout and result.stdout.strip():
+            print(f"  MetaEditor stdout: {result.stdout.strip()[:500]}")
+        if result.stderr and result.stderr.strip():
+            print(f"  MetaEditor stderr: {result.stderr.strip()[:500]}")
 
         ex5 = mq5.with_suffix(".ex5")
         if ex5.exists():
-            print(f"  [OK] Compiled: {ex5.name}")
+            print(f"  [OK] Compiled: {ex5.name} ({ex5.stat().st_size:,} bytes)")
             return True
 
         print("  [ERROR] No .ex5 produced.")
-        if log.exists():
-            for line in log.read_text(encoding="utf-16-le", errors="ignore").splitlines():
-                if line.strip():
-                    print(f"    {line.strip()}")
+        _print_compile_log(log)
         return False
     except subprocess.TimeoutExpired:
         print("  [ERROR] Compilation timed out.")
@@ -338,6 +347,26 @@ def compile_ea(metaeditor: Path, data_path: Path) -> bool:
     except Exception as e:
         print(f"  [ERROR] {e}")
         return False
+
+
+def _print_compile_log(log: Path):
+    """Try to read and display the MetaEditor compile log."""
+    if not log.exists():
+        print("  (no compile.log found)")
+        return
+    # MetaEditor writes UTF-16-LE logs
+    for encoding in ["utf-16-le", "utf-16", "utf-8", "latin-1"]:
+        try:
+            content = log.read_text(encoding=encoding, errors="ignore")
+            lines = [l.strip() for l in content.splitlines() if l.strip()]
+            if lines:
+                print(f"  Compile log ({encoding}):")
+                for line in lines[-20:]:
+                    print(f"    {line}")
+                return
+        except Exception:
+            continue
+    print("  (compile.log exists but could not be read)")
 
 
 # =====================================================================
