@@ -622,7 +622,8 @@ void CClawRiskManager::ManagePartialClose(double tp1ATRMult, double partialPct)
 
 //+------------------------------------------------------------------+
 //| Manage breakeven: move SL to entry once profit > activation      |
-//| This is a safety net in case ManagePartialClose didn't trigger   |
+//| Uses 50% of trailing activation for earlier breakeven protection |
+//| (e.g., if trail activates at 1.5 ATR, breakeven at 0.75 ATR)    |
 //+------------------------------------------------------------------+
 void CClawRiskManager::ManageBreakeven()
 {
@@ -631,8 +632,9 @@ void CClawRiskManager::ManageBreakeven()
    double atr = GetCurrentATR();
    if(atr <= 0) return;
 
-   // Activate breakeven at the same distance as trailing activation
-   double beActivation = atr * m_trailingActivation;
+   // Breakeven activates at 50% of trailing activation distance
+   // This protects profits earlier than trailing, without choking winners
+   double beActivation = atr * m_trailingActivation * 0.5;
    int digits = (int)SymbolInfoInteger(m_symbol, SYMBOL_DIGITS);
 
    for(int i = PositionsTotal() - 1; i >= 0; i--)
@@ -731,7 +733,9 @@ double CClawRiskManager::CalculateTPPriceFromEntry(ENUM_SIGNAL_TYPE direction, d
    double slDistance = MathAbs(entryPrice - slPrice);
    double tpDistance = atr * m_tpATRMultiplier;
 
-   double minTPDistance = slDistance * m_minRiskReward;
+   // Enforce minimum R:R of at least 1.5:1
+   double effectiveMinRR = MathMax(m_minRiskReward, 1.5);
+   double minTPDistance = slDistance * effectiveMinRR;
    if(tpDistance < minTPDistance)
       tpDistance = minTPDistance;
 
