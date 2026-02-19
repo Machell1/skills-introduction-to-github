@@ -64,16 +64,16 @@ input double   Inp_MaxDailyLoss     = 5.0;     // Max daily loss (%)
 input double   Inp_MaxDrawdown      = 15.0;    // Max total drawdown (%)
 input int      Inp_MaxConcurrent    = 3;       // Max concurrent trades
 input int      Inp_MaxDailyTrades   = 10;      // Max trades per day
-input double   Inp_MinRiskReward    = 0.2;     // Minimum Risk:Reward ratio
+input double   Inp_MinRiskReward    = 0.8;     // Minimum Risk:Reward ratio
 
 //--- Stop Loss / Take Profit
 input string   Inp_Separator3       = "=== SL/TP SETTINGS ===";        // ----
-input double   Inp_SL_ATR           = 2.0;     // SL ATR multiplier
-input double   Inp_TP_ATR           = 1.5;     // TP ATR multiplier
+input double   Inp_SL_ATR           = 1.5;     // SL ATR multiplier
+input double   Inp_TP_ATR           = 2.0;     // TP ATR multiplier
 input double   Inp_MinSL            = 200.0;   // Minimum SL (points)
 input double   Inp_MaxSL            = 800.0;   // Maximum SL (points)
-input double   Inp_TrailActivation  = 0.3;     // Trailing activation (ATR mult)
-input double   Inp_TrailDistance    = 0.5;     // Trailing distance (ATR mult)
+input double   Inp_TrailActivation  = 0.8;     // Trailing activation (ATR mult)
+input double   Inp_TrailDistance    = 0.8;     // Trailing distance (ATR mult)
 input double   Inp_MaxSpread        = 40.0;    // Max allowed spread (points)
 
 //--- Trend Strategy (Strategy 1)
@@ -149,7 +149,7 @@ input double   Inp_PullbackATR      = 0.3;     // Pullback distance for limit en
 //--- Dynamic Position Closure
 input string   Inp_Separator6h      = "=== DYNAMIC CLOSURE ===";        // ----
 input bool     Inp_EnableDynClosure = true;    // Enable dynamic position closure
-input double   Inp_DynCls_MaxLossATR = 1.8;   // Max loss cap (ATR multiplier) before forced close
+input double   Inp_DynCls_MaxLossATR = 1.3;   // Max loss cap (ATR multiplier) before forced close
 input double   Inp_DynCls_StaleBars  = 20;    // Bars before stale trade check
 input double   Inp_DynCls_StaleRange = 0.15;  // Stale P/L range (ATR mult) for exit
 input double   Inp_DynCls_AdverseMom = 1.0;   // Adverse momentum loss threshold (ATR mult)
@@ -163,8 +163,8 @@ input double   Inp_DynTP_RangeMult  = 1.0;    // TP regime multiplier for rangin
 //--- Partial Close / Profit Locking
 input string   Inp_Separator6e      = "=== PROFIT LOCKING ===";         // ----
 input bool     Inp_EnablePartialClose = true;  // Enable partial close at TP1
-input double   Inp_TP1_ATR          = 0.5;     // TP1 distance (ATR mult) for partial close
-input double   Inp_PartialClosePct  = 0.5;     // Fraction to close at TP1 (0.5 = 50%)
+input double   Inp_TP1_ATR          = 1.0;     // TP1 distance (ATR mult) for partial close
+input double   Inp_PartialClosePct  = 0.3;     // Fraction to close at TP1 (0.3 = 30%)
 
 //--- Confluence Settings
 input string   Inp_Separator7       = "=== CONFLUENCE SETTINGS ===";   // ----
