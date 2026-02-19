@@ -17,7 +17,6 @@
 ==========================================================================
 """
 
-import os
 import sys
 import subprocess
 from pathlib import Path
@@ -29,7 +28,6 @@ SCRIPTS = ROOT / "Scripts"
 CONFIG  = ROOT / "Config"
 
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(SCRIPTS))
 
 BANNER = r"""
    ██████╗██╗      █████╗ ██╗    ██╗██████╗  ██████╗ ████████╗
@@ -70,7 +68,7 @@ def check_env():
 #  Phase 1 – MT5 Setup
 # ======================================================================
 def phase_setup():
-    from mt5_manager import setup_mt5
+    from Scripts.mt5_manager import setup_mt5
     result = setup_mt5(ROOT)
     if result is None:
         sys.exit("\n  [FATAL] MT5 setup failed. Fix the issues above and re-run.")
@@ -84,7 +82,7 @@ def phase_setup():
 #  Phase 2 – Backtest
 # ======================================================================
 def phase_backtest(mt5):
-    from backtest_runner import run_backtest
+    from Scripts.backtest_runner import run_backtest
 
     print("\n" + "=" * 55)
     print("  PHASE 2: BACKTEST")
@@ -126,8 +124,8 @@ def phase_backtest(mt5):
 #  Phase 3 – Analyze
 # ======================================================================
 def phase_analyze(reports, data_path) -> bool:
-    from backtest_analyzer import BacktestAnalyzer
-    from backtest_runner import parse_mt5_html
+    from Scripts.backtest_analyzer import BacktestAnalyzer
+    from Scripts.backtest_runner import parse_mt5_html
 
     print("\n" + "=" * 55)
     print("  PHASE 3: ANALYSIS")
@@ -204,8 +202,8 @@ def phase_analyze(reports, data_path) -> bool:
 #  Phase 4 – Live
 # ======================================================================
 def phase_live(mt5):
-    from credential_manager import collect_credentials, save_credentials, setup_encryption_passphrase
-    from live_launcher import launch_live, verify_live_readiness
+    from Scripts.credential_manager import collect_credentials, save_credentials, setup_encryption_passphrase
+    from Scripts.live_launcher import launch_live, verify_live_readiness
 
     print("\n" + "=" * 55)
     print("  PHASE 4: LIVE TRADING")
