@@ -91,6 +91,10 @@ public:
    // Trailing stop
    void   ManageTrailingStops();
 
+   // Profit locking: partial close + breakeven
+   void   ManagePartialClose(double tp1ATRMult, double partialPct);
+   void   ManageBreakeven();
+
    // Daily management
    void   OnNewDay();
    int    GetDailyTradeCount() { return m_dailyTradeCount; }
@@ -103,6 +107,10 @@ public:
    int    GetMaxConcurrent()    { return m_maxConcurrentTrades; }
    double GetSLMultiplier()     { return m_slATRMultiplier; }
    double GetTPMultiplier()     { return m_tpATRMultiplier; }
+
+   // SL/TP from a specific entry price (for pending orders)
+   double CalculateSLPriceFromEntry(ENUM_SIGNAL_TYPE direction, double entryPrice);
+   double CalculateTPPriceFromEntry(ENUM_SIGNAL_TYPE direction, double entryPrice, double slPrice);
 };
 
 //+------------------------------------------------------------------+
@@ -476,4 +484,236 @@ void CClawRiskManager::ManageTrailingStops()
          }
       }
    }
+}
+
+//+------------------------------------------------------------------+
+//| Manage partial close: close a portion at TP1 profit level        |
+//| tp1ATRMult = ATR multiplier for TP1 (e.g., 0.5)                  |
+//| partialPct = fraction to close (e.g., 0.5 = 50%)                 |
+//+------------------------------------------------------------------+
+void CClawRiskManager::ManagePartialClose(double tp1ATRMult, double partialPct)
+{
+   if(!m_initialized) return;
+
+   double atr = GetCurrentATR();
+   if(atr <= 0) return;
+
+   double tp1Distance = atr * tp1ATRMult;
+   int digits = (int)SymbolInfoInteger(m_symbol, SYMBOL_DIGITS);
+
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket <= 0) continue;
+      if(PositionGetString(POSITION_SYMBOL) != m_symbol) continue;
+      if(PositionGetInteger(POSITION_MAGIC) != (long)m_magicNumber) continue;
+
+      // Check if this position has already been partially closed
+      // by looking at the comment for "TP1" flag
+      string comment = PositionGetString(POSITION_COMMENT);
+      if(StringFind(comment, "TP1") >= 0) continue; // Already partially closed
+
+      double openPrice = PositionGetDouble(POSITION_PRICE_OPEN);
+      double volume    = PositionGetDouble(POSITION_VOLUME);
+      long   posType   = PositionGetInteger(POSITION_TYPE);
+
+      double profit = 0;
+      if(posType == POSITION_TYPE_BUY)
+         profit = SymbolInfoDouble(m_symbol, SYMBOL_BID) - openPrice;
+      else if(posType == POSITION_TYPE_SELL)
+         profit = openPrice - SymbolInfoDouble(m_symbol, SYMBOL_ASK);
+
+      // Check if profit exceeds TP1 distance
+      if(profit >= tp1Distance)
+      {
+         double closeVolume = NormalizeLot(m_symbol, volume * partialPct);
+         if(closeVolume <= 0) continue;
+
+         // Partial close: send a deal to reduce position
+         MqlTradeRequest request = {};
+         MqlTradeResult  result  = {};
+
+         request.action   = TRADE_ACTION_DEAL;
+         request.position = ticket;
+         request.symbol   = m_symbol;
+         request.volume   = closeVolume;
+         request.deviation = 30;
+         request.magic    = m_magicNumber;
+         request.comment  = "CLAWBOT_TP1";
+
+         if(posType == POSITION_TYPE_BUY)
+         {
+            request.type  = ORDER_TYPE_SELL;
+            request.price = SymbolInfoDouble(m_symbol, SYMBOL_BID);
+         }
+         else
+         {
+            request.type  = ORDER_TYPE_BUY;
+            request.price = SymbolInfoDouble(m_symbol, SYMBOL_ASK);
+         }
+
+         long fillPolicy = SymbolInfoInteger(m_symbol, SYMBOL_FILLING_MODE);
+         if((fillPolicy & SYMBOL_FILLING_FOK) != 0)
+            request.type_filling = ORDER_FILLING_FOK;
+         else if((fillPolicy & SYMBOL_FILLING_IOC) != 0)
+            request.type_filling = ORDER_FILLING_IOC;
+         else
+            request.type_filling = ORDER_FILLING_RETURN;
+
+         OrderSend(request, result);
+
+         if(result.retcode == TRADE_RETCODE_DONE || result.retcode == TRADE_RETCODE_PLACED)
+         {
+            LogMessage("TP1", "Partial close " + DoubleToString(partialPct * 100, 0) + "% of #" +
+                       IntegerToString((int)ticket) + " at profit " + DoubleToString(profit, digits));
+
+            // Move SL to breakeven on the remaining portion
+            double beSL = openPrice;
+            // Add a small buffer (spread) to ensure true breakeven
+            double spread = SymbolInfoDouble(m_symbol, SYMBOL_ASK) - SymbolInfoDouble(m_symbol, SYMBOL_BID);
+            if(posType == POSITION_TYPE_BUY)
+               beSL = NormalizeDouble(openPrice + spread, digits);
+            else
+               beSL = NormalizeDouble(openPrice - spread, digits);
+
+            MqlTradeRequest beReq = {};
+            MqlTradeResult  beRes = {};
+            beReq.action   = TRADE_ACTION_SLTP;
+            beReq.position = ticket;
+            beReq.symbol   = m_symbol;
+            beReq.sl       = beSL;
+            beReq.tp       = PositionGetDouble(POSITION_TP);
+
+            OrderSend(beReq, beRes);
+            if(beRes.retcode == TRADE_RETCODE_DONE)
+               LogMessage("TP1", "SL moved to breakeven (" + DoubleToString(beSL, digits) + ") for #" +
+                          IntegerToString((int)ticket));
+         }
+      }
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Manage breakeven: move SL to entry once profit > activation      |
+//| This is a safety net in case ManagePartialClose didn't trigger   |
+//+------------------------------------------------------------------+
+void CClawRiskManager::ManageBreakeven()
+{
+   if(!m_initialized) return;
+
+   double atr = GetCurrentATR();
+   if(atr <= 0) return;
+
+   // Activate breakeven at the same distance as trailing activation
+   double beActivation = atr * m_trailingActivation;
+   int digits = (int)SymbolInfoInteger(m_symbol, SYMBOL_DIGITS);
+
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket <= 0) continue;
+      if(PositionGetString(POSITION_SYMBOL) != m_symbol) continue;
+      if(PositionGetInteger(POSITION_MAGIC) != (long)m_magicNumber) continue;
+
+      double openPrice = PositionGetDouble(POSITION_PRICE_OPEN);
+      double currentSL = PositionGetDouble(POSITION_SL);
+      long   posType   = PositionGetInteger(POSITION_TYPE);
+
+      if(posType == POSITION_TYPE_BUY)
+      {
+         // Already at or above breakeven?
+         if(currentSL >= openPrice) continue;
+
+         double bid = SymbolInfoDouble(m_symbol, SYMBOL_BID);
+         if((bid - openPrice) >= beActivation)
+         {
+            double spread = SymbolInfoDouble(m_symbol, SYMBOL_ASK) - bid;
+            double beSL = NormalizeDouble(openPrice + spread, digits);
+            if(beSL > currentSL)
+            {
+               MqlTradeRequest req = {};
+               MqlTradeResult  res = {};
+               req.action   = TRADE_ACTION_SLTP;
+               req.position = ticket;
+               req.symbol   = m_symbol;
+               req.sl       = beSL;
+               req.tp       = PositionGetDouble(POSITION_TP);
+               OrderSend(req, res);
+            }
+         }
+      }
+      else if(posType == POSITION_TYPE_SELL)
+      {
+         double ask = SymbolInfoDouble(m_symbol, SYMBOL_ASK);
+         // Already at or below breakeven?
+         if(currentSL > 0 && currentSL <= openPrice) continue;
+
+         if((openPrice - ask) >= beActivation)
+         {
+            double spread = ask - SymbolInfoDouble(m_symbol, SYMBOL_BID);
+            double beSL = NormalizeDouble(openPrice - spread, digits);
+            if(currentSL == 0 || beSL < currentSL)
+            {
+               MqlTradeRequest req = {};
+               MqlTradeResult  res = {};
+               req.action   = TRADE_ACTION_SLTP;
+               req.position = ticket;
+               req.symbol   = m_symbol;
+               req.sl       = beSL;
+               req.tp       = PositionGetDouble(POSITION_TP);
+               OrderSend(req, res);
+            }
+         }
+      }
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Calculate SL price from a specific entry price (for pending orders)|
+//+------------------------------------------------------------------+
+double CClawRiskManager::CalculateSLPriceFromEntry(ENUM_SIGNAL_TYPE direction, double entryPrice)
+{
+   double atr = GetCurrentATR();
+   if(atr <= 0) return 0;
+
+   double point = SymbolInfoDouble(m_symbol, SYMBOL_POINT);
+   double slDistance = atr * m_slATRMultiplier;
+
+   double slPoints = slDistance / point;
+   if(slPoints < m_minSLPoints) slDistance = m_minSLPoints * point;
+   if(slPoints > m_maxSLPoints) slDistance = m_maxSLPoints * point;
+
+   int digits = (int)SymbolInfoInteger(m_symbol, SYMBOL_DIGITS);
+
+   if(direction == SIGNAL_BUY)
+      return NormalizeDouble(entryPrice - slDistance, digits);
+   else if(direction == SIGNAL_SELL)
+      return NormalizeDouble(entryPrice + slDistance, digits);
+
+   return 0;
+}
+
+//+------------------------------------------------------------------+
+//| Calculate TP price from a specific entry price (for pending orders)|
+//+------------------------------------------------------------------+
+double CClawRiskManager::CalculateTPPriceFromEntry(ENUM_SIGNAL_TYPE direction, double entryPrice, double slPrice)
+{
+   double atr = GetCurrentATR();
+   if(atr <= 0 || slPrice <= 0) return 0;
+
+   double slDistance = MathAbs(entryPrice - slPrice);
+   double tpDistance = atr * m_tpATRMultiplier;
+
+   double minTPDistance = slDistance * m_minRiskReward;
+   if(tpDistance < minTPDistance)
+      tpDistance = minTPDistance;
+
+   int digits = (int)SymbolInfoInteger(m_symbol, SYMBOL_DIGITS);
+
+   if(direction == SIGNAL_BUY)
+      return NormalizeDouble(entryPrice + tpDistance, digits);
+   else if(direction == SIGNAL_SELL)
+      return NormalizeDouble(entryPrice - tpDistance, digits);
+
+   return 0;
 }

@@ -22,9 +22,11 @@ except ImportError:
 EA_FILES = [
     "CLAWBOT.mq5",
     "ClawUtils.mqh",
+    "ClawMTF.mqh",
     "ClawStrategy_Trend.mqh",
     "ClawStrategy_Momentum.mqh",
     "ClawStrategy_Session.mqh",
+    "ClawStrategy_MeanRevert.mqh",
     "ClawRisk.mqh",
     "ClawAudit.mqh",
 ]

@@ -51,13 +51,17 @@ struct SignalResult
    ENUM_SIGNAL_STRENGTH strength;
    int                  score;
    string               reason;
+   double               entryPrice;    // Suggested entry for pending order (0 = use default)
+   double               suggestedTP;   // Suggested TP price (0 = use default ATR)
 
    void Reset()
    {
-      direction = SIGNAL_NONE;
-      strength  = STRENGTH_NONE;
-      score     = 0;
-      reason    = "";
+      direction  = SIGNAL_NONE;
+      strength   = STRENGTH_NONE;
+      score      = 0;
+      reason     = "";
+      entryPrice = 0;
+      suggestedTP = 0;
    }
 };
 
@@ -437,6 +441,50 @@ double GetMinStopLevel(string symbol)
    long stopLevel = SymbolInfoInteger(symbol, SYMBOL_TRADE_STOPS_LEVEL);
    if(stopLevel <= 0) stopLevel = 10; // Safe default
    return (double)stopLevel;
+}
+
+//+------------------------------------------------------------------+
+//| Count pending orders for this EA                                  |
+//+------------------------------------------------------------------+
+int CountPendingOrders(string symbol, ulong magicNumber)
+{
+   int count = 0;
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+   {
+      ulong ticket = OrderGetTicket(i);
+      if(ticket > 0)
+      {
+         if(OrderGetString(ORDER_SYMBOL) == symbol &&
+            OrderGetInteger(ORDER_MAGIC) == (long)magicNumber)
+         {
+            count++;
+         }
+      }
+   }
+   return count;
+}
+
+//+------------------------------------------------------------------+
+//| Delete all pending orders for this EA                             |
+//+------------------------------------------------------------------+
+void DeleteAllPendingOrders(string symbol, ulong magicNumber)
+{
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+   {
+      ulong ticket = OrderGetTicket(i);
+      if(ticket > 0)
+      {
+         if(OrderGetString(ORDER_SYMBOL) == symbol &&
+            OrderGetInteger(ORDER_MAGIC) == (long)magicNumber)
+         {
+            MqlTradeRequest request = {};
+            MqlTradeResult  result  = {};
+            request.action = TRADE_ACTION_REMOVE;
+            request.order  = ticket;
+            OrderSend(request, result);
+         }
+      }
+   }
 }
 
 #endif // CLAWUTILS_MQH

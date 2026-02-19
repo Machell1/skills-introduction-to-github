@@ -10,14 +10,17 @@
 //|    A - Action (momentum confirmation)                              |
 //|    W - Window (optimal session timing)                             |
 //|                                                                    |
-//|  Strategies:                                                       |
-//|    1. Trend Follow - Multi-EMA alignment with ADX confirmation    |
-//|    2. Momentum     - RSI divergence + MACD + Stochastic           |
-//|    3. Session      - Asian range breakout during London/NY        |
+//|  Strategies (Hybrid System):                                       |
+//|    1. Trend Follow  - Multi-EMA alignment with ADX confirmation   |
+//|    2. Momentum      - RSI divergence + MACD + Stochastic          |
+//|    3. Session       - Asian range breakout during London/NY       |
+//|    4. Mean Revert   - Bollinger Band fade at extremes (NEW)       |
 //|                                                                    |
 //|  Entry Rule:                                                       |
-//|    Minimum 2 of 3 strategies must agree on direction              |
-//|    Combined score determines position sizing                      |
+//|    H4 multi-timeframe filter determines allowed direction         |
+//|    Minimum 2 of 4 strategies must agree on direction              |
+//|    Pending limit orders for better entry prices                   |
+//|    Partial close at TP1 + breakeven + trail remainder             |
 //|                                                                    |
 //|  Risk Management:                                                  |
 //|    ATR-based dynamic SL/TP, position sizing, drawdown limits      |
@@ -35,9 +38,11 @@
 
 //--- Include modules
 #include "ClawUtils.mqh"
+#include "ClawMTF.mqh"
 #include "ClawStrategy_Trend.mqh"
 #include "ClawStrategy_Momentum.mqh"
 #include "ClawStrategy_Session.mqh"
+#include "ClawStrategy_MeanRevert.mqh"
 #include "ClawRisk.mqh"
 #include "ClawAudit.mqh"
 
@@ -103,6 +108,30 @@ input int      Inp_LondonStart      = 7;       // London entry window start
 input int      Inp_LondonEnd        = 16;      // London entry window end
 input int      Inp_ExitHour         = 20;      // Session exit hour (UTC)
 
+//--- Mean Reversion Strategy (Strategy 4) - NEW
+input string   Inp_Separator6b      = "=== MEAN REVERSION STRATEGY ==="; // ----
+input bool     Inp_EnableMeanRevert = true;    // Enable Mean Reversion Strategy
+input int      Inp_BB_Period        = 20;      // Bollinger Band period
+input double   Inp_BB_Deviation     = 2.0;     // Bollinger Band deviation
+input double   Inp_BB_TouchBuffer   = 0.2;     // Band touch buffer (% of width)
+
+//--- Multi-Timeframe Filter - NEW
+input string   Inp_Separator6c      = "=== MTF FILTER ===";             // ----
+input bool     Inp_EnableMTF        = true;    // Enable H4 trend filter
+input ENUM_TIMEFRAMES Inp_MTF_TF    = PERIOD_H4; // Higher timeframe for filter
+
+//--- Pending Orders - NEW
+input string   Inp_Separator6d      = "=== PENDING ORDERS ===";         // ----
+input bool     Inp_UsePendingOrders = true;    // Use limit orders instead of market
+input int      Inp_PendingExpBars   = 4;       // Pending order expiry (bars)
+input double   Inp_PullbackATR      = 0.3;     // Pullback distance for limit entry (ATR)
+
+//--- Partial Close / Profit Locking - NEW
+input string   Inp_Separator6e      = "=== PROFIT LOCKING ===";         // ----
+input bool     Inp_EnablePartialClose = true;  // Enable partial close at TP1
+input double   Inp_TP1_ATR          = 0.5;     // TP1 distance (ATR mult) for partial close
+input double   Inp_PartialClosePct  = 0.5;     // Fraction to close at TP1 (0.5 = 50%)
+
 //--- Confluence Settings
 input string   Inp_Separator7       = "=== CONFLUENCE SETTINGS ===";   // ----
 input int      Inp_MinScore         = 45;      // Minimum total score for entry
@@ -119,11 +148,13 @@ input string   Inp_ReportPath       = "CLAWBOT_Reports"; // Report folder
 //+------------------------------------------------------------------+
 //| Global Objects                                                      |
 //+------------------------------------------------------------------+
-CClawTrendStrategy    g_trendStrategy;
-CClawMomentumStrategy g_momentumStrategy;
-CClawSessionStrategy  g_sessionStrategy;
-CClawRiskManager      g_riskManager;
-CClawAudit            g_audit;
+CClawTrendStrategy       g_trendStrategy;
+CClawMomentumStrategy    g_momentumStrategy;
+CClawSessionStrategy     g_sessionStrategy;
+CClawMeanRevertStrategy  g_meanRevertStrategy;
+CClawMTF                 g_mtfFilter;
+CClawRiskManager         g_riskManager;
+CClawAudit               g_audit;
 
 //--- State variables
 bool   g_initialized = false;
@@ -283,6 +314,27 @@ int OnInit()
       }
    }
 
+   if(Inp_EnableMeanRevert)
+   {
+      if(!g_meanRevertStrategy.Init(g_activeSymbol, Inp_Timeframe,
+                                     Inp_BB_Period, Inp_BB_Deviation,
+                                     Inp_RSI_Period, Inp_RSI_Oversold, Inp_RSI_Overbought,
+                                     Inp_BB_TouchBuffer))
+      {
+         LogMessage("INIT", "ERROR: Mean Reversion strategy initialization failed");
+         initOk = false;
+      }
+   }
+
+   if(Inp_EnableMTF)
+   {
+      if(!g_mtfFilter.Init(g_activeSymbol, Inp_MTF_TF))
+      {
+         LogMessage("INIT", "WARNING: MTF filter initialization failed, continuing without it");
+         // Don't fail init, just disable the filter
+      }
+   }
+
    if(!g_riskManager.Init(g_activeSymbol, Inp_Timeframe, Inp_MagicNumber,
                            Inp_RiskPerTrade, Inp_MaxDailyLoss, Inp_MaxDrawdown,
                            Inp_MaxConcurrent, Inp_MaxDailyTrades, Inp_MinRiskReward,
@@ -351,9 +403,14 @@ void OnDeinit(const int reason)
       Print(g_audit.GetReportSummary());
    }
 
+   // Clean up pending orders before shutdown
+   DeleteAllPendingOrders(g_activeSymbol, Inp_MagicNumber);
+
    g_trendStrategy.Deinit();
    g_momentumStrategy.Deinit();
    g_sessionStrategy.Deinit();
+   g_meanRevertStrategy.Deinit();
+   g_mtfFilter.Deinit();
    g_riskManager.Deinit();
    g_audit.Deinit();
 
@@ -367,143 +424,223 @@ void OnTick()
 {
    if(!g_initialized) return;
 
-   // Only process on new bar (H1 = once per hour)
-   if(!IsNewBar(g_activeSymbol, Inp_Timeframe)) return;
+   // === PHASE 1: MANAGE EXISTING POSITIONS (every tick) ===
+   // Partial close at TP1: close 50%, move SL to breakeven
+   if(Inp_EnablePartialClose)
+      g_riskManager.ManagePartialClose(Inp_TP1_ATR, Inp_PartialClosePct);
 
-   // Manage trailing stops on existing positions
+   // Breakeven safety net
+   g_riskManager.ManageBreakeven();
+
+   // Trailing stops on existing positions
    g_riskManager.ManageTrailingStops();
+
+   // === PHASE 2: NEW BAR LOGIC (signal evaluation + order placement) ===
+   if(!IsNewBar(g_activeSymbol, Inp_Timeframe)) return;
 
    // Pre-check: can we open any trade at all?
    if(!g_riskManager.CanOpenTrade()) return;
 
-   // Cooldown check: skip if cooling down after consecutive losses
+   // Cooldown check
    if(g_cooldownRemaining > 0)
    {
       g_cooldownRemaining--;
       return;
    }
 
-   // Spread filter: skip if spread is too wide
+   // Spread filter
    double currentSpread = GetCurrentSpread(g_activeSymbol);
-   if(currentSpread > Inp_MaxSpread)
-   {
-      LogMessage("TICK", "Spread too wide: " + DoubleToString(currentSpread, 0) +
-                 " > " + DoubleToString(Inp_MaxSpread, 0) + " pts. Skipping.");
-      return;
-   }
+   if(currentSpread > Inp_MaxSpread) return;
 
-   // Evaluate all enabled strategies
-   SignalResult trendSignal, momentumSignal, sessionSignal;
+   // === H4 MULTI-TIMEFRAME FILTER ===
+   ENUM_SIGNAL_TYPE mtfDirection = SIGNAL_NONE;
+   if(Inp_EnableMTF)
+      mtfDirection = g_mtfFilter.GetTrendDirection();
+
+   // Delete stale pending orders before placing new ones
+   DeleteAllPendingOrders(g_activeSymbol, Inp_MagicNumber);
+
+   // === EVALUATE ALL STRATEGIES ===
+   SignalResult trendSignal, momentumSignal, sessionSignal, meanRevertSignal;
    trendSignal.Reset();
    momentumSignal.Reset();
    sessionSignal.Reset();
+   meanRevertSignal.Reset();
 
-   if(Inp_EnableTrend)    trendSignal    = g_trendStrategy.Evaluate();
-   if(Inp_EnableMomentum) momentumSignal = g_momentumStrategy.Evaluate();
-   if(Inp_EnableSession)  sessionSignal  = g_sessionStrategy.Evaluate();
+   if(Inp_EnableTrend)      trendSignal      = g_trendStrategy.Evaluate();
+   if(Inp_EnableMomentum)   momentumSignal   = g_momentumStrategy.Evaluate();
+   if(Inp_EnableSession)    sessionSignal    = g_sessionStrategy.Evaluate();
+   if(Inp_EnableMeanRevert) meanRevertSignal = g_meanRevertStrategy.Evaluate();
 
-   // === CONFLUENCE ENGINE ===
-   // Only count strategy votes that meet minimum individual score threshold
+   // === CONFLUENCE ENGINE WITH MTF FILTER ===
    int buyVotes  = 0, sellVotes = 0;
    int buyScore  = 0, sellScore = 0;
    string buyReasons = "", sellReasons = "";
+   double bestBuyEntry = 0, bestSellEntry = 0;
+   double bestBuyTP = 0, bestSellTP = 0;
 
-   // Trend vote (only if score >= MinStrategyScore)
+   // Helper macro: count a strategy vote if it meets threshold and MTF allows
+   // Trend vote
    if(trendSignal.direction == SIGNAL_BUY && trendSignal.score >= Inp_MinStrategyScore)
    {  buyVotes++; buyScore += trendSignal.score;
-      buyReasons += "[TREND:" + IntegerToString(trendSignal.score) + "] " + trendSignal.reason + " | "; }
+      buyReasons += "[TREND:" + IntegerToString(trendSignal.score) + "] " + trendSignal.reason + " | ";
+      if(trendSignal.entryPrice > 0) bestBuyEntry = trendSignal.entryPrice; }
    else if(trendSignal.direction == SIGNAL_SELL && trendSignal.score >= Inp_MinStrategyScore)
    {  sellVotes++; sellScore += trendSignal.score;
-      sellReasons += "[TREND:" + IntegerToString(trendSignal.score) + "] " + trendSignal.reason + " | "; }
+      sellReasons += "[TREND:" + IntegerToString(trendSignal.score) + "] " + trendSignal.reason + " | ";
+      if(trendSignal.entryPrice > 0) bestSellEntry = trendSignal.entryPrice; }
 
-   // Momentum vote (only if score >= MinStrategyScore)
+   // Momentum vote
    if(momentumSignal.direction == SIGNAL_BUY && momentumSignal.score >= Inp_MinStrategyScore)
    {  buyVotes++; buyScore += momentumSignal.score;
-      buyReasons += "[MOM:" + IntegerToString(momentumSignal.score) + "] " + momentumSignal.reason + " | "; }
+      buyReasons += "[MOM:" + IntegerToString(momentumSignal.score) + "] " + momentumSignal.reason + " | ";
+      if(momentumSignal.entryPrice > 0) bestBuyEntry = momentumSignal.entryPrice; }
    else if(momentumSignal.direction == SIGNAL_SELL && momentumSignal.score >= Inp_MinStrategyScore)
    {  sellVotes++; sellScore += momentumSignal.score;
-      sellReasons += "[MOM:" + IntegerToString(momentumSignal.score) + "] " + momentumSignal.reason + " | "; }
+      sellReasons += "[MOM:" + IntegerToString(momentumSignal.score) + "] " + momentumSignal.reason + " | ";
+      if(momentumSignal.entryPrice > 0) bestSellEntry = momentumSignal.entryPrice; }
 
-   // Session vote (only if score >= MinStrategyScore)
+   // Session vote
    if(sessionSignal.direction == SIGNAL_BUY && sessionSignal.score >= Inp_MinStrategyScore)
    {  buyVotes++; buyScore += sessionSignal.score;
-      buyReasons += "[SESS:" + IntegerToString(sessionSignal.score) + "] " + sessionSignal.reason + " | "; }
+      buyReasons += "[SESS:" + IntegerToString(sessionSignal.score) + "] " + sessionSignal.reason + " | ";
+      if(sessionSignal.entryPrice > 0) bestBuyEntry = sessionSignal.entryPrice; }
    else if(sessionSignal.direction == SIGNAL_SELL && sessionSignal.score >= Inp_MinStrategyScore)
    {  sellVotes++; sellScore += sessionSignal.score;
-      sellReasons += "[SESS:" + IntegerToString(sessionSignal.score) + "] " + sessionSignal.reason + " | "; }
+      sellReasons += "[SESS:" + IntegerToString(sessionSignal.score) + "] " + sessionSignal.reason + " | ";
+      if(sessionSignal.entryPrice > 0) bestSellEntry = sessionSignal.entryPrice; }
 
-   // Determine final direction by confluence
+   // Mean Reversion vote
+   if(meanRevertSignal.direction == SIGNAL_BUY && meanRevertSignal.score >= Inp_MinStrategyScore)
+   {  buyVotes++; buyScore += meanRevertSignal.score;
+      buyReasons += "[MREV:" + IntegerToString(meanRevertSignal.score) + "] " + meanRevertSignal.reason + " | ";
+      if(meanRevertSignal.entryPrice > 0) bestBuyEntry = meanRevertSignal.entryPrice;
+      if(meanRevertSignal.suggestedTP > 0) bestBuyTP = meanRevertSignal.suggestedTP; }
+   else if(meanRevertSignal.direction == SIGNAL_SELL && meanRevertSignal.score >= Inp_MinStrategyScore)
+   {  sellVotes++; sellScore += meanRevertSignal.score;
+      sellReasons += "[MREV:" + IntegerToString(meanRevertSignal.score) + "] " + meanRevertSignal.reason + " | ";
+      if(meanRevertSignal.entryPrice > 0) bestSellEntry = meanRevertSignal.entryPrice;
+      if(meanRevertSignal.suggestedTP > 0) bestSellTP = meanRevertSignal.suggestedTP; }
+
+   // Determine final direction
    ENUM_SIGNAL_TYPE finalDirection = SIGNAL_NONE;
    int finalScore = 0;
    string finalReason = "";
+   double suggestedEntry = 0;
+   double suggestedTP = 0;
 
    if(buyVotes >= Inp_MinStrategies && buyScore >= Inp_MinScore && buyScore > sellScore)
-   {  finalDirection = SIGNAL_BUY; finalScore = buyScore; finalReason = buyReasons; }
+   {  finalDirection = SIGNAL_BUY; finalScore = buyScore; finalReason = buyReasons;
+      suggestedEntry = bestBuyEntry; suggestedTP = bestBuyTP; }
    else if(sellVotes >= Inp_MinStrategies && sellScore >= Inp_MinScore && sellScore > buyScore)
-   {  finalDirection = SIGNAL_SELL; finalScore = sellScore; finalReason = sellReasons; }
+   {  finalDirection = SIGNAL_SELL; finalScore = sellScore; finalReason = sellReasons;
+      suggestedEntry = bestSellEntry; suggestedTP = bestSellTP; }
 
    if(finalDirection == SIGNAL_NONE) return;
 
-   ExecuteTrade(finalDirection, finalScore, finalReason);
+   // Apply MTF filter: only trade in the H4 trend direction
+   if(Inp_EnableMTF && mtfDirection != SIGNAL_NONE)
+   {
+      if(finalDirection != mtfDirection)
+      {
+         // Signal opposes H4 trend - skip
+         return;
+      }
+      // Signal aligns with H4 trend - bonus confidence
+      finalScore += 10;
+      finalReason += "[MTF:H4 aligned] ";
+   }
+
+   // Place trade (pending order or market order)
+   PlaceOrder(finalDirection, finalScore, finalReason, suggestedEntry, suggestedTP);
 }
 
 //+------------------------------------------------------------------+
-//| Execute a trade based on the confluent signal                      |
+//| Place a pending limit order or market order                        |
 //+------------------------------------------------------------------+
-void ExecuteTrade(ENUM_SIGNAL_TYPE direction, int score, string reason)
+void PlaceOrder(ENUM_SIGNAL_TYPE direction, int score, string reason,
+                double suggestedEntry, double suggestedTP)
 {
-   // Direction-specific duplicate check (CanOpenTrade already passed in OnTick)
+   // Direction-specific duplicate check
    if(direction == SIGNAL_BUY && CountBuyPositions(g_activeSymbol, Inp_MagicNumber) > 0) return;
    if(direction == SIGNAL_SELL && CountSellPositions(g_activeSymbol, Inp_MagicNumber) > 0) return;
 
-   // Calculate SL
-   double slPrice = g_riskManager.CalculateSLPrice(direction);
-   if(slPrice <= 0)
-   {
-      LogMessage("TRADE", "Could not calculate valid SL. Skipping trade.");
-      return;
-   }
+   // Don't place if we already have a pending order
+   if(CountPendingOrders(g_activeSymbol, Inp_MagicNumber) > 0) return;
 
-   double entryPrice;
-   if(direction == SIGNAL_BUY)
-      entryPrice = SymbolInfoDouble(g_activeSymbol, SYMBOL_ASK);
-   else
-      entryPrice = SymbolInfoDouble(g_activeSymbol, SYMBOL_BID);
-
-   if(entryPrice <= 0)
-   {
-      LogMessage("TRADE", "Invalid entry price. Market may be closed.");
-      return;
-   }
-
-   // Validate SL against broker minimum stop level
-   double minStopPts = GetMinStopLevel(g_activeSymbol);
    double point = SymbolInfoDouble(g_activeSymbol, SYMBOL_POINT);
    if(point <= 0) return;
    int digits = (int)SymbolInfoInteger(g_activeSymbol, SYMBOL_DIGITS);
+   double ask = SymbolInfoDouble(g_activeSymbol, SYMBOL_ASK);
+   double bid = SymbolInfoDouble(g_activeSymbol, SYMBOL_BID);
+   if(ask <= 0 || bid <= 0) return;
 
-   double slDistancePts = MathAbs(entryPrice - slPrice) / point;
-   if(slDistancePts < minStopPts)
+   // Determine entry price
+   double entryPrice = 0;
+   bool usePending = Inp_UsePendingOrders;
+
+   if(suggestedEntry > 0)
+   {
+      // Use strategy-suggested entry (e.g., Bollinger band level)
+      entryPrice = NormalizeDouble(suggestedEntry, digits);
+   }
+   else if(usePending)
+   {
+      // Calculate pullback entry: place limit order at a better price
+      double atr = g_riskManager.GetCurrentATR();
+      double pullback = atr * Inp_PullbackATR;
+
+      if(direction == SIGNAL_BUY)
+         entryPrice = NormalizeDouble(ask - pullback, digits);
+      else
+         entryPrice = NormalizeDouble(bid + pullback, digits);
+   }
+
+   // Validate pending order placement
+   double minStopPts = GetMinStopLevel(g_activeSymbol);
+   double minStopDist = minStopPts * point;
+
+   if(usePending && entryPrice > 0)
+   {
+      // Check if entry is on the correct side for a limit order
+      if(direction == SIGNAL_BUY && entryPrice >= ask - minStopDist)
+         usePending = false; // Too close to market, use market order
+      else if(direction == SIGNAL_SELL && entryPrice <= bid + minStopDist)
+         usePending = false;
+   }
+
+   // Fallback to market order
+   if(!usePending || entryPrice <= 0)
+   {
+      entryPrice = (direction == SIGNAL_BUY) ? ask : bid;
+   }
+
+   // Calculate SL from the entry price
+   double slPrice = g_riskManager.CalculateSLPriceFromEntry(direction, entryPrice);
+   if(slPrice <= 0) return;
+
+   // Enforce minimum stop level on SL
+   double slDist = MathAbs(entryPrice - slPrice) / point;
+   if(slDist < minStopPts)
    {
       if(direction == SIGNAL_BUY)
          slPrice = NormalizeDouble(entryPrice - minStopPts * point, digits);
       else
          slPrice = NormalizeDouble(entryPrice + minStopPts * point, digits);
-      slDistancePts = minStopPts;
-      LogMessage("TRADE", "SL adjusted to min stop level: " + DoubleToString(minStopPts, 0) + " pts");
    }
 
-   // Calculate TP
-   double tpPrice = g_riskManager.CalculateTPPrice(direction, entryPrice, slPrice);
-   if(tpPrice <= 0)
-   {
-      LogMessage("TRADE", "Could not calculate valid TP. Skipping trade.");
-      return;
-   }
+   // Calculate TP: use suggested TP from mean reversion, or default ATR-based
+   double tpPrice = 0;
+   if(suggestedTP > 0)
+      tpPrice = NormalizeDouble(suggestedTP, digits);
+   else
+      tpPrice = g_riskManager.CalculateTPPriceFromEntry(direction, entryPrice, slPrice);
 
-   // Validate TP against minimum stop level
-   double tpDistancePts = MathAbs(entryPrice - tpPrice) / point;
-   if(tpDistancePts < minStopPts)
+   if(tpPrice <= 0) return;
+
+   // Enforce minimum stop level on TP
+   double tpDist = MathAbs(entryPrice - tpPrice) / point;
+   if(tpDist < minStopPts)
    {
       if(direction == SIGNAL_BUY)
          tpPrice = NormalizeDouble(entryPrice + minStopPts * point, digits);
@@ -514,66 +651,83 @@ void ExecuteTrade(ENUM_SIGNAL_TYPE direction, int score, string reason)
    // Calculate lot size
    double slPoints = MathAbs(entryPrice - slPrice) / point;
    double lotSize = g_riskManager.CalculateLotSize(slPoints);
-   if(lotSize <= 0)
-   {
-      LogMessage("TRADE", "Lot size is 0. Insufficient balance or invalid SL.");
-      return;
-   }
+   if(lotSize <= 0) return;
 
-   // Scale lot size by confluence strength
+   // Scale by confluence strength
    if(score < 60)
       lotSize = NormalizeLot(g_activeSymbol, lotSize * 0.50);
    else if(score < 80)
       lotSize = NormalizeLot(g_activeSymbol, lotSize * 0.75);
-
    if(lotSize <= 0) return;
 
-   // Build trade request
+   // Build order request
    MqlTradeRequest request = {};
    MqlTradeResult  result  = {};
 
-   request.action    = TRADE_ACTION_DEAL;
-   request.symbol    = g_activeSymbol;
-   request.volume    = lotSize;
-   request.sl        = slPrice;
-   request.tp        = tpPrice;
-   request.magic     = Inp_MagicNumber;
-   request.deviation = 30;
-   request.comment   = "CLAWBOT|S=" + IntegerToString(score) + "|" +
-                        TimeToString(TimeCurrent(), TIME_DATE);
+   request.symbol   = g_activeSymbol;
+   request.volume   = lotSize;
+   request.sl       = slPrice;
+   request.tp       = tpPrice;
+   request.magic    = Inp_MagicNumber;
+   request.comment  = "CLAWBOT|S=" + IntegerToString(score) + "|" +
+                       TimeToString(TimeCurrent(), TIME_DATE);
 
-   if(direction == SIGNAL_BUY)
-   {  request.type = ORDER_TYPE_BUY; request.price = SymbolInfoDouble(g_activeSymbol, SYMBOL_ASK); }
-   else
-   {  request.type = ORDER_TYPE_SELL; request.price = SymbolInfoDouble(g_activeSymbol, SYMBOL_BID); }
+   if(usePending && MathAbs(entryPrice - ((direction == SIGNAL_BUY) ? ask : bid)) > minStopDist)
+   {
+      // === PENDING LIMIT ORDER ===
+      request.action = TRADE_ACTION_PENDING;
+      request.price  = entryPrice;
 
-   // Fill policy: prefer FOK (Deriv standard), fallback IOC
-   long fillPolicy = SymbolInfoInteger(g_activeSymbol, SYMBOL_FILLING_MODE);
-   if((fillPolicy & SYMBOL_FILLING_FOK) != 0)
-      request.type_filling = ORDER_FILLING_FOK;
-   else if((fillPolicy & SYMBOL_FILLING_IOC) != 0)
-      request.type_filling = ORDER_FILLING_IOC;
-   else
+      if(direction == SIGNAL_BUY)
+         request.type = (entryPrice < ask) ? ORDER_TYPE_BUY_LIMIT : ORDER_TYPE_BUY_STOP;
+      else
+         request.type = (entryPrice > bid) ? ORDER_TYPE_SELL_LIMIT : ORDER_TYPE_SELL_STOP;
+
+      // Set expiration
+      request.type_time  = ORDER_TIME_SPECIFIED;
+      request.expiration = TimeCurrent() + Inp_PendingExpBars * PeriodSeconds(Inp_Timeframe);
+
       request.type_filling = ORDER_FILLING_RETURN;
+   }
+   else
+   {
+      // === MARKET ORDER (fallback) ===
+      request.action    = TRADE_ACTION_DEAL;
+      request.deviation = 30;
 
-   // Send order
+      if(direction == SIGNAL_BUY)
+      {  request.type = ORDER_TYPE_BUY; request.price = ask; }
+      else
+      {  request.type = ORDER_TYPE_SELL; request.price = bid; }
+
+      long fillPolicy = SymbolInfoInteger(g_activeSymbol, SYMBOL_FILLING_MODE);
+      if((fillPolicy & SYMBOL_FILLING_FOK) != 0)
+         request.type_filling = ORDER_FILLING_FOK;
+      else if((fillPolicy & SYMBOL_FILLING_IOC) != 0)
+         request.type_filling = ORDER_FILLING_IOC;
+      else
+         request.type_filling = ORDER_FILLING_RETURN;
+   }
+
    OrderSend(request, result);
 
    if(result.retcode == TRADE_RETCODE_DONE || result.retcode == TRADE_RETCODE_PLACED)
    {
       string dirStr = (direction == SIGNAL_BUY) ? "BUY" : "SELL";
-      LogMessage("TRADE", "*** " + dirStr + " ORDER EXECUTED ***");
-      LogMessage("TRADE", "Ticket: " + IntegerToString((int)result.order) +
-                 " | Price: " + DoubleToString(result.price, digits) +
+      string typeStr = (request.action == TRADE_ACTION_PENDING) ? "PENDING " : "";
+      LogMessage("ORDER", "*** " + typeStr + dirStr + " ORDER PLACED ***");
+      LogMessage("ORDER", "Entry: " + DoubleToString(entryPrice, digits) +
                  " | Lot: " + DoubleToString(lotSize, 2) +
                  " | SL: " + DoubleToString(slPrice, digits) +
                  " | TP: " + DoubleToString(tpPrice, digits));
-      LogMessage("TRADE", "Score: " + IntegerToString(score) + " | Reason: " + reason);
-      g_riskManager.IncrementDailyTrades();
+      LogMessage("ORDER", "Score: " + IntegerToString(score) + " | " + reason);
+
+      if(request.action == TRADE_ACTION_DEAL)
+         g_riskManager.IncrementDailyTrades();
    }
    else
    {
-      LogMessage("TRADE", "Order failed. Code: " + IntegerToString(result.retcode) + " | " + result.comment);
+      LogMessage("ORDER", "Order failed. Code: " + IntegerToString(result.retcode) + " | " + result.comment);
    }
 }
 
