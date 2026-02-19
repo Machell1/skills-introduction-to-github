@@ -137,7 +137,7 @@ def phase_analyze(reports, data_path) -> bool:
         print("  See the diagnostics above for how to fix this.")
         return False
 
-    analyzer = BacktestAnalyzer(threshold=80.0)
+    analyzer = BacktestAnalyzer(threshold=55.0)
 
     # Try EA audit CSV first
     if "audit_report" in reports:
@@ -168,7 +168,7 @@ def phase_analyze(reports, data_path) -> bool:
             pf = m.get("profit_factor", 0)
             dd = m.get("max_drawdown_pct", 0)
             print(f"  Trades: {n}  WR: {wr:.1f}%  PF: {pf:.2f}  DD: {dd:.1f}%")
-            passed = wr >= 80 and n >= 50
+            passed = wr >= 55 and n >= 50
             print(f"  Result: {'PASSED' if passed else 'FAILED'}")
             return passed
 
@@ -188,7 +188,7 @@ def phase_analyze(reports, data_path) -> bool:
         if "overall_passed" in log:
             passed = log["overall_passed"]
         else:
-            passed = wr >= 80 and n >= 50
+            passed = wr >= 55 and n >= 50
 
         print(f"    Result: {'PASSED' if passed else 'FAILED'}")
         return passed

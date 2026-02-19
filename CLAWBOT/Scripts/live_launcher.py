@@ -112,7 +112,7 @@ Inp_EnableMomentum=true
 Inp_EnableSession=true
 Inp_MinScore=40
 Inp_MinStrategies=2
-Inp_WinRateThreshold=80.0
+Inp_WinRateThreshold=55.0
 </inputs>
 </expert>
 

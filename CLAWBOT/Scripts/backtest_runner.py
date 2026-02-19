@@ -294,7 +294,7 @@ def parse_mt5_logs(data_path: Path) -> dict:
             results["source"] = "mt5_log"
             break
 
-        # From threshold check: "Win Rate: 85.0% (need >=80.0%) -> PASS"
+        # From threshold check: "Win Rate: 60.0% (need >=55.0%) -> PASS"
         m = re.search(r'Win Rate:\s*([\d.]+)%.*?(PASS|FAIL)', line)
         if m and "win_rate" not in results:
             results["win_rate"] = float(m.group(1))

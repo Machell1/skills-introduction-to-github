@@ -16,7 +16,7 @@
 //|   - Calculates comprehensive performance metrics                  |
 //|   - Win rate, profit factor, max drawdown, Sharpe ratio           |
 //|   - Generates detailed CSV report                                  |
-//|   - 80% threshold evaluation                                       |
+//|   - 55% threshold evaluation                                       |
 //|   - Weakness identification and reporting                          |
 //|   - Strategy-level breakdown                                       |
 //|   - Session/time analysis                                          |
@@ -81,7 +81,7 @@ public:
 
    // Analysis
    void   CalculateStatistics();
-   bool   MeetsThreshold(double winRateThreshold = 80.0);
+   bool   MeetsThreshold(double winRateThreshold = 55.0);
    double GetWinRate()      { return m_stats.winRate; }
    double GetProfitFactor() { return m_stats.profitFactor; }
    double GetMaxDrawdown()  { return m_stats.maxDrawdownPercent; }
@@ -317,7 +317,7 @@ void CClawAudit::CalculateStatistics()
 }
 
 //+------------------------------------------------------------------+
-//| Check if performance meets the 80% threshold                       |
+//| Check if performance meets the 55% threshold                       |
 //+------------------------------------------------------------------+
 bool CClawAudit::MeetsThreshold(double winRateThreshold)
 {
@@ -376,9 +376,9 @@ void CClawAudit::IdentifyWeaknesses()
    ArrayFree(m_weaknesses);
 
    // Win rate weakness
-   if(m_stats.winRate < 80.0)
+   if(m_stats.winRate < 55.0)
       AddWeakness("WIN_RATE: Win rate is " + DoubleToString(m_stats.winRate, 1) +
-                  "% which is below the 80% target. Consider tightening entry filters.");
+                  "% which is below the 55% target. With 1:2 R:R, 55%+ WR is profitable.");
 
    if(m_stats.winRate < 50.0)
       AddWeakness("CRITICAL_WIN_RATE: Win rate below 50% indicates fundamental strategy issues.");
@@ -598,13 +598,13 @@ bool CClawAudit::GenerateWeaknessReport()
 
    string filename = m_reportPath + "\\CLAWBOT_Weakness_Report.csv";
 
-   string report = "CLAWBOT WEAKNESS REPORT - BACKTEST DID NOT MEET 80% THRESHOLD";
+   string report = "CLAWBOT WEAKNESS REPORT - BACKTEST DID NOT MEET THRESHOLD";
    report += "\nGenerated: " + TimeToString(TimeCurrent());
    report += "\n\nThis report identifies areas where the CLAWBOT strategy underperformed.";
    report += "\nUpload this report to Claude for analysis and optimization recommendations.";
 
    report += "\n\n=== PERFORMANCE SUMMARY ===";
-   report += "\nWin Rate: " + DoubleToString(m_stats.winRate, 2) + "% (TARGET: >=80%)";
+   report += "\nWin Rate: " + DoubleToString(m_stats.winRate, 2) + "% (TARGET: >=55%)";
    report += "\nProfit Factor: " + DoubleToString(m_stats.profitFactor, 2) + " (TARGET: >=1.5)";
    report += "\nMax Drawdown: " + DoubleToString(m_stats.maxDrawdownPercent, 2) + "% (TARGET: <=15%)";
    report += "\nExpectancy: $" + DoubleToString(m_stats.expectancy, 2) + " (TARGET: >$0)";
@@ -689,7 +689,7 @@ bool CClawAudit::GeneratePassReport()
    report += "\nTotal Trades: " + IntegerToString(m_stats.totalTrades);
 
    report += "\n\n=== DEPLOYMENT INSTRUCTIONS ===";
-   report += "\n1. The bot has passed backtesting with >=80% win rate";
+   report += "\n1. The bot has passed backtesting with >=55% win rate";
    report += "\n2. Please provide your Deriv MT5 login credentials when prompted";
    report += "\n3. Credentials will be stored securely in an encrypted .env file";
    report += "\n4. Start with MINIMUM lot sizes for the first 2 weeks of live trading";

@@ -12,7 +12,7 @@ from datetime import datetime
 
 
 class BacktestAnalyzer:
-    def __init__(self, threshold: float = 80.0):
+    def __init__(self, threshold: float = 55.0):
         self.threshold = threshold
         self.stats: dict = {}
         self.strategies: dict = {}
