@@ -35,33 +35,33 @@ import pandas as pd
 class Config:
     # Risk
     initial_balance: float = 10000.0
-    risk_per_trade: float = 0.5       # %
-    max_daily_loss: float = 5.0       # %
-    max_drawdown: float = 15.0        # %
+    risk_per_trade: float = 1.5       # %
+    max_daily_loss: float = 4.0       # %
+    max_drawdown: float = 12.0        # %
     max_concurrent: int = 3
-    max_daily_trades: int = 10
+    max_daily_trades: int = 8
     min_risk_reward: float = 1.5
 
     # SL / TP
-    sl_atr: float = 2.0
-    tp_atr: float = 4.0
-    min_sl_pts: float = 200.0
-    max_sl_pts: float = 800.0
-    trail_activation: float = 1.5     # ATR mult
-    trail_distance: float = 1.0       # ATR mult
+    sl_atr: float = 0.5
+    tp_atr: float = 2.0
+    min_sl_pts: float = 150.0
+    max_sl_pts: float = 600.0
+    trail_activation: float = 1.5     # ATR mult - let winners develop before trailing
+    trail_distance: float = 0.6       # ATR mult - wide enough to avoid shakeouts
 
     # Spread
-    max_spread: float = 40.0          # points
-    avg_spread: float = 25.0          # simulated spread points
+    max_spread: float = 35.0          # points
+    avg_spread: float = 10.0          # simulated spread points (Deriv XAUUSD typical)
 
     # Strategies
     enable_trend: bool = True
     enable_momentum: bool = True
     enable_session: bool = True
     enable_mean_revert: bool = True
-    enable_smc: bool = True
+    enable_smc: bool = False
     enable_brain: bool = True
-    enable_mtf: bool = True
+    enable_mtf: bool = False
 
     # Pending orders
     use_pending: bool = True
@@ -70,27 +70,27 @@ class Config:
 
     # Dynamic closure
     enable_dyn_closure: bool = True
-    dyn_max_loss_atr: float = 1.8
-    dyn_stale_bars: int = 24
-    dyn_stale_range: float = 0.15
-    dyn_adverse_mom: float = 1.2
+    dyn_max_loss_atr: float = 0.7     # hard ceiling at 1.4x SL
+    dyn_stale_bars: int = 12
+    dyn_stale_range: float = 0.2
+    dyn_adverse_mom: float = 0.15     # cut early on adverse momentum
 
     # Dynamic TP
     enable_dynamic_tp: bool = True
-    dyn_tp_trend_mult: float = 1.6
-    dyn_tp_range_mult: float = 1.0
+    dyn_tp_trend_mult: float = 2.0
+    dyn_tp_range_mult: float = 0.8
 
     # Partial close
     enable_partial_close: bool = True
-    tp1_atr: float = 1.0
-    partial_close_pct: float = 0.5
+    tp1_atr: float = 1.0             # wait for real profit before partial
+    partial_close_pct: float = 0.15   # keep 85% running
 
     # Confluence
-    min_score: int = 45
+    min_score: int = 40
     min_strategies: int = 2
-    min_strat_score: int = 15
-    cooldown_losses: int = 3
-    cooldown_bars: int = 2
+    min_strat_score: int = 25
+    cooldown_losses: int = 2
+    cooldown_bars: int = 4
 
     # Trend strategy
     ema_fast: int = 8
@@ -499,34 +499,52 @@ def detect_regime(i, df, cfg):
          'mean_revert': 1.0, 'smc': 1.0, 'lot_mult': 1.0,
          'score_adj': 0, 'allow': True}
 
-    if adx > 30 and atr_ratio < 1.5:
-        # Strong trend
-        w['trend'] = 1.8
-        w['momentum'] = 1.3
-        w['mean_revert'] = 0.3
-        w['session'] = 0.8
-        w['smc'] = 1.2
-        w['lot_mult'] = 1.1
-        w['score_adj'] = -5
-    elif adx < 20:
-        # Ranging
+    if atr_ratio > 1.5:
+        # Volatile expansion
         w['trend'] = 0.4
-        w['momentum'] = 0.8
-        w['mean_revert'] = 1.8
-        w['session'] = 1.2
-        w['smc'] = 1.3
-        w['lot_mult'] = 0.8
-        w['score_adj'] = 5
-    elif atr_ratio > 1.5:
-        # Volatile
-        w['trend'] = 0.6
-        w['momentum'] = 0.6
-        w['mean_revert'] = 0.5
-        w['session'] = 0.5
-        w['smc'] = 0.8
-        w['lot_mult'] = 0.5
+        w['momentum'] = 0.4
+        w['mean_revert'] = 0.2
+        w['session'] = 0.2
+        w['smc'] = 0.7
+        w['lot_mult'] = 0.3
         w['score_adj'] = 15
         w['allow'] = atr_ratio < 2.5
+    elif adx > 30 and atr_ratio >= 1.0:
+        # Strong trend
+        w['trend'] = 1.6
+        w['momentum'] = 1.3
+        w['mean_revert'] = 0.2
+        w['session'] = 1.1
+        w['smc'] = 1.5
+        w['lot_mult'] = 1.2
+        w['score_adj'] = -8
+    elif adx > 20:
+        # Weak trend
+        w['trend'] = 1.3
+        w['momentum'] = 1.1
+        w['mean_revert'] = 0.4
+        w['session'] = 0.9
+        w['smc'] = 1.3
+        w['lot_mult'] = 0.85
+        w['score_adj'] = 0
+    elif adx < 20 and atr_ratio < 1.2:
+        # Ranging
+        w['trend'] = 0.2
+        w['momentum'] = 0.6
+        w['mean_revert'] = 1.6
+        w['session'] = 0.4
+        w['smc'] = 1.0
+        w['lot_mult'] = 0.45
+        w['score_adj'] = 8
+    else:
+        # Transitioning
+        w['trend'] = 0.3
+        w['momentum'] = 1.1
+        w['mean_revert'] = 0.9
+        w['session'] = 0.4
+        w['smc'] = 1.4
+        w['lot_mult'] = 0.4
+        w['score_adj'] = 8
 
     return w
 
@@ -670,7 +688,21 @@ class ClawbotBacktester:
                         sp = cfg.avg_spread * cfg.point
                         if pos.direction == 1: pos.sl = max(pos.sl, pos.entry_price + sp)
                         else: pos.sl = min(pos.sl, pos.entry_price - sp)
-            # Trailing
+            # Breakeven: activate at 50% of trailing activation (separate from trail)
+            be_act = atr * cfg.trail_activation * 0.5
+            if pos.direction == 1:
+                pd_ = bc - pos.entry_price
+                if pd_ >= be_act and pos.sl < pos.entry_price:
+                    sp = cfg.avg_spread * cfg.point
+                    be_sl = pos.entry_price + sp
+                    if be_sl > pos.sl: pos.sl = be_sl
+            else:
+                pd_ = pos.entry_price - bc
+                if pd_ >= be_act and (pos.sl > pos.entry_price or pos.sl == 0):
+                    sp = cfg.avg_spread * cfg.point
+                    be_sl = pos.entry_price - sp
+                    if be_sl < pos.sl: pos.sl = be_sl
+            # Trailing: only after full activation distance
             ta = atr * cfg.trail_activation; td = atr * cfg.trail_distance
             if pos.direction == 1:
                 pd_ = bc - pos.entry_price
@@ -682,10 +714,10 @@ class ClawbotBacktester:
                 if pd_ >= ta:
                     ns = bc + td
                     if ns < pos.sl and ns < pos.entry_price: pos.sl = ns
-            # Progressive SL
-            if cfg.enable_dyn_closure and unr < 0 and bars_held >= 8:
+            # Progressive SL (aggressive schedule matching ClawRisk.mqh)
+            if cfg.enable_dyn_closure and unr < 0 and bars_held >= 5:
                 osd = abs(pos.entry_price - pos.original_sl) or atr * cfg.sl_atr
-                f = 0.45 if bars_held >= 20 else (0.60 if bars_held >= 14 else 0.80)
+                f = 0.30 if bars_held >= 16 else (0.45 if bars_held >= 10 else 0.65)
                 if f < 1.0:
                     nsd = max(osd * f, cfg.min_sl_pts * cfg.point * 0.5)
                     if pos.direction == 1:
@@ -707,20 +739,44 @@ class ClawbotBacktester:
         dd = (self.peak_balance - self.balance) / max(self.peak_balance, 1) * 100
         if dd > cfg.max_drawdown: return
         if d['day_of_week'][i] >= 5: return
+        hr = d['hour'][i]; dow = d['day_of_week'][i]
+        # Session restrictions: no Asian early, no late Friday, no early Monday
+        if hr < 4: return  # Early Asian - too quiet
+        if hr >= 21: return  # Off hours
+        if dow == 4 and hr >= 16: return  # Friday after 16:00
+        if dow == 0 and hr < 5: return  # Monday early
 
         # Regime
         adx = d['adx'][i]
         atr_avg = d['atr'][max(0,i-50):i+1].mean() if i > 10 else atr
         ar = atr / max(atr_avg, 0.01)
         wt = wm = ws = wmr = wsmc = 1.0; lm = 1.0; sa = 0; allow = True
-        if adx > 30 and ar < 1.5:
-            wt=1.8; wm=1.3; wmr=0.3; ws=0.8; wsmc=1.2; lm=1.1; sa=-5
-        elif adx < 20:
-            wt=0.4; wm=0.8; wmr=1.8; ws=1.2; wsmc=1.3; lm=0.8; sa=5
-        elif ar > 1.5:
-            wt=0.6; wm=0.6; wmr=0.5; ws=0.5; wsmc=0.8; lm=0.5; sa=15
+        if ar > 1.5 and (adx > 20 or (i >= 3 and d['adx'][i] - d['adx'][i-2] > 5)):
+            # Volatile expansion
+            wt=0.4; wm=0.4; ws=0.2; wmr=0.2; wsmc=0.7; lm=0.3; sa=15
             allow = ar < 2.5
+        elif adx > 30 and ar >= 1.0:
+            # Strong trend
+            wt=1.6; wm=1.3; ws=1.1; wmr=0.2; wsmc=1.5; lm=1.2; sa=-8
+        elif adx > 20:
+            # Weak trend
+            wt=1.3; wm=1.1; ws=0.9; wmr=0.4; wsmc=1.3; lm=0.85; sa=0
+        elif adx < 20 and ar < 1.2:
+            # Ranging
+            wt=0.2; wm=0.6; ws=0.4; wmr=1.6; wsmc=1.0; lm=0.45; sa=8
+        else:
+            # Transitioning
+            wt=0.3; wm=1.1; ws=0.4; wmr=0.9; wsmc=1.4; lm=0.4; sa=8
         if not allow: return
+        # Session-based adjustments
+        if hr < 7:  # Asian
+            wt *= 0.3; wm *= 0.4; ws *= 0.2; wmr *= 1.1; wsmc *= 0.5; lm *= 0.4
+        elif 7 <= hr < 10:  # London open
+            wt *= 1.2; ws *= 1.5; wsmc *= 1.4; wmr *= 0.5; lm *= 1.1
+        elif 12 <= hr < 16:  # Overlap
+            wt *= 1.2; wm *= 1.2; ws *= 1.2; wsmc *= 1.3; lm *= 1.1
+        elif 17 <= hr < 21:  # NY afternoon
+            wt *= 0.6; wmr *= 1.0; wsmc *= 0.7; lm *= 0.5
 
         sigs = []
         if cfg.enable_trend:
@@ -766,7 +822,8 @@ class ClawbotBacktester:
         if slp < cfg.min_sl_pts: sld = cfg.min_sl_pts * cfg.point
         if slp > cfg.max_sl_pts: sld = cfg.max_sl_pts * cfg.point
         tpd = atr * cfg.tp_atr
-        mtp = sld * cfg.min_risk_reward
+        # Enforce minimum R:R of 1.5:1
+        mtp = sld * max(cfg.min_risk_reward, 1.5)
         if tpd < mtp: tpd = mtp
 
         if direction == 1:
@@ -778,8 +835,9 @@ class ClawbotBacktester:
         lot = ra / (sld / cfg.point * cfg.tick_value)
         lot = max(cfg.min_lot, min(cfg.max_lot, round(lot / cfg.lot_step) * cfg.lot_step))
         lot = round(lot * lm, 2)
-        if score < 60: lot = round(lot * 0.5, 2)
-        elif score < 80: lot = round(lot * 0.75, 2)
+        if score < 50: lot = round(lot * 0.60, 2)
+        elif score < 70: lot = round(lot * 0.80, 2)
+        # score >= 70: full lot (reward high-confidence signals)
         lot = max(cfg.min_lot, lot)
 
         self.ticket_counter += 1
@@ -1029,6 +1087,23 @@ class ClawbotBacktester:
                         else:
                             pos.sl = min(pos.sl, pos.entry_price - spread)
 
+            # --- Breakeven: activate at 50% of trailing activation ---
+            be_act_dist = atr * self.cfg.trail_activation * 0.5
+            if pos.direction == 1:
+                profit_dist = bar_close - pos.entry_price
+                if profit_dist >= be_act_dist and pos.sl < pos.entry_price:
+                    spread = self.cfg.avg_spread * self.cfg.point
+                    be_sl = pos.entry_price + spread
+                    if be_sl > pos.sl:
+                        pos.sl = be_sl
+            else:
+                profit_dist = pos.entry_price - bar_close
+                if profit_dist >= be_act_dist and pos.sl > pos.entry_price:
+                    spread = self.cfg.avg_spread * self.cfg.point
+                    be_sl = pos.entry_price - spread
+                    if be_sl < pos.sl:
+                        pos.sl = be_sl
+
             # --- Trailing stop ---
             trail_act_dist = atr * self.cfg.trail_activation
             trail_stop_dist = atr * self.cfg.trail_distance
@@ -1045,19 +1120,19 @@ class ClawbotBacktester:
                     if new_sl < pos.sl and new_sl < pos.entry_price:
                         pos.sl = new_sl
 
-            # --- Progressive SL tightening (losing positions) ---
-            if self.cfg.enable_dyn_closure and unrealized < 0 and bars_held >= 8:
+            # --- Progressive SL tightening (aggressive schedule) ---
+            if self.cfg.enable_dyn_closure and unrealized < 0 and bars_held >= 5:
                 orig_sl_dist = abs(pos.entry_price - pos.original_sl)
                 if orig_sl_dist <= 0:
                     orig_sl_dist = atr * self.cfg.sl_atr
 
                 factor = 1.0
-                if bars_held >= 20:
+                if bars_held >= 16:
+                    factor = 0.30
+                elif bars_held >= 10:
                     factor = 0.45
-                elif bars_held >= 14:
-                    factor = 0.60
-                elif bars_held >= 8:
-                    factor = 0.80
+                elif bars_held >= 5:
+                    factor = 0.65
 
                 if factor < 1.0:
                     new_sl_dist = orig_sl_dist * factor
@@ -1204,10 +1279,11 @@ class ClawbotBacktester:
 
         # Apply brain lot multiplier + score scaling
         lot = round(lot * weights['lot_mult'], 2)
-        if score < 60:
-            lot = round(lot * 0.5, 2)
-        elif score < 80:
-            lot = round(lot * 0.75, 2)
+        if score < 50:
+            lot = round(lot * 0.60, 2)
+        elif score < 70:
+            lot = round(lot * 0.80, 2)
+        # score >= 70: full lot (reward high-confidence signals)
         lot = max(cfg.min_lot, lot)
 
         # Open position
@@ -1434,6 +1510,20 @@ def main(data_path=None, config_overrides=None):
     print(f"Loaded {len(df)} bars from {data_path}")
 
     cfg = Config()
+
+    # Auto-load optimal_config.json if available
+    opt_path = Path(__file__).parent.parent / "Data" / "optimal_config.json"
+    if opt_path.exists():
+        try:
+            with open(opt_path) as f:
+                opt = json.load(f)
+            for k, v in opt.items():
+                if hasattr(cfg, k):
+                    setattr(cfg, k, type(getattr(cfg, k))(v))
+            print(f"Loaded config from {opt_path.name}")
+        except Exception as e:
+            print(f"Warning: could not load {opt_path}: {e}")
+
     if config_overrides:
         for k, v in config_overrides.items():
             if hasattr(cfg, k):
