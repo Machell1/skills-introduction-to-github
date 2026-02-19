@@ -53,22 +53,22 @@ input ENUM_BOT_MODE   Inp_BotMode   = MODE_BACKTEST;                   // Bot Mo
 
 //--- Risk Management
 input string   Inp_Separator2       = "=== RISK MANAGEMENT ===";       // ----
-input double   Inp_RiskPerTrade     = 1.5;     // Risk per trade (%)
-input double   Inp_MaxDailyLoss     = 3.0;     // Max daily loss (%)
-input double   Inp_MaxDrawdown      = 8.0;     // Max total drawdown (%)
-input int      Inp_MaxConcurrent    = 2;       // Max concurrent trades
-input int      Inp_MaxDailyTrades   = 5;       // Max trades per day
-input double   Inp_MinRiskReward    = 1.5;     // Minimum Risk:Reward ratio
+input double   Inp_RiskPerTrade     = 1.0;     // Risk per trade (%)
+input double   Inp_MaxDailyLoss     = 5.0;     // Max daily loss (%)
+input double   Inp_MaxDrawdown      = 15.0;    // Max total drawdown (%)
+input int      Inp_MaxConcurrent    = 3;       // Max concurrent trades
+input int      Inp_MaxDailyTrades   = 8;       // Max trades per day
+input double   Inp_MinRiskReward    = 0.3;     // Minimum Risk:Reward ratio
 
 //--- Stop Loss / Take Profit
 input string   Inp_Separator3       = "=== SL/TP SETTINGS ===";        // ----
-input double   Inp_SL_ATR           = 2.0;     // SL ATR multiplier
-input double   Inp_TP_ATR           = 3.0;     // TP ATR multiplier
-input double   Inp_MinSL            = 150.0;   // Minimum SL (points)
-input double   Inp_MaxSL            = 500.0;   // Maximum SL (points)
-input double   Inp_TrailActivation  = 1.0;     // Trailing activation (ATR mult)
-input double   Inp_TrailDistance    = 1.5;     // Trailing distance (ATR mult)
-input double   Inp_MaxSpread        = 50.0;    // Max allowed spread (points)
+input double   Inp_SL_ATR           = 3.0;     // SL ATR multiplier
+input double   Inp_TP_ATR           = 1.0;     // TP ATR multiplier
+input double   Inp_MinSL            = 200.0;   // Minimum SL (points)
+input double   Inp_MaxSL            = 800.0;   // Maximum SL (points)
+input double   Inp_TrailActivation  = 0.5;     // Trailing activation (ATR mult)
+input double   Inp_TrailDistance    = 0.8;     // Trailing distance (ATR mult)
+input double   Inp_MaxSpread        = 40.0;    // Max allowed spread (points)
 
 //--- Trend Strategy (Strategy 1)
 input string   Inp_Separator4       = "=== TREND STRATEGY ===";        // ----
@@ -78,15 +78,15 @@ input int      Inp_EMA_Signal       = 21;      // Signal EMA period
 input int      Inp_EMA_Trend        = 50;      // Trend EMA period
 input int      Inp_EMA_Major        = 200;     // Major trend EMA period
 input int      Inp_ADX_Period       = 14;      // ADX period
-input double   Inp_ADX_Threshold    = 20.0;    // ADX threshold
-input int      Inp_CrossoverLookback = 3;      // Crossover lookback bars
+input double   Inp_ADX_Threshold    = 25.0;    // ADX threshold
+input int      Inp_CrossoverLookback = 5;      // Crossover lookback bars
 
 //--- Momentum Strategy (Strategy 2)
 input string   Inp_Separator5       = "=== MOMENTUM STRATEGY ===";     // ----
 input bool     Inp_EnableMomentum   = true;    // Enable Momentum Strategy
 input int      Inp_RSI_Period       = 14;      // RSI period
-input double   Inp_RSI_Oversold     = 35.0;    // RSI oversold level
-input double   Inp_RSI_Overbought   = 65.0;    // RSI overbought level
+input double   Inp_RSI_Oversold     = 30.0;    // RSI oversold level
+input double   Inp_RSI_Overbought   = 70.0;    // RSI overbought level
 input int      Inp_MACD_Fast        = 12;      // MACD fast period
 input int      Inp_MACD_Slow        = 26;      // MACD slow period
 input int      Inp_MACD_Signal      = 9;       // MACD signal period
@@ -100,12 +100,12 @@ input bool     Inp_EnableSession    = true;    // Enable Session Strategy
 input int      Inp_AsianStart       = 0;       // Asian session start (UTC hour)
 input int      Inp_AsianEnd         = 7;       // Asian session end (UTC hour)
 input int      Inp_LondonStart      = 7;       // London entry window start
-input int      Inp_LondonEnd        = 10;      // London entry window end
+input int      Inp_LondonEnd        = 16;      // London entry window end
 input int      Inp_ExitHour         = 20;      // Session exit hour (UTC)
 
 //--- Confluence Settings
 input string   Inp_Separator7       = "=== CONFLUENCE SETTINGS ===";   // ----
-input int      Inp_MinScore         = 40;      // Minimum total score for entry
+input int      Inp_MinScore         = 25;      // Minimum total score for entry
 input int      Inp_MinStrategies    = 2;       // Min strategies agreeing
 
 //--- Backtest / Audit Settings
