@@ -42,6 +42,41 @@ enum ENUM_SESSION
    SESSION_OFF     = 4    // Off-hours
 };
 
+//--- Smart Money Concepts enumerations
+enum ENUM_MARKET_TREND
+{
+   TREND_BULLISH   = 1,    // HH + HL pattern
+   TREND_BEARISH   = -1,   // LH + LL pattern
+   TREND_UNDEFINED = 0     // No clear structure
+};
+
+enum ENUM_MARKET_REGIME
+{
+   REGIME_TRENDING_STRONG    = 0,   // Strong directional move
+   REGIME_TRENDING_WEAK      = 1,   // Gradual trend with pullbacks
+   REGIME_RANGING            = 2,   // Consolidation / sideways
+   REGIME_VOLATILE_EXPANSION = 3,   // High volatility breakout
+   REGIME_TRANSITIONING      = 4    // Regime change in progress
+};
+
+enum ENUM_PRICE_ZONE
+{
+   ZONE_EXTREME_PREMIUM  = 0,   // > 75% of swing range (strongest sells)
+   ZONE_PREMIUM          = 1,   // 62-75% (sells)
+   ZONE_EQUILIBRIUM      = 2,   // 38-62% (no trade / scalp)
+   ZONE_DISCOUNT         = 3,   // 25-38% (buys)
+   ZONE_EXTREME_DISCOUNT = 4    // < 25% (strongest buys)
+};
+
+enum ENUM_STRUCTURE_EVENT
+{
+   STRUCT_NONE          = 0,
+   STRUCT_BOS_BULLISH   = 1,   // Break of structure bullish (continuation)
+   STRUCT_BOS_BEARISH   = 2,   // Break of structure bearish (continuation)
+   STRUCT_CHOCH_BULLISH = 3,   // Change of character to bullish (reversal)
+   STRUCT_CHOCH_BEARISH = 4    // Change of character to bearish (reversal)
+};
+
 //+------------------------------------------------------------------+
 //| Signal result structure                                           |
 //+------------------------------------------------------------------+
@@ -53,15 +88,19 @@ struct SignalResult
    string               reason;
    double               entryPrice;    // Suggested entry for pending order (0 = use default)
    double               suggestedTP;   // Suggested TP price (0 = use default ATR)
+   double               suggestedSL;   // SMC-based SL (e.g., below OB zone) (0 = use default)
+   int                  smcConfluence; // Number of SMC confluences supporting this signal
 
    void Reset()
    {
-      direction  = SIGNAL_NONE;
-      strength   = STRENGTH_NONE;
-      score      = 0;
-      reason     = "";
-      entryPrice = 0;
-      suggestedTP = 0;
+      direction     = SIGNAL_NONE;
+      strength      = STRENGTH_NONE;
+      score         = 0;
+      reason        = "";
+      entryPrice    = 0;
+      suggestedTP   = 0;
+      suggestedSL   = 0;
+      smcConfluence = 0;
    }
 };
 

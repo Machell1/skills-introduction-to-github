@@ -1,44 +1,45 @@
 //+------------------------------------------------------------------+
 //|                                                     CLAWBOT.mq5  |
-//|                  CLAWBOT - Multi-Strategy Confluence Trading Bot  |
-//|                         For XAUUSD H1 on Deriv MT5               |
+//|         CLAWBOT - SMC-Powered Adaptive Confluence Trading Bot    |
+//|                    For XAUUSD H1 on Deriv MT5                    |
 //+------------------------------------------------------------------+
 //|                                                                    |
-//|  CLAWBOT Confluence System:                                        |
-//|    C - Confluence (multi-indicator agreement)                      |
-//|    L - Levels (key support/resistance via session ranges)          |
-//|    A - Action (momentum confirmation)                              |
-//|    W - Window (optimal session timing)                             |
+//|  CLAWBOT Confluence System v2.0:                                   |
+//|    C - Confluence (multi-strategy + SMC agreement)                |
+//|    L - Levels (OBs, FVGs, liquidity, session ranges)             |
+//|    A - Action (momentum + structure confirmation)                 |
+//|    W - Window (adaptive session + regime timing)                  |
 //|                                                                    |
-//|  Strategies (Hybrid System):                                       |
-//|    1. Trend Follow  - Multi-EMA alignment with ADX confirmation   |
-//|    2. Momentum      - RSI divergence + MACD + Stochastic          |
-//|    3. Session       - Asian range breakout during London/NY       |
-//|    4. Mean Revert   - Bollinger Band fade at extremes (NEW)       |
+//|  Strategies (5-Strategy Hybrid + Adaptive Brain):                  |
+//|    1. Trend Follow  - Multi-EMA alignment with ADX               |
+//|    2. Momentum      - RSI divergence + MACD + Stochastic         |
+//|    3. Session       - Asian range breakout during London/NY      |
+//|    4. Mean Revert   - Bollinger Band fade at extremes            |
+//|    5. Smart Money   - OBs, FVGs, BOS/CHoCH, liquidity sweeps    |
 //|                                                                    |
-//|  Entry Rule:                                                       |
-//|    H4 multi-timeframe filter determines allowed direction         |
-//|    Minimum 2 of 4 strategies must agree on direction              |
-//|    Pending limit orders for better entry prices                   |
-//|    Partial close at TP1 + breakeven + trail remainder             |
+//|  Adaptive Brain:                                                   |
+//|    - Detects market regime (trending/ranging/volatile/transition) |
+//|    - Adjusts strategy weights per regime + session               |
+//|    - Uses SMC structure for directional filtering                 |
+//|    - Scales position size by confidence and regime               |
 //|                                                                    |
-//|  Risk Management:                                                  |
-//|    ATR-based dynamic SL/TP, position sizing, drawdown limits      |
-//|    Trailing stops, daily loss caps, max concurrent positions       |
-//|                                                                    |
-//|  Audit System:                                                     |
-//|    Full trade logging, performance metrics, weakness detection     |
-//|    80% win rate threshold for live deployment authorization        |
+//|  Entry Flow:                                                       |
+//|    Brain.Update() -> SMC.Update() -> All strategies evaluate     |
+//|    -> Brain applies weights -> Weighted confluence scoring       |
+//|    -> MTF + SMC zone filter -> Pending/market order              |
+//|    -> Partial close at TP1 + breakeven + trail remainder         |
 //|                                                                    |
 //+------------------------------------------------------------------+
 #property copyright   "CLAWBOT"
-#property version     "1.00"
-#property description "CLAWBOT - Multi-Strategy Confluence EA for XAUUSD"
+#property version     "2.00"
+#property description "CLAWBOT v2 - SMC-Powered Adaptive Confluence EA for XAUUSD"
 #property description "Designed for Deriv MT5 - H1 Timeframe"
 
 //--- Include modules
 #include "ClawUtils.mqh"
 #include "ClawMTF.mqh"
+#include "ClawSMC.mqh"
+#include "ClawBrain.mqh"
 #include "ClawStrategy_Trend.mqh"
 #include "ClawStrategy_Momentum.mqh"
 #include "ClawStrategy_Session.mqh"
@@ -108,25 +109,44 @@ input int      Inp_LondonStart      = 7;       // London entry window start
 input int      Inp_LondonEnd        = 16;      // London entry window end
 input int      Inp_ExitHour         = 20;      // Session exit hour (UTC)
 
-//--- Mean Reversion Strategy (Strategy 4) - NEW
+//--- Mean Reversion Strategy (Strategy 4)
 input string   Inp_Separator6b      = "=== MEAN REVERSION STRATEGY ==="; // ----
 input bool     Inp_EnableMeanRevert = true;    // Enable Mean Reversion Strategy
 input int      Inp_BB_Period        = 20;      // Bollinger Band period
 input double   Inp_BB_Deviation     = 2.0;     // Bollinger Band deviation
 input double   Inp_BB_TouchBuffer   = 0.2;     // Band touch buffer (% of width)
 
-//--- Multi-Timeframe Filter - NEW
+//--- Smart Money Concepts (Strategy 5)
+input string   Inp_Separator6f      = "=== SMART MONEY CONCEPTS ===";  // ----
+input bool     Inp_EnableSMC        = true;    // Enable SMC Strategy
+input int      Inp_SMC_SwingStr     = 3;       // Swing point strength (bars each side)
+input double   Inp_SMC_ImpulseATR   = 2.5;     // Impulse detection ATR multiplier
+input int      Inp_SMC_OBMaxAge     = 72;      // Order Block max age (bars)
+input double   Inp_SMC_FVGMinSize   = 2.0;     // FVG minimum size ($)
+input double   Inp_SMC_FVGMaxSize   = 15.0;    // FVG maximum size ($)
+input double   Inp_SMC_SweepATR     = 1.5;     // Liquidity sweep max depth (ATR)
+input double   Inp_SMC_RoundNum     = 50.0;    // Round number interval ($)
+
+//--- Adaptive Brain
+input string   Inp_Separator6g      = "=== ADAPTIVE BRAIN ===";        // ----
+input bool     Inp_EnableBrain      = true;    // Enable adaptive strategy weighting
+input double   Inp_Brain_ADXTrend   = 20.0;    // ADX threshold for trending
+input double   Inp_Brain_ADXStrong  = 30.0;    // ADX threshold for strong trend
+input double   Inp_Brain_ATRHigh    = 1.5;     // ATR ratio for volatile detection
+input double   Inp_Brain_ATRLow     = 0.8;     // ATR ratio for compression detection
+
+//--- Multi-Timeframe Filter
 input string   Inp_Separator6c      = "=== MTF FILTER ===";             // ----
 input bool     Inp_EnableMTF        = true;    // Enable H4 trend filter
 input ENUM_TIMEFRAMES Inp_MTF_TF    = PERIOD_H4; // Higher timeframe for filter
 
-//--- Pending Orders - NEW
+//--- Pending Orders
 input string   Inp_Separator6d      = "=== PENDING ORDERS ===";         // ----
 input bool     Inp_UsePendingOrders = true;    // Use limit orders instead of market
 input int      Inp_PendingExpBars   = 4;       // Pending order expiry (bars)
 input double   Inp_PullbackATR      = 0.3;     // Pullback distance for limit entry (ATR)
 
-//--- Partial Close / Profit Locking - NEW
+//--- Partial Close / Profit Locking
 input string   Inp_Separator6e      = "=== PROFIT LOCKING ===";         // ----
 input bool     Inp_EnablePartialClose = true;  // Enable partial close at TP1
 input double   Inp_TP1_ATR          = 0.5;     // TP1 distance (ATR mult) for partial close
@@ -152,6 +172,8 @@ CClawTrendStrategy       g_trendStrategy;
 CClawMomentumStrategy    g_momentumStrategy;
 CClawSessionStrategy     g_sessionStrategy;
 CClawMeanRevertStrategy  g_meanRevertStrategy;
+CClawSMC                 g_smc;
+CClawBrain               g_brain;
 CClawMTF                 g_mtfFilter;
 CClawRiskManager         g_riskManager;
 CClawAudit               g_audit;
@@ -190,14 +212,14 @@ bool ValidateInputs()
       LogMessage("INIT", "ERROR: MaxConcurrent must be 1-10. Got: " + IntegerToString(Inp_MaxConcurrent));
       valid = false;
    }
-   if(Inp_MinScore < 0 || Inp_MinScore > 120)
+   if(Inp_MinScore < 0 || Inp_MinScore > 200)
    {
-      LogMessage("INIT", "ERROR: MinScore must be 0-120. Got: " + IntegerToString(Inp_MinScore));
+      LogMessage("INIT", "ERROR: MinScore must be 0-200. Got: " + IntegerToString(Inp_MinScore));
       valid = false;
    }
-   if(Inp_MinStrategies < 1 || Inp_MinStrategies > 3)
+   if(Inp_MinStrategies < 1 || Inp_MinStrategies > 4)
    {
-      LogMessage("INIT", "ERROR: MinStrategies must be 1-3. Got: " + IntegerToString(Inp_MinStrategies));
+      LogMessage("INIT", "ERROR: MinStrategies must be 1-4. Got: " + IntegerToString(Inp_MinStrategies));
       valid = false;
    }
    if(Inp_SL_ATR <= 0 || Inp_TP_ATR <= 0)
@@ -210,16 +232,6 @@ bool ValidateInputs()
       LogMessage("INIT", "ERROR: MinSL > MaxSL. Check SL settings.");
       valid = false;
    }
-   if(Inp_EMA_Fast <= 0 || Inp_EMA_Signal <= 0 || Inp_EMA_Trend <= 0 || Inp_EMA_Major <= 0)
-   {
-      LogMessage("INIT", "ERROR: EMA periods must be positive.");
-      valid = false;
-   }
-   if(Inp_AsianStart < 0 || Inp_AsianStart > 23 || Inp_AsianEnd < 0 || Inp_AsianEnd > 23)
-   {
-      LogMessage("INIT", "ERROR: Session hours must be 0-23.");
-      valid = false;
-   }
 
    return valid;
 }
@@ -229,21 +241,21 @@ bool ValidateInputs()
 //+------------------------------------------------------------------+
 int OnInit()
 {
-   LogMessage("INIT", "==================================");
-   LogMessage("INIT", "  CLAWBOT v1.00 Starting...");
+   LogMessage("INIT", "==========================================");
+   LogMessage("INIT", "  CLAWBOT v2.00 - SMC Adaptive System");
    LogMessage("INIT", "  Symbol: " + Inp_Symbol);
    LogMessage("INIT", "  Timeframe: " + EnumToString(Inp_Timeframe));
    LogMessage("INIT", "  Mode: " + (Inp_BotMode == MODE_BACKTEST ? "BACKTEST" : "LIVE"));
-   LogMessage("INIT", "==================================");
+   LogMessage("INIT", "  SMC: " + (Inp_EnableSMC ? "ON" : "OFF"));
+   LogMessage("INIT", "  Brain: " + (Inp_EnableBrain ? "ON" : "OFF"));
+   LogMessage("INIT", "==========================================");
 
-   // Validate inputs
    if(!ValidateInputs())
    {
-      LogMessage("INIT", "FATAL: Input validation failed. Check parameters.");
+      LogMessage("INIT", "FATAL: Input validation failed.");
       return INIT_FAILED;
    }
 
-   // Detect server UTC offset
    g_serverUTCOffset = GetServerUTCOffset();
    LogMessage("INIT", "Server UTC offset: " + IntegerToString(g_serverUTCOffset) + " hours");
 
@@ -251,18 +263,12 @@ int OnInit()
    g_activeSymbol = Inp_Symbol;
    if(!ValidateSymbol(g_activeSymbol))
    {
-      // Try common Deriv alternatives
       bool found = false;
-      string alt1 = "XAUUSD";
-      string alt2 = "XAUUSDm";
-      string alt3 = "#XAUUSD";
-      string alt4 = "Gold";
-
-      if(ValidateSymbol(alt1))      { g_activeSymbol = alt1; found = true; }
-      else if(ValidateSymbol(alt2)) { g_activeSymbol = alt2; found = true; }
-      else if(ValidateSymbol(alt3)) { g_activeSymbol = alt3; found = true; }
-      else if(ValidateSymbol(alt4)) { g_activeSymbol = alt4; found = true; }
-
+      string alts[] = {"XAUUSD", "XAUUSDm", "#XAUUSD", "Gold"};
+      for(int i = 0; i < ArraySize(alts); i++)
+      {
+         if(ValidateSymbol(alts[i])) { g_activeSymbol = alts[i]; found = true; break; }
+      }
       if(found)
          LogMessage("INIT", "Using alternative symbol: " + g_activeSymbol);
       else
@@ -275,81 +281,79 @@ int OnInit()
    if(Period() != Inp_Timeframe)
       LogMessage("INIT", "WARNING: Chart timeframe does not match settings.");
 
-   // Initialize strategies
    bool initOk = true;
 
+   // Initialize strategies
    if(Inp_EnableTrend)
    {
       if(!g_trendStrategy.Init(g_activeSymbol, Inp_Timeframe,
-                                Inp_EMA_Fast, Inp_EMA_Signal, Inp_EMA_Trend, Inp_EMA_Major,
-                                Inp_ADX_Period, Inp_ADX_Threshold, Inp_CrossoverLookback))
-      {
-         LogMessage("INIT", "ERROR: Trend strategy initialization failed");
-         initOk = false;
-      }
+            Inp_EMA_Fast, Inp_EMA_Signal, Inp_EMA_Trend, Inp_EMA_Major,
+            Inp_ADX_Period, Inp_ADX_Threshold, Inp_CrossoverLookback))
+      { LogMessage("INIT", "ERROR: Trend strategy init failed"); initOk = false; }
    }
 
    if(Inp_EnableMomentum)
    {
       if(!g_momentumStrategy.Init(g_activeSymbol, Inp_Timeframe,
-                                   Inp_RSI_Period, Inp_RSI_Oversold, Inp_RSI_Overbought,
-                                   Inp_MACD_Fast, Inp_MACD_Slow, Inp_MACD_Signal,
-                                   Inp_Stoch_K, Inp_Stoch_D, Inp_Stoch_Slowing))
-      {
-         LogMessage("INIT", "ERROR: Momentum strategy initialization failed");
-         initOk = false;
-      }
+            Inp_RSI_Period, Inp_RSI_Oversold, Inp_RSI_Overbought,
+            Inp_MACD_Fast, Inp_MACD_Slow, Inp_MACD_Signal,
+            Inp_Stoch_K, Inp_Stoch_D, Inp_Stoch_Slowing))
+      { LogMessage("INIT", "ERROR: Momentum strategy init failed"); initOk = false; }
    }
 
    if(Inp_EnableSession)
    {
       if(!g_sessionStrategy.Init(g_activeSymbol, Inp_Timeframe,
-                                  14, 0.5,
-                                  Inp_AsianStart, Inp_AsianEnd,
-                                  Inp_LondonStart, Inp_LondonEnd,
-                                  Inp_ExitHour))
-      {
-         LogMessage("INIT", "ERROR: Session strategy initialization failed");
-         initOk = false;
-      }
+            14, 0.5, Inp_AsianStart, Inp_AsianEnd,
+            Inp_LondonStart, Inp_LondonEnd, Inp_ExitHour))
+      { LogMessage("INIT", "ERROR: Session strategy init failed"); initOk = false; }
    }
 
    if(Inp_EnableMeanRevert)
    {
       if(!g_meanRevertStrategy.Init(g_activeSymbol, Inp_Timeframe,
-                                     Inp_BB_Period, Inp_BB_Deviation,
-                                     Inp_RSI_Period, Inp_RSI_Oversold, Inp_RSI_Overbought,
-                                     Inp_BB_TouchBuffer))
-      {
-         LogMessage("INIT", "ERROR: Mean Reversion strategy initialization failed");
-         initOk = false;
-      }
+            Inp_BB_Period, Inp_BB_Deviation,
+            Inp_RSI_Period, Inp_RSI_Oversold, Inp_RSI_Overbought,
+            Inp_BB_TouchBuffer))
+      { LogMessage("INIT", "ERROR: Mean Reversion strategy init failed"); initOk = false; }
    }
 
+   // Initialize SMC module
+   if(Inp_EnableSMC)
+   {
+      if(!g_smc.Init(g_activeSymbol, Inp_Timeframe,
+            Inp_SMC_SwingStr, Inp_SMC_ImpulseATR, Inp_SMC_OBMaxAge,
+            Inp_SMC_FVGMinSize, Inp_SMC_FVGMaxSize, 50,
+            Inp_SMC_SweepATR, Inp_SMC_RoundNum))
+      { LogMessage("INIT", "ERROR: SMC module init failed"); initOk = false; }
+   }
+
+   // Initialize Brain
+   if(Inp_EnableBrain)
+   {
+      if(!g_brain.Init(g_activeSymbol, Inp_Timeframe,
+            Inp_Brain_ADXTrend, Inp_Brain_ADXStrong,
+            Inp_Brain_ATRHigh, Inp_Brain_ATRLow))
+      { LogMessage("INIT", "WARNING: Brain init failed, using equal weights"); }
+   }
+
+   // Initialize MTF filter
    if(Inp_EnableMTF)
    {
       if(!g_mtfFilter.Init(g_activeSymbol, Inp_MTF_TF))
-      {
-         LogMessage("INIT", "WARNING: MTF filter initialization failed, continuing without it");
-         // Don't fail init, just disable the filter
-      }
+         LogMessage("INIT", "WARNING: MTF filter init failed, continuing without it");
    }
 
+   // Initialize risk manager
    if(!g_riskManager.Init(g_activeSymbol, Inp_Timeframe, Inp_MagicNumber,
-                           Inp_RiskPerTrade, Inp_MaxDailyLoss, Inp_MaxDrawdown,
-                           Inp_MaxConcurrent, Inp_MaxDailyTrades, Inp_MinRiskReward,
-                           Inp_SL_ATR, Inp_TP_ATR, Inp_MinSL, Inp_MaxSL,
-                           Inp_TrailActivation, Inp_TrailDistance))
-   {
-      LogMessage("INIT", "ERROR: Risk manager initialization failed");
-      initOk = false;
-   }
+         Inp_RiskPerTrade, Inp_MaxDailyLoss, Inp_MaxDrawdown,
+         Inp_MaxConcurrent, Inp_MaxDailyTrades, Inp_MinRiskReward,
+         Inp_SL_ATR, Inp_TP_ATR, Inp_MinSL, Inp_MaxSL,
+         Inp_TrailActivation, Inp_TrailDistance))
+   { LogMessage("INIT", "ERROR: Risk manager init failed"); initOk = false; }
 
    if(!g_audit.Init(AccountInfoDouble(ACCOUNT_BALANCE), Inp_ReportPath))
-   {
-      LogMessage("INIT", "ERROR: Audit module initialization failed");
-      initOk = false;
-   }
+   { LogMessage("INIT", "ERROR: Audit module init failed"); initOk = false; }
 
    if(!initOk)
    {
@@ -358,9 +362,8 @@ int OnInit()
    }
 
    EventSetTimer(60);
-
    g_initialized = true;
-   LogMessage("INIT", "CLAWBOT initialized successfully. Waiting for trading signals...");
+   LogMessage("INIT", "CLAWBOT v2.0 initialized. SMC + Brain active. Waiting for signals...");
    return INIT_SUCCEEDED;
 }
 
@@ -381,35 +384,28 @@ void OnDeinit(const int reason)
          g_audit.GeneratePassReport();
          LogMessage("DEINIT", "*** BACKTEST PASSED! Win rate >= " +
                     DoubleToString(Inp_WinRateThreshold, 0) + "% ***");
-         LogMessage("DEINIT", "Pass report generated. Ready for live deployment.");
-         LogMessage("DEINIT", "Run credential_manager.py to set up live trading.");
-
          Alert("CLAWBOT BACKTEST PASSED! Win rate: " +
-               DoubleToString(g_audit.GetWinRate(), 1) + "% | " +
-               "Run credential_manager.py to enter your Deriv login credentials.");
+               DoubleToString(g_audit.GetWinRate(), 1) + "%");
       }
       else
       {
          g_audit.GenerateWeaknessReport();
          LogMessage("DEINIT", "*** BACKTEST DID NOT MEET THRESHOLD ***");
          LogMessage("DEINIT", "Win rate: " + DoubleToString(g_audit.GetWinRate(), 1) + "%");
-         LogMessage("DEINIT", "Weakness report generated. Upload to Claude for analysis.");
-
          Alert("CLAWBOT BACKTEST: Win rate " + DoubleToString(g_audit.GetWinRate(), 1) +
-               "% (target: " + DoubleToString(Inp_WinRateThreshold, 0) + "%). " +
-               "Weakness report in CLAWBOT_Reports. Upload to Claude for fixes.");
+               "% (target: " + DoubleToString(Inp_WinRateThreshold, 0) + "%).");
       }
-
       Print(g_audit.GetReportSummary());
    }
 
-   // Clean up pending orders before shutdown
    DeleteAllPendingOrders(g_activeSymbol, Inp_MagicNumber);
 
    g_trendStrategy.Deinit();
    g_momentumStrategy.Deinit();
    g_sessionStrategy.Deinit();
    g_meanRevertStrategy.Deinit();
+   g_smc.Deinit();
+   g_brain.Deinit();
    g_mtfFilter.Deinit();
    g_riskManager.Deinit();
    g_audit.Deinit();
@@ -425,147 +421,190 @@ void OnTick()
    if(!g_initialized) return;
 
    // === PHASE 1: MANAGE EXISTING POSITIONS (every tick) ===
-   // Partial close at TP1: close 50%, move SL to breakeven
    if(Inp_EnablePartialClose)
       g_riskManager.ManagePartialClose(Inp_TP1_ATR, Inp_PartialClosePct);
-
-   // Breakeven safety net
    g_riskManager.ManageBreakeven();
-
-   // Trailing stops on existing positions
    g_riskManager.ManageTrailingStops();
 
-   // === PHASE 2: NEW BAR LOGIC (signal evaluation + order placement) ===
+   // === PHASE 2: NEW BAR LOGIC ===
    if(!IsNewBar(g_activeSymbol, Inp_Timeframe)) return;
 
-   // Pre-check: can we open any trade at all?
    if(!g_riskManager.CanOpenTrade()) return;
 
-   // Cooldown check
-   if(g_cooldownRemaining > 0)
-   {
-      g_cooldownRemaining--;
-      return;
-   }
+   if(g_cooldownRemaining > 0) { g_cooldownRemaining--; return; }
 
-   // Spread filter
    double currentSpread = GetCurrentSpread(g_activeSymbol);
    if(currentSpread > Inp_MaxSpread) return;
 
-   // === H4 MULTI-TIMEFRAME FILTER ===
+   // === UPDATE SMC MARKET STRUCTURE ===
+   if(Inp_EnableSMC)
+      g_smc.Update();
+
+   // === UPDATE BRAIN (regime detection, session awareness) ===
+   ENUM_MARKET_TREND smcTrend     = Inp_EnableSMC ? g_smc.GetMarketTrend() : TREND_UNDEFINED;
+   ENUM_PRICE_ZONE   smcZone      = Inp_EnableSMC ? g_smc.GetPriceZone() : ZONE_EQUILIBRIUM;
+   ENUM_STRUCTURE_EVENT smcEvent   = Inp_EnableSMC ? g_smc.GetLastStructEvent() : STRUCT_NONE;
+
+   if(Inp_EnableBrain)
+      g_brain.Update(smcTrend, smcZone, smcEvent);
+
+   // === GET STRATEGY WEIGHTS FROM BRAIN ===
+   StrategyWeights weights;
+   weights.Reset();
+   if(Inp_EnableBrain)
+   {
+      weights = g_brain.GetWeights(smcTrend, smcZone, smcEvent);
+      if(!weights.allowTrading) return; // Brain says don't trade now
+   }
+
+   // === H4 MTF FILTER ===
    ENUM_SIGNAL_TYPE mtfDirection = SIGNAL_NONE;
    if(Inp_EnableMTF)
       mtfDirection = g_mtfFilter.GetTrendDirection();
 
-   // Delete stale pending orders before placing new ones
+   // Delete stale pending orders
    DeleteAllPendingOrders(g_activeSymbol, Inp_MagicNumber);
 
-   // === EVALUATE ALL STRATEGIES ===
-   SignalResult trendSignal, momentumSignal, sessionSignal, meanRevertSignal;
+   // === EVALUATE ALL 5 STRATEGIES ===
+   SignalResult trendSignal, momentumSignal, sessionSignal, meanRevertSignal, smcSignal;
    trendSignal.Reset();
    momentumSignal.Reset();
    sessionSignal.Reset();
    meanRevertSignal.Reset();
+   smcSignal.Reset();
 
    if(Inp_EnableTrend)      trendSignal      = g_trendStrategy.Evaluate();
    if(Inp_EnableMomentum)   momentumSignal   = g_momentumStrategy.Evaluate();
    if(Inp_EnableSession)    sessionSignal    = g_sessionStrategy.Evaluate();
    if(Inp_EnableMeanRevert) meanRevertSignal = g_meanRevertStrategy.Evaluate();
+   if(Inp_EnableSMC)        smcSignal        = g_smc.Evaluate();
 
-   // === CONFLUENCE ENGINE WITH MTF FILTER ===
+   // === WEIGHTED CONFLUENCE ENGINE ===
    int buyVotes  = 0, sellVotes = 0;
-   int buyScore  = 0, sellScore = 0;
+   double buyScore  = 0, sellScore = 0;
    string buyReasons = "", sellReasons = "";
    double bestBuyEntry = 0, bestSellEntry = 0;
    double bestBuyTP = 0, bestSellTP = 0;
+   double bestBuySL = 0, bestSellSL = 0;
 
-   // Helper macro: count a strategy vote if it meets threshold and MTF allows
-   // Trend vote
-   if(trendSignal.direction == SIGNAL_BUY && trendSignal.score >= Inp_MinStrategyScore)
-   {  buyVotes++; buyScore += trendSignal.score;
-      buyReasons += "[TREND:" + IntegerToString(trendSignal.score) + "] " + trendSignal.reason + " | ";
-      if(trendSignal.entryPrice > 0) bestBuyEntry = trendSignal.entryPrice; }
-   else if(trendSignal.direction == SIGNAL_SELL && trendSignal.score >= Inp_MinStrategyScore)
-   {  sellVotes++; sellScore += trendSignal.score;
-      sellReasons += "[TREND:" + IntegerToString(trendSignal.score) + "] " + trendSignal.reason + " | ";
-      if(trendSignal.entryPrice > 0) bestSellEntry = trendSignal.entryPrice; }
+   int minStratScore = Inp_MinStrategyScore;
 
-   // Momentum vote
-   if(momentumSignal.direction == SIGNAL_BUY && momentumSignal.score >= Inp_MinStrategyScore)
-   {  buyVotes++; buyScore += momentumSignal.score;
-      buyReasons += "[MOM:" + IntegerToString(momentumSignal.score) + "] " + momentumSignal.reason + " | ";
-      if(momentumSignal.entryPrice > 0) bestBuyEntry = momentumSignal.entryPrice; }
-   else if(momentumSignal.direction == SIGNAL_SELL && momentumSignal.score >= Inp_MinStrategyScore)
-   {  sellVotes++; sellScore += momentumSignal.score;
-      sellReasons += "[MOM:" + IntegerToString(momentumSignal.score) + "] " + momentumSignal.reason + " | ";
-      if(momentumSignal.entryPrice > 0) bestSellEntry = momentumSignal.entryPrice; }
+   // Helper: tally a weighted strategy vote
+   // Trend
+   if(trendSignal.direction == SIGNAL_BUY && trendSignal.score >= minStratScore)
+   {  buyVotes++; buyScore += trendSignal.score * weights.trend;
+      buyReasons += "[TREND:" + IntegerToString(trendSignal.score) + "x" + DoubleToString(weights.trend, 1) + "] "; }
+   else if(trendSignal.direction == SIGNAL_SELL && trendSignal.score >= minStratScore)
+   {  sellVotes++; sellScore += trendSignal.score * weights.trend;
+      sellReasons += "[TREND:" + IntegerToString(trendSignal.score) + "x" + DoubleToString(weights.trend, 1) + "] "; }
 
-   // Session vote
-   if(sessionSignal.direction == SIGNAL_BUY && sessionSignal.score >= Inp_MinStrategyScore)
-   {  buyVotes++; buyScore += sessionSignal.score;
-      buyReasons += "[SESS:" + IntegerToString(sessionSignal.score) + "] " + sessionSignal.reason + " | ";
+   // Momentum
+   if(momentumSignal.direction == SIGNAL_BUY && momentumSignal.score >= minStratScore)
+   {  buyVotes++; buyScore += momentumSignal.score * weights.momentum;
+      buyReasons += "[MOM:" + IntegerToString(momentumSignal.score) + "x" + DoubleToString(weights.momentum, 1) + "] "; }
+   else if(momentumSignal.direction == SIGNAL_SELL && momentumSignal.score >= minStratScore)
+   {  sellVotes++; sellScore += momentumSignal.score * weights.momentum;
+      sellReasons += "[MOM:" + IntegerToString(momentumSignal.score) + "x" + DoubleToString(weights.momentum, 1) + "] "; }
+
+   // Session
+   if(sessionSignal.direction == SIGNAL_BUY && sessionSignal.score >= minStratScore)
+   {  buyVotes++; buyScore += sessionSignal.score * weights.session;
+      buyReasons += "[SESS:" + IntegerToString(sessionSignal.score) + "x" + DoubleToString(weights.session, 1) + "] ";
       if(sessionSignal.entryPrice > 0) bestBuyEntry = sessionSignal.entryPrice; }
-   else if(sessionSignal.direction == SIGNAL_SELL && sessionSignal.score >= Inp_MinStrategyScore)
-   {  sellVotes++; sellScore += sessionSignal.score;
-      sellReasons += "[SESS:" + IntegerToString(sessionSignal.score) + "] " + sessionSignal.reason + " | ";
+   else if(sessionSignal.direction == SIGNAL_SELL && sessionSignal.score >= minStratScore)
+   {  sellVotes++; sellScore += sessionSignal.score * weights.session;
+      sellReasons += "[SESS:" + IntegerToString(sessionSignal.score) + "x" + DoubleToString(weights.session, 1) + "] ";
       if(sessionSignal.entryPrice > 0) bestSellEntry = sessionSignal.entryPrice; }
 
-   // Mean Reversion vote
-   if(meanRevertSignal.direction == SIGNAL_BUY && meanRevertSignal.score >= Inp_MinStrategyScore)
-   {  buyVotes++; buyScore += meanRevertSignal.score;
-      buyReasons += "[MREV:" + IntegerToString(meanRevertSignal.score) + "] " + meanRevertSignal.reason + " | ";
+   // Mean Reversion
+   if(meanRevertSignal.direction == SIGNAL_BUY && meanRevertSignal.score >= minStratScore)
+   {  buyVotes++; buyScore += meanRevertSignal.score * weights.meanRevert;
+      buyReasons += "[MREV:" + IntegerToString(meanRevertSignal.score) + "x" + DoubleToString(weights.meanRevert, 1) + "] ";
       if(meanRevertSignal.entryPrice > 0) bestBuyEntry = meanRevertSignal.entryPrice;
       if(meanRevertSignal.suggestedTP > 0) bestBuyTP = meanRevertSignal.suggestedTP; }
-   else if(meanRevertSignal.direction == SIGNAL_SELL && meanRevertSignal.score >= Inp_MinStrategyScore)
-   {  sellVotes++; sellScore += meanRevertSignal.score;
-      sellReasons += "[MREV:" + IntegerToString(meanRevertSignal.score) + "] " + meanRevertSignal.reason + " | ";
+   else if(meanRevertSignal.direction == SIGNAL_SELL && meanRevertSignal.score >= minStratScore)
+   {  sellVotes++; sellScore += meanRevertSignal.score * weights.meanRevert;
+      sellReasons += "[MREV:" + IntegerToString(meanRevertSignal.score) + "x" + DoubleToString(weights.meanRevert, 1) + "] ";
       if(meanRevertSignal.entryPrice > 0) bestSellEntry = meanRevertSignal.entryPrice;
       if(meanRevertSignal.suggestedTP > 0) bestSellTP = meanRevertSignal.suggestedTP; }
 
-   // Determine final direction
+   // SMC (Strategy 5) - provides entry, SL, TP from order blocks/FVGs
+   if(smcSignal.direction == SIGNAL_BUY && smcSignal.score >= 10)
+   {  buyVotes++; buyScore += smcSignal.score * weights.smc;
+      buyReasons += "[SMC:" + IntegerToString(smcSignal.score) + "x" + DoubleToString(weights.smc, 1) + " " + smcSignal.reason + "] ";
+      if(smcSignal.entryPrice > 0) bestBuyEntry = smcSignal.entryPrice;
+      if(smcSignal.suggestedTP > 0) bestBuyTP = smcSignal.suggestedTP;
+      if(smcSignal.suggestedSL > 0) bestBuySL = smcSignal.suggestedSL; }
+   else if(smcSignal.direction == SIGNAL_SELL && smcSignal.score >= 10)
+   {  sellVotes++; sellScore += smcSignal.score * weights.smc;
+      sellReasons += "[SMC:" + IntegerToString(smcSignal.score) + "x" + DoubleToString(weights.smc, 1) + " " + smcSignal.reason + "] ";
+      if(smcSignal.entryPrice > 0) bestSellEntry = smcSignal.entryPrice;
+      if(smcSignal.suggestedTP > 0) bestSellTP = smcSignal.suggestedTP;
+      if(smcSignal.suggestedSL > 0) bestSellSL = smcSignal.suggestedSL; }
+
+   // === SMC PREMIUM/DISCOUNT ZONE FILTER ===
+   // If in premium, suppress buys; if in discount, suppress sells
+   if(Inp_EnableSMC)
+   {
+      if(smcZone == ZONE_PREMIUM || smcZone == ZONE_EXTREME_PREMIUM)
+         buyScore *= 0.5;  // Heavily penalize buys from premium
+      if(smcZone == ZONE_DISCOUNT || smcZone == ZONE_EXTREME_DISCOUNT)
+         sellScore *= 0.5; // Heavily penalize sells from discount
+   }
+
+   // === DETERMINE FINAL DIRECTION ===
+   int adjustedMinScore = Inp_MinScore + weights.minScoreAdj;
+   if(adjustedMinScore < 10) adjustedMinScore = 10;
+
    ENUM_SIGNAL_TYPE finalDirection = SIGNAL_NONE;
    int finalScore = 0;
    string finalReason = "";
    double suggestedEntry = 0;
    double suggestedTP = 0;
+   double suggestedSL = 0;
 
-   if(buyVotes >= Inp_MinStrategies && buyScore >= Inp_MinScore && buyScore > sellScore)
-   {  finalDirection = SIGNAL_BUY; finalScore = buyScore; finalReason = buyReasons;
-      suggestedEntry = bestBuyEntry; suggestedTP = bestBuyTP; }
-   else if(sellVotes >= Inp_MinStrategies && sellScore >= Inp_MinScore && sellScore > buyScore)
-   {  finalDirection = SIGNAL_SELL; finalScore = sellScore; finalReason = sellReasons;
-      suggestedEntry = bestSellEntry; suggestedTP = bestSellTP; }
+   if(buyVotes >= Inp_MinStrategies && buyScore >= adjustedMinScore && buyScore > sellScore)
+   {
+      finalDirection = SIGNAL_BUY; finalScore = (int)buyScore; finalReason = buyReasons;
+      suggestedEntry = bestBuyEntry; suggestedTP = bestBuyTP; suggestedSL = bestBuySL;
+   }
+   else if(sellVotes >= Inp_MinStrategies && sellScore >= adjustedMinScore && sellScore > buyScore)
+   {
+      finalDirection = SIGNAL_SELL; finalScore = (int)sellScore; finalReason = sellReasons;
+      suggestedEntry = bestSellEntry; suggestedTP = bestSellTP; suggestedSL = bestSellSL;
+   }
 
    if(finalDirection == SIGNAL_NONE) return;
 
-   // Apply MTF filter: only trade in the H4 trend direction
+   // === MTF FILTER: only trade in H4 trend direction ===
    if(Inp_EnableMTF && mtfDirection != SIGNAL_NONE)
    {
-      if(finalDirection != mtfDirection)
-      {
-         // Signal opposes H4 trend - skip
-         return;
-      }
-      // Signal aligns with H4 trend - bonus confidence
+      if(finalDirection != mtfDirection) return;
       finalScore += 10;
-      finalReason += "[MTF:H4 aligned] ";
+      finalReason += "[MTF:H4] ";
    }
 
-   // Place trade (pending order or market order)
-   PlaceOrder(finalDirection, finalScore, finalReason, suggestedEntry, suggestedTP);
+   // === BRAIN REGIME CONTEXT IN LOG ===
+   if(Inp_EnableBrain)
+   {
+      finalReason += "[" + g_brain.GetRegimeName() + "] ";
+   }
+
+   // Place trade
+   PlaceOrder(finalDirection, finalScore, finalReason,
+              suggestedEntry, suggestedTP, suggestedSL, weights.lotMultiplier);
 }
 
 //+------------------------------------------------------------------+
 //| Place a pending limit order or market order                        |
+//| Now accepts SMC-based SL and brain lot multiplier                  |
 //+------------------------------------------------------------------+
 void PlaceOrder(ENUM_SIGNAL_TYPE direction, int score, string reason,
-                double suggestedEntry, double suggestedTP)
+                double suggestedEntry, double suggestedTP, double suggestedSL,
+                double lotMultiplier)
 {
-   // Direction-specific duplicate check
    if(direction == SIGNAL_BUY && CountBuyPositions(g_activeSymbol, Inp_MagicNumber) > 0) return;
    if(direction == SIGNAL_SELL && CountSellPositions(g_activeSymbol, Inp_MagicNumber) > 0) return;
-
-   // Don't place if we already have a pending order
    if(CountPendingOrders(g_activeSymbol, Inp_MagicNumber) > 0) return;
 
    double point = SymbolInfoDouble(g_activeSymbol, SYMBOL_POINT);
@@ -575,51 +614,51 @@ void PlaceOrder(ENUM_SIGNAL_TYPE direction, int score, string reason,
    double bid = SymbolInfoDouble(g_activeSymbol, SYMBOL_BID);
    if(ask <= 0 || bid <= 0) return;
 
-   // Determine entry price
+   // --- Determine entry price ---
    double entryPrice = 0;
    bool usePending = Inp_UsePendingOrders;
 
    if(suggestedEntry > 0)
-   {
-      // Use strategy-suggested entry (e.g., Bollinger band level)
       entryPrice = NormalizeDouble(suggestedEntry, digits);
-   }
    else if(usePending)
    {
-      // Calculate pullback entry: place limit order at a better price
       double atr = g_riskManager.GetCurrentATR();
       double pullback = atr * Inp_PullbackATR;
-
       if(direction == SIGNAL_BUY)
          entryPrice = NormalizeDouble(ask - pullback, digits);
       else
          entryPrice = NormalizeDouble(bid + pullback, digits);
    }
 
-   // Validate pending order placement
    double minStopPts = GetMinStopLevel(g_activeSymbol);
    double minStopDist = minStopPts * point;
 
    if(usePending && entryPrice > 0)
    {
-      // Check if entry is on the correct side for a limit order
       if(direction == SIGNAL_BUY && entryPrice >= ask - minStopDist)
-         usePending = false; // Too close to market, use market order
+         usePending = false;
       else if(direction == SIGNAL_SELL && entryPrice <= bid + minStopDist)
          usePending = false;
    }
 
-   // Fallback to market order
    if(!usePending || entryPrice <= 0)
-   {
       entryPrice = (direction == SIGNAL_BUY) ? ask : bid;
+
+   // --- Calculate SL: prefer SMC-based, fallback to ATR ---
+   double slPrice = 0;
+   if(suggestedSL > 0)
+   {
+      slPrice = NormalizeDouble(suggestedSL, digits);
+      // Validate SMC SL is on the correct side
+      if(direction == SIGNAL_BUY && slPrice >= entryPrice) slPrice = 0;
+      if(direction == SIGNAL_SELL && slPrice <= entryPrice) slPrice = 0;
    }
 
-   // Calculate SL from the entry price
-   double slPrice = g_riskManager.CalculateSLPriceFromEntry(direction, entryPrice);
+   if(slPrice <= 0)
+      slPrice = g_riskManager.CalculateSLPriceFromEntry(direction, entryPrice);
    if(slPrice <= 0) return;
 
-   // Enforce minimum stop level on SL
+   // Enforce minimum stop level
    double slDist = MathAbs(entryPrice - slPrice) / point;
    if(slDist < minStopPts)
    {
@@ -629,7 +668,7 @@ void PlaceOrder(ENUM_SIGNAL_TYPE direction, int score, string reason,
          slPrice = NormalizeDouble(entryPrice + minStopPts * point, digits);
    }
 
-   // Calculate TP: use suggested TP from mean reversion, or default ATR-based
+   // --- Calculate TP: prefer suggested, fallback to ATR ---
    double tpPrice = 0;
    if(suggestedTP > 0)
       tpPrice = NormalizeDouble(suggestedTP, digits);
@@ -638,7 +677,6 @@ void PlaceOrder(ENUM_SIGNAL_TYPE direction, int score, string reason,
 
    if(tpPrice <= 0) return;
 
-   // Enforce minimum stop level on TP
    double tpDist = MathAbs(entryPrice - tpPrice) / point;
    if(tpDist < minStopPts)
    {
@@ -648,10 +686,13 @@ void PlaceOrder(ENUM_SIGNAL_TYPE direction, int score, string reason,
          tpPrice = NormalizeDouble(entryPrice - minStopPts * point, digits);
    }
 
-   // Calculate lot size
+   // --- Calculate lot size with brain multiplier ---
    double slPoints = MathAbs(entryPrice - slPrice) / point;
    double lotSize = g_riskManager.CalculateLotSize(slPoints);
    if(lotSize <= 0) return;
+
+   // Apply brain's regime-based lot multiplier
+   lotSize = NormalizeLot(g_activeSymbol, lotSize * lotMultiplier);
 
    // Scale by confluence strength
    if(score < 60)
@@ -660,7 +701,7 @@ void PlaceOrder(ENUM_SIGNAL_TYPE direction, int score, string reason,
       lotSize = NormalizeLot(g_activeSymbol, lotSize * 0.75);
    if(lotSize <= 0) return;
 
-   // Build order request
+   // --- Build order request ---
    MqlTradeRequest request = {};
    MqlTradeResult  result  = {};
 
@@ -669,12 +710,11 @@ void PlaceOrder(ENUM_SIGNAL_TYPE direction, int score, string reason,
    request.sl       = slPrice;
    request.tp       = tpPrice;
    request.magic    = Inp_MagicNumber;
-   request.comment  = "CLAWBOT|S=" + IntegerToString(score) + "|" +
+   request.comment  = "CLAWv2|S=" + IntegerToString(score) + "|" +
                        TimeToString(TimeCurrent(), TIME_DATE);
 
    if(usePending && MathAbs(entryPrice - ((direction == SIGNAL_BUY) ? ask : bid)) > minStopDist)
    {
-      // === PENDING LIMIT ORDER ===
       request.action = TRADE_ACTION_PENDING;
       request.price  = entryPrice;
 
@@ -683,15 +723,12 @@ void PlaceOrder(ENUM_SIGNAL_TYPE direction, int score, string reason,
       else
          request.type = (entryPrice > bid) ? ORDER_TYPE_SELL_LIMIT : ORDER_TYPE_SELL_STOP;
 
-      // Set expiration
       request.type_time  = ORDER_TIME_SPECIFIED;
       request.expiration = TimeCurrent() + Inp_PendingExpBars * PeriodSeconds(Inp_Timeframe);
-
       request.type_filling = ORDER_FILLING_RETURN;
    }
    else
    {
-      // === MARKET ORDER (fallback) ===
       request.action    = TRADE_ACTION_DEAL;
       request.deviation = 30;
 
@@ -715,24 +752,27 @@ void PlaceOrder(ENUM_SIGNAL_TYPE direction, int score, string reason,
    {
       string dirStr = (direction == SIGNAL_BUY) ? "BUY" : "SELL";
       string typeStr = (request.action == TRADE_ACTION_PENDING) ? "PENDING " : "";
-      LogMessage("ORDER", "*** " + typeStr + dirStr + " ORDER PLACED ***");
+      LogMessage("ORDER", "*** " + typeStr + dirStr + " ***");
       LogMessage("ORDER", "Entry: " + DoubleToString(entryPrice, digits) +
                  " | Lot: " + DoubleToString(lotSize, 2) +
                  " | SL: " + DoubleToString(slPrice, digits) +
                  " | TP: " + DoubleToString(tpPrice, digits));
-      LogMessage("ORDER", "Score: " + IntegerToString(score) + " | " + reason);
+      LogMessage("ORDER", "Score: " + IntegerToString(score) +
+                 " | LotMult: " + DoubleToString(lotMultiplier, 2) +
+                 " | " + reason);
 
       if(request.action == TRADE_ACTION_DEAL)
          g_riskManager.IncrementDailyTrades();
    }
    else
    {
-      LogMessage("ORDER", "Order failed. Code: " + IntegerToString(result.retcode) + " | " + result.comment);
+      LogMessage("ORDER", "Order failed. Code: " + IntegerToString(result.retcode) +
+                 " | " + result.comment);
    }
 }
 
 //+------------------------------------------------------------------+
-//| Trade event handler - record closed trades for audit               |
+//| Trade event handler                                                |
 //+------------------------------------------------------------------+
 void OnTrade()
 {
@@ -740,7 +780,6 @@ void OnTrade()
 
    static int lastDealsTotal = 0;
 
-   // Select all history first, then count
    if(!HistorySelect(0, TimeCurrent())) return;
    int newDealsTotal = HistoryDealsTotal();
 
@@ -750,7 +789,6 @@ void OnTrade()
       {
          ulong dealTicket = HistoryDealGetTicket(i);
          if(dealTicket <= 0) continue;
-
          if(HistoryDealGetInteger(dealTicket, DEAL_MAGIC) != (long)Inp_MagicNumber) continue;
          if(HistoryDealGetInteger(dealTicket, DEAL_ENTRY) != DEAL_ENTRY_OUT) continue;
 
@@ -758,22 +796,13 @@ void OnTrade()
                          HistoryDealGetDouble(dealTicket, DEAL_SWAP) +
                          HistoryDealGetDouble(dealTicket, DEAL_COMMISSION);
 
-         // Closing deal type is opposite of position direction:
-         // DEAL_TYPE_SELL closes a BUY (record as type 0=buy)
-         // DEAL_TYPE_BUY closes a SELL (record as type 1=sell)
          int dealType = (HistoryDealGetInteger(dealTicket, DEAL_TYPE) == DEAL_TYPE_SELL) ? 0 : 1;
-
-         int strategy = 0; // Combined confluence (all strategies vote together)
-
          MqlDateTime dt;
          TimeToStruct((datetime)HistoryDealGetInteger(dealTicket, DEAL_TIME), dt);
 
-         double rr = 0; // R:R requires matching entry deal (future enhancement)
-
-         g_audit.RecordTrade(profit, rr, dealType, strategy, dt.hour, dt.day_of_week);
+         g_audit.RecordTrade(profit, 0, dealType, 0, dt.hour, dt.day_of_week);
          g_audit.UpdateBalance(AccountInfoDouble(ACCOUNT_BALANCE));
 
-         // Track consecutive losses for cooldown
          if(profit >= 0)
             g_consecutiveLosses = 0;
          else
@@ -782,23 +811,22 @@ void OnTrade()
             if(g_consecutiveLosses >= Inp_CooldownAfterLosses)
             {
                g_cooldownRemaining = Inp_CooldownBars;
-               LogMessage("CLOSED", "Cooldown activated after " + IntegerToString(g_consecutiveLosses) + " consecutive losses");
+               LogMessage("CLOSED", "Cooldown: " + IntegerToString(g_consecutiveLosses) + " consecutive losses");
                g_consecutiveLosses = 0;
             }
          }
 
-         string profitStr = (profit >= 0) ? "+" : "";
-         LogMessage("CLOSED", "Deal #" + IntegerToString((int)dealTicket) +
-                    " | P/L: " + profitStr + DoubleToString(profit, 2) +
-                    " | Balance: " + DoubleToString(AccountInfoDouble(ACCOUNT_BALANCE), 2));
+         string pStr = (profit >= 0) ? "+" : "";
+         LogMessage("CLOSED", "#" + IntegerToString((int)dealTicket) +
+                    " P/L: " + pStr + DoubleToString(profit, 2) +
+                    " Bal: " + DoubleToString(AccountInfoDouble(ACCOUNT_BALANCE), 2));
       }
    }
-
    lastDealsTotal = newDealsTotal;
 }
 
 //+------------------------------------------------------------------+
-//| Timer function - periodic health checks                            |
+//| Timer function                                                     |
 //+------------------------------------------------------------------+
 void OnTimer()
 {
@@ -806,22 +834,18 @@ void OnTimer()
 
    if(g_riskManager.IsDrawdownExceeded())
    {
-      LogMessage("ALERT", "!!! DRAWDOWN LIMIT EXCEEDED - TRADING HALTED !!!");
-      if(Inp_BotMode == MODE_LIVE)
-         CloseAllPositions();
+      LogMessage("ALERT", "!!! DRAWDOWN LIMIT EXCEEDED !!!");
+      if(Inp_BotMode == MODE_LIVE) CloseAllPositions();
    }
-
    if(g_riskManager.IsDailyLossExceeded())
-      LogMessage("ALERT", "Daily loss limit reached. No more trades today.");
+      LogMessage("ALERT", "Daily loss limit reached.");
 }
 
 //+------------------------------------------------------------------+
-//| Emergency close all positions with retry logic                     |
+//| Emergency close all positions                                      |
 //+------------------------------------------------------------------+
 void CloseAllPositions()
 {
-   int maxRetries = 3;
-
    for(int i = PositionsTotal() - 1; i >= 0; i--)
    {
       ulong ticket = PositionGetTicket(i);
@@ -829,8 +853,7 @@ void CloseAllPositions()
       if(PositionGetString(POSITION_SYMBOL) != g_activeSymbol) continue;
       if(PositionGetInteger(POSITION_MAGIC) != (long)Inp_MagicNumber) continue;
 
-      bool closed = false;
-      for(int retry = 0; retry < maxRetries && !closed; retry++)
+      for(int retry = 0; retry < 3; retry++)
       {
          MqlTradeRequest request = {};
          MqlTradeResult  result  = {};
@@ -839,7 +862,7 @@ void CloseAllPositions()
          request.position = ticket;
          request.symbol   = g_activeSymbol;
          request.volume   = PositionGetDouble(POSITION_VOLUME);
-         request.deviation = 100; // Wide slippage for emergency
+         request.deviation = 100;
          request.magic    = Inp_MagicNumber;
 
          long posType = PositionGetInteger(POSITION_TYPE);
@@ -857,27 +880,18 @@ void CloseAllPositions()
             request.type_filling = ORDER_FILLING_RETURN;
 
          OrderSend(request, result);
-
          if(result.retcode == TRADE_RETCODE_DONE || result.retcode == TRADE_RETCODE_PLACED)
          {
-            LogMessage("CLOSE", "Emergency closed position #" + IntegerToString((int)ticket));
-            closed = true;
+            LogMessage("CLOSE", "Emergency closed #" + IntegerToString((int)ticket));
+            break;
          }
-         else
-         {
-            LogMessage("CLOSE", "Retry " + IntegerToString(retry + 1) + "/" + IntegerToString(maxRetries) +
-                       " for #" + IntegerToString((int)ticket) + " Error: " + IntegerToString(result.retcode));
-            Sleep(500 * (retry + 1));
-         }
+         Sleep(500 * (retry + 1));
       }
-
-      if(!closed)
-         LogMessage("CLOSE", "CRITICAL: Could not close #" + IntegerToString((int)ticket) + " after retries!");
    }
 }
 
 //+------------------------------------------------------------------+
-//| Tester event - called at end of backtest                           |
+//| Tester event                                                       |
 //+------------------------------------------------------------------+
 double OnTester()
 {
@@ -892,7 +906,7 @@ double OnTester()
    if(trades >= 30 && dd > 0)
       fitness = (winRate * 0.4) + (MathMin(pf, 5.0) * 10 * 0.3) + ((100.0 - MathMin(dd, 100.0)) * 0.3);
 
-   Print("=== CLAWBOT BACKTEST COMPLETE ===");
+   Print("=== CLAWBOT v2.0 BACKTEST COMPLETE ===");
    Print(g_audit.GetReportSummary());
    Print("Fitness Score: " + DoubleToString(fitness, 2));
 
