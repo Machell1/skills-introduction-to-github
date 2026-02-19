@@ -766,14 +766,16 @@ bool CClawRiskManager::ClosePosition(ulong ticket)
 //| Dynamic Position Closure - Reduces average loss significantly     |
 //|                                                                    |
 //| 1. Max Loss Cap: close if unrealized loss > maxLossATR * ATR      |
+//|    (active from bar 0 - immediate protection)                      |
 //| 2. Adverse Momentum Exit: close if losing > adverseMomATR*ATR AND |
-//|    last bar closed strongly against position direction             |
+//|    BOTH of last 2 bars closed strongly against position            |
+//|    (requires min 3 bars age to avoid premature exits)              |
 //| 3. Stale Trade Exit: close if position age > staleBars AND P/L    |
-//|    is within ±staleRangeATR * ATR (going nowhere)                 |
-//| 4. Progressive SL Tightening: move SL closer as bars elapse       |
-//|    - After 4 bars: tighten SL to 75% of original distance        |
-//|    - After 8 bars: tighten to 50%                                 |
-//|    - After 12 bars: tighten to 30%                                 |
+//|    is within ±staleRangeATR * ATR AND position is in loss          |
+//| 4. Progressive SL Tightening: gently move SL after 8+ bars        |
+//|    - After 8 bars: tighten SL to 80% of original distance        |
+//|    - After 14 bars: tighten to 60%                                 |
+//|    - After 20 bars: tighten to 45%                                 |
 //+------------------------------------------------------------------+
 void CClawRiskManager::ManageDynamicClosure(double maxLossATR, double staleBarsThreshold,
                                              double staleRangeATR, double adverseMomATR)
@@ -785,13 +787,18 @@ void CClawRiskManager::ManageDynamicClosure(double maxLossATR, double staleBarsT
 
    int digits = (int)SymbolInfoInteger(m_symbol, SYMBOL_DIGITS);
 
-   // Get last completed bar data for momentum check
-   double lastClose = iClose(m_symbol, m_timeframe, 1);
-   double lastOpen  = iOpen(m_symbol, m_timeframe, 1);
-   double lastHigh  = iHigh(m_symbol, m_timeframe, 1);
-   double lastLow   = iLow(m_symbol, m_timeframe, 1);
-   double barRange  = lastHigh - lastLow;
-   if(lastClose <= 0 || lastOpen <= 0) return;
+   // Get last 2 completed bars for momentum check (require 2 consecutive adverse bars)
+   double lastClose1 = iClose(m_symbol, m_timeframe, 1);
+   double lastOpen1  = iOpen(m_symbol, m_timeframe, 1);
+   double lastHigh1  = iHigh(m_symbol, m_timeframe, 1);
+   double lastLow1   = iLow(m_symbol, m_timeframe, 1);
+   double lastClose2 = iClose(m_symbol, m_timeframe, 2);
+   double lastOpen2  = iOpen(m_symbol, m_timeframe, 2);
+   double lastHigh2  = iHigh(m_symbol, m_timeframe, 2);
+   double lastLow2   = iLow(m_symbol, m_timeframe, 2);
+   double barRange1  = lastHigh1 - lastLow1;
+   double barRange2  = lastHigh2 - lastLow2;
+   if(lastClose1 <= 0 || lastOpen1 <= 0) return;
 
    for(int i = PositionsTotal() - 1; i >= 0; i--)
    {
@@ -819,7 +826,7 @@ void CClawRiskManager::ManageDynamicClosure(double maxLossATR, double staleBarsT
       double originalSLDist = MathAbs(openPrice - currentSL);
       if(originalSLDist <= 0) originalSLDist = atr * m_slATRMultiplier;
 
-      // === CHECK 1: Max Loss Cap ===
+      // === CHECK 1: Max Loss Cap (always active) ===
       if(unrealizedPL < -(maxLossATR * atr))
       {
          if(ClosePosition(ticket))
@@ -829,26 +836,38 @@ void CClawRiskManager::ManageDynamicClosure(double maxLossATR, double staleBarsT
          continue;
       }
 
-      // === CHECK 2: Adverse Momentum Exit ===
-      if(unrealizedPL < -(adverseMomATR * atr))
+      // === CHECK 2: Adverse Momentum Exit (min 3 bars old) ===
+      // Requires BOTH of the last 2 bars to close strongly against position
+      if(barsSinceOpen >= 3 && unrealizedPL < -(adverseMomATR * atr))
       {
-         bool adverseBar = false;
+         bool adverseBar1 = false;
+         bool adverseBar2 = false;
+
          if(posType == POSITION_TYPE_BUY)
          {
-            // Strong bearish bar: closed in bottom 30% of range
-            if(lastClose < lastOpen && barRange > 0 &&
-               (lastClose - lastLow) < barRange * 0.3)
-               adverseBar = true;
+            // Bar 1: strong bearish (closed in bottom 25% of range)
+            if(lastClose1 < lastOpen1 && barRange1 > 0 &&
+               (lastClose1 - lastLow1) < barRange1 * 0.25)
+               adverseBar1 = true;
+            // Bar 2: also bearish
+            if(lastClose2 < lastOpen2 && barRange2 > 0 &&
+               (lastClose2 - lastLow2) < barRange2 * 0.35)
+               adverseBar2 = true;
          }
          else
          {
-            // Strong bullish bar: closed in top 30% of range
-            if(lastClose > lastOpen && barRange > 0 &&
-               (lastHigh - lastClose) < barRange * 0.3)
-               adverseBar = true;
+            // Bar 1: strong bullish (closed in top 25% of range)
+            if(lastClose1 > lastOpen1 && barRange1 > 0 &&
+               (lastHigh1 - lastClose1) < barRange1 * 0.25)
+               adverseBar1 = true;
+            // Bar 2: also bullish
+            if(lastClose2 > lastOpen2 && barRange2 > 0 &&
+               (lastHigh2 - lastClose2) < barRange2 * 0.35)
+               adverseBar2 = true;
          }
 
-         if(adverseBar)
+         // Only close if BOTH bars are adverse (confirms momentum, not just noise)
+         if(adverseBar1 && adverseBar2)
          {
             if(ClosePosition(ticket))
                LogMessage("DYNCLS", "ADVERSE MOMENTUM closed #" + IntegerToString((int)ticket) +
@@ -858,8 +877,9 @@ void CClawRiskManager::ManageDynamicClosure(double maxLossATR, double staleBarsT
          }
       }
 
-      // === CHECK 3: Stale Trade Exit ===
+      // === CHECK 3: Stale Trade Exit (only for losing positions) ===
       if(barsSinceOpen >= (int)staleBarsThreshold &&
+         unrealizedPL < 0 &&
          MathAbs(unrealizedPL) < staleRangeATR * atr)
       {
          if(ClosePosition(ticket))
@@ -869,16 +889,17 @@ void CClawRiskManager::ManageDynamicClosure(double maxLossATR, double staleBarsT
          continue;
       }
 
-      // === CHECK 4: Progressive SL Tightening ===
-      if(unrealizedPL < atr * 0.5 && currentSL > 0)
+      // === CHECK 4: Progressive SL Tightening (gentler schedule) ===
+      // Only tighten when position is losing and old enough
+      if(unrealizedPL < 0 && currentSL > 0 && barsSinceOpen >= 8)
       {
          double tightenFactor = 1.0;
-         if(barsSinceOpen >= 12)
-            tightenFactor = 0.30;
+         if(barsSinceOpen >= 20)
+            tightenFactor = 0.45;
+         else if(barsSinceOpen >= 14)
+            tightenFactor = 0.60;
          else if(barsSinceOpen >= 8)
-            tightenFactor = 0.50;
-         else if(barsSinceOpen >= 4)
-            tightenFactor = 0.75;
+            tightenFactor = 0.80;
 
          if(tightenFactor < 1.0)
          {
@@ -960,12 +981,12 @@ double CClawRiskManager::CalculateDynamicTP(ENUM_SIGNAL_TYPE direction, double e
          tpDistance = MathMax(smcTpDist, baseTpDist);
    }
 
-   // Enforce minimum TP: at least 1.0 * ATR
-   double minTP = atr * 1.0;
+   // Enforce minimum TP: at least 1.2 * ATR (ensures average win is meaningful)
+   double minTP = atr * 1.2;
    if(tpDistance < minTP) tpDistance = minTP;
 
-   // Enforce minimum R:R of 0.8
-   double minRRDist = slDistance * 0.8;
+   // Enforce minimum R:R of 1.0 (critical: TP must be >= SL distance)
+   double minRRDist = slDistance * 1.0;
    if(tpDistance < minRRDist) tpDistance = minRRDist;
 
    if(direction == SIGNAL_BUY)

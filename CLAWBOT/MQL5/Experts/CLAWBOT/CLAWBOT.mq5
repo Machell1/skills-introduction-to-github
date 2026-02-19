@@ -68,8 +68,8 @@ input double   Inp_MinRiskReward    = 0.2;     // Minimum Risk:Reward ratio
 
 //--- Stop Loss / Take Profit
 input string   Inp_Separator3       = "=== SL/TP SETTINGS ===";        // ----
-input double   Inp_SL_ATR           = 3.0;     // SL ATR multiplier
-input double   Inp_TP_ATR           = 0.8;     // TP ATR multiplier
+input double   Inp_SL_ATR           = 2.0;     // SL ATR multiplier
+input double   Inp_TP_ATR           = 1.5;     // TP ATR multiplier
 input double   Inp_MinSL            = 200.0;   // Minimum SL (points)
 input double   Inp_MaxSL            = 800.0;   // Maximum SL (points)
 input double   Inp_TrailActivation  = 0.3;     // Trailing activation (ATR mult)
@@ -149,16 +149,16 @@ input double   Inp_PullbackATR      = 0.3;     // Pullback distance for limit en
 //--- Dynamic Position Closure
 input string   Inp_Separator6h      = "=== DYNAMIC CLOSURE ===";        // ----
 input bool     Inp_EnableDynClosure = true;    // Enable dynamic position closure
-input double   Inp_DynCls_MaxLossATR = 1.5;   // Max loss cap (ATR multiplier) before forced close
-input double   Inp_DynCls_StaleBars  = 10;    // Bars before stale trade check
-input double   Inp_DynCls_StaleRange = 0.3;   // Stale P/L range (ATR mult) for exit
-input double   Inp_DynCls_AdverseMom = 0.5;   // Adverse momentum loss threshold (ATR mult)
+input double   Inp_DynCls_MaxLossATR = 1.8;   // Max loss cap (ATR multiplier) before forced close
+input double   Inp_DynCls_StaleBars  = 20;    // Bars before stale trade check
+input double   Inp_DynCls_StaleRange = 0.15;  // Stale P/L range (ATR mult) for exit
+input double   Inp_DynCls_AdverseMom = 1.0;   // Adverse momentum loss threshold (ATR mult)
 
 //--- Dynamic Take Profit
 input string   Inp_Separator6i      = "=== DYNAMIC TP ===";             // ----
 input bool     Inp_EnableDynamicTP  = true;    // Enable SMC-aware dynamic TP
-input double   Inp_DynTP_TrendMult  = 1.3;    // TP regime multiplier for trending
-input double   Inp_DynTP_RangeMult  = 0.9;    // TP regime multiplier for ranging
+input double   Inp_DynTP_TrendMult  = 1.6;    // TP regime multiplier for trending
+input double   Inp_DynTP_RangeMult  = 1.0;    // TP regime multiplier for ranging
 
 //--- Partial Close / Profit Locking
 input string   Inp_Separator6e      = "=== PROFIT LOCKING ===";         // ----
@@ -642,52 +642,65 @@ void PlaceOrder(ENUM_SIGNAL_TYPE direction, int score, string reason,
       double atr = g_riskManager.GetCurrentATR();
 
       // === RETRACEMENT ENTRY LOGIC ===
-      // Priority 1: OTE zone (0.618-0.786 Fibonacci retracement)
+      // Priority 1: OTE zone (only when very close to the zone - within 0.5 ATR)
       if(Inp_EnableSMC && g_smc.IsOTEActive())
       {
          int oteDir = g_smc.GetOTEDirection();
          if((direction == SIGNAL_BUY && oteDir == 1) ||
             (direction == SIGNAL_SELL && oteDir == -1))
          {
-            // Enter at midpoint of OTE zone
-            entryPrice = NormalizeDouble((g_smc.GetOTEHigh() + g_smc.GetOTELow()) / 2.0, digits);
+            double oteMid = (g_smc.GetOTEHigh() + g_smc.GetOTELow()) / 2.0;
+            double distToOTE = 0;
+            if(direction == SIGNAL_BUY)
+               distToOTE = ask - oteMid;
+            else
+               distToOTE = oteMid - bid;
+
+            // Only use OTE if price is within 0.5 ATR of the zone (reachable)
+            if(distToOTE >= 0 && distToOTE < atr * 0.5)
+               entryPrice = NormalizeDouble(oteMid, digits);
          }
       }
 
-      // Priority 2: Fibonacci retracement from recent swing
+      // Priority 2: Fibonacci retracement (only shallow 38.2%-50% for better fill rate)
       if(entryPrice <= 0 && Inp_EnableSMC)
       {
          double swHigh = g_smc.GetSwingRangeHigh();
          double swLow  = g_smc.GetSwingRangeLow();
          double swRange = swHigh - swLow;
 
-         if(swRange > atr * 0.5) // Valid swing range
+         if(swRange > atr * 0.8 && swRange < atr * 6.0) // Valid but not extreme swing
          {
             if(direction == SIGNAL_BUY)
             {
-               // Buy at 61.8% retracement from swing high (deeper = better entry)
-               double fib618 = swHigh - swRange * 0.618;
+               // Use shallower 38.2% retracement for better fill probability
+               double fib382 = swHigh - swRange * 0.382;
                double fib500 = swHigh - swRange * 0.500;
-               // Use 61.8% if price hasn't reached it yet, else use 50%
-               if(ask > fib618)
-                  entryPrice = NormalizeDouble(fib618, digits);
-               else if(ask > fib500)
+               double distTo382 = ask - fib382;
+               double distTo500 = ask - fib500;
+
+               // 50% only if very close (within 0.3 ATR), else 38.2%, else skip
+               if(distTo500 >= 0 && distTo500 < atr * 0.3)
                   entryPrice = NormalizeDouble(fib500, digits);
+               else if(distTo382 >= 0 && distTo382 < atr * 0.5)
+                  entryPrice = NormalizeDouble(fib382, digits);
             }
             else
             {
-               // Sell at 61.8% retracement from swing low (higher = better entry)
-               double fib618 = swLow + swRange * 0.618;
+               double fib382 = swLow + swRange * 0.382;
                double fib500 = swLow + swRange * 0.500;
-               if(bid < fib618)
-                  entryPrice = NormalizeDouble(fib618, digits);
-               else if(bid < fib500)
+               double distTo382 = fib382 - bid;
+               double distTo500 = fib500 - bid;
+
+               if(distTo500 >= 0 && distTo500 < atr * 0.3)
                   entryPrice = NormalizeDouble(fib500, digits);
+               else if(distTo382 >= 0 && distTo382 < atr * 0.5)
+                  entryPrice = NormalizeDouble(fib382, digits);
             }
          }
       }
 
-      // Priority 3: ATR pullback fallback
+      // Priority 3: ATR pullback fallback (always available)
       if(entryPrice <= 0)
       {
          double pullback = atr * Inp_PullbackATR;
