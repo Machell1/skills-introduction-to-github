@@ -310,52 +310,52 @@ void CClawBrain::ApplyRegimeWeights(StrategyWeights &w)
    switch(m_currentRegime)
    {
       case REGIME_TRENDING_STRONG:
-         w.trend         = 1.4;
-         w.momentum      = 1.2;
-         w.session       = 1.0;
-         w.meanRevert    = 0.3;   // Counter-trend is dangerous
+         w.trend         = 1.6;   // Maximize trend-following exposure
+         w.momentum      = 1.3;
+         w.session       = 1.1;
+         w.meanRevert    = 0.2;   // Counter-trend is very dangerous in strong trends
          w.smc           = 1.5;   // SMC shines in trends (BOS + OB entries)
-         w.lotMultiplier = 1.0;
-         w.minScoreAdj   = -5;    // Slightly easier entry (trending is favorable)
+         w.lotMultiplier = 1.2;   // Full confidence in strong trends
+         w.minScoreAdj   = -8;    // Easier entry (strong trending is most profitable)
          break;
 
       case REGIME_TRENDING_WEAK:
-         w.trend         = 1.2;
-         w.momentum      = 1.0;
-         w.session       = 0.8;
-         w.meanRevert    = 0.5;
+         w.trend         = 1.3;
+         w.momentum      = 1.1;
+         w.session       = 0.9;
+         w.meanRevert    = 0.4;
          w.smc           = 1.3;
-         w.lotMultiplier = 0.75;
+         w.lotMultiplier = 0.85;  // More aggressive in weak trends
          break;
 
       case REGIME_RANGING:
-         w.trend         = 0.3;   // Trend following fails in ranges
-         w.momentum      = 0.8;
-         w.session       = 0.5;
-         w.meanRevert    = 1.5;   // Mean reversion excels
+         w.trend         = 0.2;   // Trend following fails badly in ranges
+         w.momentum      = 0.6;
+         w.session       = 0.4;
+         w.meanRevert    = 1.6;   // Mean reversion excels - boost further
          w.smc           = 1.0;   // Range extremes = liquidity
-         w.lotMultiplier = 0.5;
-         w.minScoreAdj   = 5;     // Stricter in ranging (more false signals)
+         w.lotMultiplier = 0.45;  // Smaller size - ranging has more noise
+         w.minScoreAdj   = 8;     // Much stricter in ranging (most false signals)
          break;
 
       case REGIME_VOLATILE_EXPANSION:
-         w.trend         = 0.5;
-         w.momentum      = 0.5;
-         w.session       = 0.3;
-         w.meanRevert    = 0.3;
-         w.smc           = 0.8;
-         w.lotMultiplier = 0.4;   // Small size in volatile markets
-         w.minScoreAdj   = 10;    // Very strict entry
+         w.trend         = 0.4;
+         w.momentum      = 0.4;
+         w.session       = 0.2;
+         w.meanRevert    = 0.2;
+         w.smc           = 0.7;
+         w.lotMultiplier = 0.3;   // Very small size in volatile markets
+         w.minScoreAdj   = 15;    // Extremely strict entry - most losses come from volatile entries
          break;
 
       case REGIME_TRANSITIONING:
-         w.trend         = 0.5;
-         w.momentum      = 1.0;
-         w.session       = 0.5;
-         w.meanRevert    = 0.8;
+         w.trend         = 0.3;   // Old trend is dying - don't follow
+         w.momentum      = 1.1;
+         w.session       = 0.4;
+         w.meanRevert    = 0.9;
          w.smc           = 1.4;   // CHoCH detection is critical here
-         w.lotMultiplier = 0.5;
-         w.minScoreAdj   = 5;
+         w.lotMultiplier = 0.4;   // Very cautious during transitions
+         w.minScoreAdj   = 8;     // Strict - transitions produce whipsaws
          break;
    }
 }
@@ -372,56 +372,61 @@ void CClawBrain::ApplySessionWeights(StrategyWeights &w)
    // Asian session (00:00-07:00): low volume, range forming
    if(m_currentSession == SESSION_ASIAN)
    {
-      w.trend      *= 0.5;
-      w.momentum   *= 0.5;
-      w.session    *= 0.3;    // No breakout yet
-      w.meanRevert *= 1.2;    // Range scalping OK
-      w.smc        *= 0.7;
-      w.lotMultiplier *= 0.6;
+      w.trend      *= 0.3;    // Almost never trend-follow in Asian
+      w.momentum   *= 0.4;
+      w.session    *= 0.2;    // No breakout yet
+      w.meanRevert *= 1.1;    // Range scalping OK but cautious
+      w.smc        *= 0.5;
+      w.lotMultiplier *= 0.4; // Very small size in Asian
 
-      // Early Asian (00-03): minimal trading
-      if(hour < 3) w.allowTrading = false;
+      // Early Asian (00-04): no trading - too quiet, spreads wide
+      if(hour < 4) w.allowTrading = false;
    }
    // London open (07:00-10:00): breakouts, sweeps, highest SMC activity
    else if(m_currentSession == SESSION_LONDON && hour < 10)
    {
-      w.trend      *= 1.1;
-      w.session    *= 1.4;    // Asian range breakout prime time
-      w.smc        *= 1.3;    // Liquidity sweeps + BOS
-      w.meanRevert *= 0.7;    // Don't fade breakouts
+      w.trend      *= 1.2;    // Stronger trend follow during London open
+      w.session    *= 1.5;    // Asian range breakout prime time
+      w.smc        *= 1.4;    // Liquidity sweeps + BOS
+      w.meanRevert *= 0.5;    // Definitely don't fade breakouts
+      w.lotMultiplier *= 1.1; // Slightly more aggressive at London open
    }
    // London/NY overlap (12:00-16:00): highest volume, all strategies valid
    else if(m_currentSession == SESSION_OVERLAP)
    {
-      w.trend      *= 1.1;
-      w.momentum   *= 1.1;
-      w.session    *= 1.1;
-      w.smc        *= 1.2;
-      w.lotMultiplier *= 1.0; // Full size
+      w.trend      *= 1.2;
+      w.momentum   *= 1.2;
+      w.session    *= 1.2;
+      w.smc        *= 1.3;
+      w.lotMultiplier *= 1.1; // Bigger size during best session
    }
    // London close (15:00-17:00): mean reversion
    else if(hour >= 15 && hour < 17)
    {
-      w.trend      *= 0.6;
-      w.meanRevert *= 1.3;
-      w.smc        *= 0.9;    // FVG mitigation works here
+      w.trend      *= 0.5;
+      w.meanRevert *= 1.4;
+      w.smc        *= 0.8;
    }
-   // NY afternoon (17:00-21:00): declining volatility
+   // NY afternoon (17:00-21:00): declining volatility - reduce exposure
    else if(m_currentSession == SESSION_NEWYORK)
    {
-      w.trend      *= 0.8;
-      w.meanRevert *= 1.1;
-      w.smc        *= 0.9;
-      w.lotMultiplier *= 0.7;
+      w.trend      *= 0.6;
+      w.meanRevert *= 1.0;
+      w.smc        *= 0.7;
+      w.lotMultiplier *= 0.5; // Small size in declining NY
    }
-   // Off hours (21:00-00:00): minimal trading
+   // Off hours (21:00-00:00): no trading
    else if(m_currentSession == SESSION_OFF)
    {
       w.allowTrading = false;
    }
 
    // Friday afternoon caution (close positions, don't open new ones)
-   if(dt.day_of_week == 5 && hour >= 18)
+   if(dt.day_of_week == 5 && hour >= 16)
+      w.allowTrading = false;
+
+   // Monday early (00-05): skip the gap-risk period
+   if(dt.day_of_week == 1 && hour < 5)
       w.allowTrading = false;
 }
 

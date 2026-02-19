@@ -59,22 +59,22 @@ input ENUM_BOT_MODE   Inp_BotMode   = MODE_BACKTEST;                   // Bot Mo
 
 //--- Risk Management
 input string   Inp_Separator2       = "=== RISK MANAGEMENT ===";       // ----
-input double   Inp_RiskPerTrade     = 1.0;     // Risk per trade (%)
-input double   Inp_MaxDailyLoss     = 5.0;     // Max daily loss (%)
-input double   Inp_MaxDrawdown      = 15.0;    // Max total drawdown (%)
+input double   Inp_RiskPerTrade     = 1.5;     // Risk per trade (%)
+input double   Inp_MaxDailyLoss     = 4.0;     // Max daily loss (%)
+input double   Inp_MaxDrawdown      = 12.0;    // Max total drawdown (%)
 input int      Inp_MaxConcurrent    = 3;       // Max concurrent trades
-input int      Inp_MaxDailyTrades   = 10;      // Max trades per day
-input double   Inp_MinRiskReward    = 0.5;     // Minimum Risk:Reward ratio
+input int      Inp_MaxDailyTrades   = 8;       // Max trades per day
+input double   Inp_MinRiskReward    = 1.5;     // Minimum Risk:Reward ratio
 
 //--- Stop Loss / Take Profit (Gold H1: 2x ATR SL, 4x ATR TP = 1:2 R:R)
 input string   Inp_Separator3       = "=== SL/TP SETTINGS ===";        // ----
-input double   Inp_SL_ATR           = 0.6;     // SL ATR multiplier
-input double   Inp_TP_ATR           = 3.0;     // TP ATR multiplier
-input double   Inp_MinSL            = 200.0;   // Minimum SL (points)
-input double   Inp_MaxSL            = 800.0;   // Maximum SL (points)
-input double   Inp_TrailActivation  = 0.7;     // Trailing activation (ATR mult)
-input double   Inp_TrailDistance    = 0.35;    // Trailing distance (ATR mult) - must be < activation
-input double   Inp_MaxSpread        = 40.0;    // Max allowed spread (points)
+input double   Inp_SL_ATR           = 0.5;     // SL ATR multiplier (tighter SL = smaller loss)
+input double   Inp_TP_ATR           = 2.5;     // TP ATR multiplier (realistic target)
+input double   Inp_MinSL            = 150.0;   // Minimum SL (points)
+input double   Inp_MaxSL            = 600.0;   // Maximum SL (points)
+input double   Inp_TrailActivation  = 0.5;     // Trailing activation (ATR mult) - earlier trail
+input double   Inp_TrailDistance    = 0.25;    // Trailing distance (ATR mult) - tighter trail
+input double   Inp_MaxSpread        = 35.0;    // Max allowed spread (points)
 
 //--- Trend Strategy (Strategy 1)
 input string   Inp_Separator4       = "=== TREND STRATEGY ===";        // ----
@@ -149,30 +149,30 @@ input double   Inp_PullbackATR      = 0.3;     // Pullback distance for limit en
 //--- Dynamic Position Closure
 input string   Inp_Separator6h      = "=== DYNAMIC CLOSURE ===";        // ----
 input bool     Inp_EnableDynClosure = true;    // Enable dynamic position closure
-input double   Inp_DynCls_MaxLossATR = 1.8;   // Max loss cap (ATR multiplier) before forced close
-input double   Inp_DynCls_StaleBars  = 24;    // Bars before stale trade check
-input double   Inp_DynCls_StaleRange = 0.15;  // Stale P/L range (ATR mult) for exit
-input double   Inp_DynCls_AdverseMom = 0.3;   // Adverse momentum loss threshold (ATR mult)
+input double   Inp_DynCls_MaxLossATR = 1.2;   // Max loss cap (ATR multiplier) - cut losers fast
+input double   Inp_DynCls_StaleBars  = 16;    // Bars before stale trade check - faster cleanup
+input double   Inp_DynCls_StaleRange = 0.2;   // Stale P/L range (ATR mult) for exit
+input double   Inp_DynCls_AdverseMom = 0.2;   // Adverse momentum loss threshold (ATR mult) - faster exit
 
 //--- Dynamic Take Profit
 input string   Inp_Separator6i      = "=== DYNAMIC TP ===";             // ----
 input bool     Inp_EnableDynamicTP  = true;    // Enable SMC-aware dynamic TP
-input double   Inp_DynTP_TrendMult  = 1.6;    // TP regime multiplier for trending
-input double   Inp_DynTP_RangeMult  = 1.0;    // TP regime multiplier for ranging
+input double   Inp_DynTP_TrendMult  = 2.0;    // TP regime multiplier for trending (bigger targets)
+input double   Inp_DynTP_RangeMult  = 0.8;    // TP regime multiplier for ranging (take what you can)
 
 //--- Partial Close / Profit Locking
 input string   Inp_Separator6e      = "=== PROFIT LOCKING ===";         // ----
 input bool     Inp_EnablePartialClose = true;  // Enable partial close at TP1
-input double   Inp_TP1_ATR          = 0.1;     // TP1 distance (ATR mult) for partial close
-input double   Inp_PartialClosePct  = 0.3;     // Fraction to close at TP1 (0.3 = 30%)
+input double   Inp_TP1_ATR          = 0.5;     // TP1 distance (ATR mult) - wait for real profit
+input double   Inp_PartialClosePct  = 0.2;     // Fraction to close at TP1 (0.2 = 20%) - let winners run
 
 //--- Confluence Settings
 input string   Inp_Separator7       = "=== CONFLUENCE SETTINGS ===";   // ----
-input int      Inp_MinScore         = 30;      // Minimum total score for entry
-input int      Inp_MinStrategies    = 1;       // Min strategies agreeing
-input int      Inp_MinStrategyScore = 20;      // Min individual strategy score to count
-input int      Inp_CooldownAfterLosses = 3;    // Consecutive losses before cooldown
-input int      Inp_CooldownBars     = 3;       // Bars to skip during cooldown
+input int      Inp_MinScore         = 40;      // Minimum total score for entry (higher = better quality)
+input int      Inp_MinStrategies    = 2;       // Min strategies agreeing (require confluence)
+input int      Inp_MinStrategyScore = 25;      // Min individual strategy score to count
+input int      Inp_CooldownAfterLosses = 2;    // Consecutive losses before cooldown (faster response)
+input int      Inp_CooldownBars     = 4;       // Bars to skip during cooldown (longer recovery)
 
 //--- Backtest / Audit Settings
 input string   Inp_Separator8       = "=== AUDIT SETTINGS ===";        // ----
@@ -843,11 +843,12 @@ void PlaceOrder(ENUM_SIGNAL_TYPE direction, int score, string reason,
    // Apply brain's regime-based lot multiplier
    lotSize = NormalizeLot(g_activeSymbol, lotSize * lotMultiplier);
 
-   // Scale by confluence strength
-   if(score < 60)
-      lotSize = NormalizeLot(g_activeSymbol, lotSize * 0.50);
-   else if(score < 80)
-      lotSize = NormalizeLot(g_activeSymbol, lotSize * 0.75);
+   // Scale by confluence strength (less aggressive reduction)
+   if(score < 50)
+      lotSize = NormalizeLot(g_activeSymbol, lotSize * 0.60);
+   else if(score < 70)
+      lotSize = NormalizeLot(g_activeSymbol, lotSize * 0.80);
+   // Score >= 70: full lot size (reward high-confidence signals)
    if(lotSize <= 0) return;
 
    // --- Build order request ---

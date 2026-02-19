@@ -400,8 +400,10 @@ double CClawRiskManager::CalculateTPPrice(ENUM_SIGNAL_TYPE direction, double ent
    double slDistance = MathAbs(entryPrice - slPrice);
    double tpDistance = atr * m_tpATRMultiplier;
 
-   // Ensure minimum risk:reward ratio
-   double minTPDistance = slDistance * m_minRiskReward;
+   // Ensure minimum risk:reward ratio (at least 1.5:1 for positive expectancy)
+   double minTPDistance = slDistance * 1.5;
+   if(m_minRiskReward > 1.5)
+      minTPDistance = slDistance * m_minRiskReward;
    if(tpDistance < minTPDistance)
       tpDistance = minTPDistance;
 
@@ -905,17 +907,17 @@ void CClawRiskManager::ManageDynamicClosure(double maxLossATR, double staleBarsT
          continue;
       }
 
-      // === CHECK 4: Progressive SL Tightening (gentler schedule) ===
-      // Only tighten when position is losing and old enough
-      if(unrealizedPL < 0 && currentSL > 0 && barsSinceOpen >= 8)
+      // === CHECK 4: Progressive SL Tightening (aggressive schedule) ===
+      // Tighten SL faster to reduce average loss on aging positions
+      if(unrealizedPL < 0 && currentSL > 0 && barsSinceOpen >= 5)
       {
          double tightenFactor = 1.0;
-         if(barsSinceOpen >= 20)
-            tightenFactor = 0.45;
-         else if(barsSinceOpen >= 14)
-            tightenFactor = 0.60;
-         else if(barsSinceOpen >= 8)
-            tightenFactor = 0.80;
+         if(barsSinceOpen >= 16)
+            tightenFactor = 0.30;    // Very tight after 16 bars
+         else if(barsSinceOpen >= 10)
+            tightenFactor = 0.45;    // Aggressive after 10 bars
+         else if(barsSinceOpen >= 5)
+            tightenFactor = 0.65;    // Start tightening at 5 bars
 
          if(tightenFactor < 1.0)
          {
@@ -997,12 +999,12 @@ double CClawRiskManager::CalculateDynamicTP(ENUM_SIGNAL_TYPE direction, double e
          tpDistance = MathMax(smcTpDist, baseTpDist);
    }
 
-   // Enforce minimum TP: at least 1.2 * ATR (ensures average win is meaningful)
-   double minTP = atr * 1.2;
+   // Enforce minimum TP: at least 1.0 * ATR (ensures average win is meaningful)
+   double minTP = atr * 1.0;
    if(tpDistance < minTP) tpDistance = minTP;
 
-   // Enforce minimum R:R of 1.0 (critical: TP must be >= SL distance)
-   double minRRDist = slDistance * 1.0;
+   // Enforce minimum R:R of 1.5 (critical: TP must be 1.5x SL distance for positive expectancy)
+   double minRRDist = slDistance * 1.5;
    if(tpDistance < minRRDist) tpDistance = minRRDist;
 
    if(direction == SIGNAL_BUY)
