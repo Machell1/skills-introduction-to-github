@@ -164,8 +164,6 @@ private:
    // Helpers
    SMCSwingPoint GetLastSwingHigh(int skip = 0);
    SMCSwingPoint GetLastSwingLow(int skip = 0);
-   int  GetUnmitigatedOBIndex(int direction, double priceNear);
-   int  GetUnmitigatedFVGIndex(int direction, double priceNear);
 
 public:
    CClawSMC();
@@ -392,7 +390,8 @@ void CClawSMC::AddSwingPoint(double price, datetime t, int barIdx, bool isHigh)
 //+------------------------------------------------------------------+
 SMCSwingPoint CClawSMC::GetLastSwingHigh(int skip)
 {
-   SMCSwingPoint empty = {};
+   SMCSwingPoint empty;
+   ZeroMemory(empty);
    int found = 0;
    for(int i = 0; i < m_swingCount; i++)
    {
@@ -408,7 +407,8 @@ SMCSwingPoint CClawSMC::GetLastSwingHigh(int skip)
 //+------------------------------------------------------------------+
 SMCSwingPoint CClawSMC::GetLastSwingLow(int skip)
 {
-   SMCSwingPoint empty = {};
+   SMCSwingPoint empty;
+   ZeroMemory(empty);
    int found = 0;
    for(int i = 0; i < m_swingCount; i++)
    {
@@ -515,7 +515,7 @@ void CClawSMC::DetectOrderBlocks(const double &open[], const double &high[],
    }
 
    // Scan for 3-bar impulse moves (bars 2 to lookback-4)
-   int scanEnd = MathMin(bars - 4, 60);
+   int scanEnd = (int)MathMin(bars - 4, 60);
    for(int i = 2; i < scanEnd; i++)
    {
       // 3-bar impulse from bar[i+2] (oldest) to bar[i] (newest)
@@ -614,7 +614,7 @@ void CClawSMC::DetectFairValueGaps(const double &high[], const double &low[],
       }
    }
 
-   int scanEnd = MathMin(bars - 2, 50);
+   int scanEnd = (int)MathMin(bars - 2, 50);
    for(int i = 1; i < scanEnd; i++)
    {
       // candle1 = bar[i+2] (oldest), candle2 = bar[i+1] (middle), candle3 = bar[i] (newest)
@@ -1162,7 +1162,7 @@ SignalResult CClawSMC::Evaluate()
    if(buyScore > sellScore && buyScore >= 14)
    {
       result.direction     = SIGNAL_BUY;
-      result.score         = MathMin(buyScore, 40);
+      result.score         = (int)MathMin(buyScore, 40);
       result.reason        = buyReasons;
       result.entryPrice    = NormalizeDouble(buyEntry, m_digits);
       result.suggestedSL   = NormalizeDouble(buySL, m_digits);
@@ -1175,7 +1175,7 @@ SignalResult CClawSMC::Evaluate()
    else if(sellScore > buyScore && sellScore >= 14)
    {
       result.direction     = SIGNAL_SELL;
-      result.score         = MathMin(sellScore, 40);
+      result.score         = (int)MathMin(sellScore, 40);
       result.reason        = sellReasons;
       result.entryPrice    = NormalizeDouble(sellEntry, m_digits);
       result.suggestedSL   = NormalizeDouble(sellSL, m_digits);
