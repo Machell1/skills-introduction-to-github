@@ -113,12 +113,12 @@ def phase_backtest(mt5):
     if not tpl.exists():
         sys.exit(f"  [FATAL] Missing: {tpl}")
 
-    # No demo login needed - backtest uses the currently logged-in MT5 session
     return run_backtest(
         terminal=mt5["terminal"], data_path=mt5["data_path"],
         config_template=tpl,
         symbol=symbol, from_date=from_date, to_date=to_date,
         deposit=deposit, leverage=leverage, timeout_min=120,
+        metaeditor=mt5.get("metaeditor"),
     )
 
 
@@ -133,10 +133,16 @@ def phase_analyze(reports, data_path) -> bool:
     print("  PHASE 3: ANALYSIS")
     print("=" * 55)
 
+    if not reports:
+        print("  [ERROR] No backtest results available.")
+        print("  The Strategy Tester did not produce any output.")
+        print("  See the diagnostics above for how to fix this.")
+        return False
+
     analyzer = BacktestAnalyzer(threshold=80.0)
 
     # Try EA audit CSV first
-    if reports and "audit_report" in reports:
+    if "audit_report" in reports:
         if analyzer.load_report(filepath=reports["audit_report"]):
             passed = analyzer.evaluate()
             txt = analyzer.generate_pass_report() if passed else analyzer.generate_weakness_report()
@@ -155,7 +161,7 @@ def phase_analyze(reports, data_path) -> bool:
         return passed
 
     # Fallback: MT5 HTML
-    if reports and "mt5_report" in reports:
+    if "mt5_report" in reports:
         print("  Parsing MT5 HTML report ...")
         m = parse_mt5_html(reports["mt5_report"])
         if m:
@@ -168,16 +174,29 @@ def phase_analyze(reports, data_path) -> bool:
             print(f"  Result: {'PASSED' if passed else 'FAILED'}")
             return passed
 
-    report_path = reports.get("audit_report") if reports else None
-    print(f"  [ERROR] Report not found: {report_path}")
-    print("  [ERROR] No results found. Check MT5 Journal tab for errors.")
-    print()
-    print("  Troubleshooting steps:")
-    print("    1. Open Deriv MT5 and log into your account (demo is fine)")
-    print("    2. Open a XAUUSD chart to ensure historical data is downloaded")
-    print("    3. Open MetaEditor (F4) -> open CLAWBOT.mq5 -> compile (F7)")
-    print("    4. Check the Journal tab and Experts tab in MT5 for error messages")
-    print("    5. Re-run main.py")
+    # Fallback: results extracted from MT5 logs
+    if "log_results" in reports:
+        log = reports["log_results"]
+        wr = log.get("win_rate", 0)
+        n  = log.get("total_trades", 0)
+        pf = log.get("profit_factor", 0)
+        dd = log.get("max_drawdown_pct", 0)
+        net = log.get("net_profit", 0)
+
+        print(f"\n  Results (from MT5 log):")
+        print(f"    Trades: {n}  |  Win Rate: {wr:.1f}%  |  PF: {pf:.2f}")
+        print(f"    Max DD: {dd:.1f}%  |  Net: ${net:.2f}")
+
+        if "overall_passed" in log:
+            passed = log["overall_passed"]
+        else:
+            passed = wr >= 80 and n >= 50
+
+        print(f"    Result: {'PASSED' if passed else 'FAILED'}")
+        return passed
+
+    print("  [ERROR] No analyzable results found.")
+    print("  The backtest may not have run. Check MT5 Journal tab for errors.")
     return False
 
 

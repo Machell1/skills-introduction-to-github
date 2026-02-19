@@ -387,16 +387,17 @@ def setup_mt5(project_root: Path) -> dict:
     if not install_ea(project_root, dp):
         return None
 
-    # Step 4 – compile
+    # Step 4 – compile (always recompile to ensure latest code runs)
     print("\n[STEP 4] Compiling EA ...")
-    if _ea_is_current(dp):
-        print("  [OK] CLAWBOT.ex5 is up to date.")
-        info["compiled"] = True
-    elif me:
+    if me:
         info["compiled"] = compile_ea(me, dp)
         if not info["compiled"]:
             print("  [FALLBACK] Compile manually: open MetaEditor → MQL5/Experts/CLAWBOT/CLAWBOT.mq5 → F7")
+    elif _ea_is_current(dp):
+        print("  [OK] CLAWBOT.ex5 exists (MetaEditor not found to verify).")
+        info["compiled"] = True
     else:
-        print("  [WARN] MetaEditor not found. Compile CLAWBOT.mq5 manually (F7).")
+        print("  [WARN] MetaEditor not found and .ex5 is missing/outdated.")
+        print("  Compile CLAWBOT.mq5 manually in MetaEditor (F7).")
 
     return info
