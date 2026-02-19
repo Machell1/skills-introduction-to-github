@@ -505,10 +505,11 @@ void CClawSMC::DetectOrderBlocks(const double &open[], const double &high[],
    if(m_atr[1] <= 0) return;
    double impulseThreshold = m_atr[1] * m_impulseATRMult;
 
-   // Age out old OBs
+   // Age out old OBs (use timeCreated for real elapsed bars, not static barIndex)
+   int periodSec = PeriodSeconds(m_timeframe);
    for(int k = m_obCount - 1; k >= 0; k--)
    {
-      int age = m_orderBlocks[k].barIndex;
+      int age = (periodSec > 0) ? (int)((TimeCurrent() - m_orderBlocks[k].timeCreated) / periodSec) : m_orderBlocks[k].barIndex;
       if(age > m_obMaxAge || m_orderBlocks[k].mitigated || m_orderBlocks[k].touchCount >= 2)
       {
          // Remove by shifting array
@@ -607,10 +608,12 @@ void CClawSMC::AddOrderBlock(double zHigh, double zLow, double bHigh, double bLo
 void CClawSMC::DetectFairValueGaps(const double &high[], const double &low[],
                                     const datetime &time[], int bars)
 {
-   // Age out old FVGs
+   // Age out old FVGs (use timeCreated for real elapsed bars, not static barIndex)
+   int fvgPeriodSec = PeriodSeconds(m_timeframe);
    for(int k = m_fvgCount - 1; k >= 0; k--)
    {
-      if(m_fvgs[k].barIndex > m_fvgMaxAge || m_fvgs[k].mitigated)
+      int fvgAge = (fvgPeriodSec > 0) ? (int)((TimeCurrent() - m_fvgs[k].timeCreated) / fvgPeriodSec) : m_fvgs[k].barIndex;
+      if(fvgAge > m_fvgMaxAge || m_fvgs[k].mitigated)
       {
          for(int j = k; j < m_fvgCount - 1; j++)
             m_fvgs[j] = m_fvgs[j + 1];

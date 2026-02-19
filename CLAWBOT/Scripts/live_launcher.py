@@ -94,24 +94,53 @@ expertmode=33
 Inp_BotMode=1
 Inp_Symbol={symbol}
 Inp_Timeframe=16385
-Inp_RiskPerTrade=1.5
-Inp_MaxDailyLoss=3.0
-Inp_MaxDrawdown=8.0
-Inp_MaxConcurrent=2
-Inp_MaxDailyTrades=5
+; Risk Management - MUST match backtest parameters
+Inp_RiskPerTrade=0.5
+Inp_MaxDailyLoss=5.0
+Inp_MaxDrawdown=15.0
+Inp_MaxConcurrent=3
+Inp_MaxDailyTrades=10
 Inp_MinRiskReward=1.5
+; SL/TP - 1:2 R:R with ATR-based stops
 Inp_SL_ATR=2.0
-Inp_TP_ATR=3.0
-Inp_MinSL=150.0
-Inp_MaxSL=500.0
-Inp_TrailActivation=1.0
-Inp_TrailDistance=1.5
+Inp_TP_ATR=4.0
+Inp_MinSL=200.0
+Inp_MaxSL=800.0
+Inp_TrailActivation=1.5
+Inp_TrailDistance=1.0
 Inp_MaxSpread=50.0
+; Strategies
 Inp_EnableTrend=true
 Inp_EnableMomentum=true
 Inp_EnableSession=true
-Inp_MinScore=40
+Inp_EnableMeanRevert=true
+Inp_EnableSMC=true
+Inp_EnableBrain=true
+Inp_EnableMTF=true
+; Pending Orders
+Inp_UsePendingOrders=true
+Inp_PendingExpBars=4
+Inp_PullbackATR=0.3
+; Dynamic Closure
+Inp_EnableDynClosure=true
+Inp_DynCls_MaxLossATR=1.8
+Inp_DynCls_StaleBars=24
+Inp_DynCls_StaleRange=0.15
+Inp_DynCls_AdverseMom=1.2
+; Dynamic TP
+Inp_EnableDynamicTP=true
+Inp_DynTP_TrendMult=1.6
+Inp_DynTP_RangeMult=1.0
+; Profit Locking
+Inp_EnablePartialClose=true
+Inp_TP1_ATR=1.0
+Inp_PartialClosePct=0.5
+; Confluence
+Inp_MinScore=45
 Inp_MinStrategies=2
+Inp_MinStrategyScore=15
+Inp_CooldownAfterLosses=3
+Inp_CooldownBars=2
 Inp_WinRateThreshold=55.0
 </inputs>
 </expert>

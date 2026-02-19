@@ -2,7 +2,7 @@
 """
 CLAWBOT Backtest Analyzer
 ==========================
-Parses EA audit CSV reports, evaluates against the 80 % win-rate gate,
+Parses EA audit CSV reports, evaluates against the 55 % win-rate gate,
 and produces pass / weakness reports.
 """
 

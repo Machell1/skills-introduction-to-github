@@ -40,10 +40,10 @@ private:
    int    m_currentConsecWins;
    int    m_currentConsecLosses;
 
-   // Strategy-level stats
-   int    m_strategyWins[3];       // Wins per strategy
-   int    m_strategyTotal[3];      // Total per strategy
-   double m_strategyProfit[3];     // Profit per strategy
+   // Strategy-level stats (5 strategies: Trend, Momentum, Session, MeanRevert, SMC)
+   int    m_strategyWins[5];       // Wins per strategy
+   int    m_strategyTotal[5];      // Total per strategy
+   double m_strategyProfit[5];     // Profit per strategy
 
    // Session stats
    int    m_sessionWins[5];        // Wins per session
@@ -180,7 +180,7 @@ void CClawAudit::RecordTrade(double profit, double riskReward, int type,
       m_stats.peakBalance = m_currentBalance;
 
    // Update strategy stats
-   if(strategy >= 0 && strategy < 3)
+   if(strategy >= 0 && strategy < 5)
    {
       m_strategyTotal[strategy]++;
       m_strategyProfit[strategy] += profit;
@@ -424,8 +424,8 @@ void CClawAudit::IdentifyWeaknesses()
                   " is below 1.0. Risk-adjusted returns are poor.");
 
    // Strategy-level analysis
-   string stratNames[] = {"Trend", "Momentum", "Session"};
-   for(int i = 0; i < 3; i++)
+   string stratNames[] = {"Trend", "Momentum", "Session", "MeanRevert", "SMC"};
+   for(int i = 0; i < 5; i++)
    {
       if(m_strategyTotal[i] > 10)
       {
@@ -512,8 +512,8 @@ bool CClawAudit::GenerateFullReport()
    // Strategy breakdown
    header += "\n\n=== STRATEGY BREAKDOWN ===";
    header += "\nStrategy,Trades,Wins,Win Rate (%),Net Profit ($)";
-   string stratNames[] = {"Trend_EMA", "Momentum_RSI", "Session_Breakout"};
-   for(int i = 0; i < 3; i++)
+   string stratNames[] = {"Trend_EMA", "Momentum_RSI", "Session_Breakout", "MeanRevert_BB", "SMC_Institutional"};
+   for(int i = 0; i < 5; i++)
    {
       double wr = (m_strategyTotal[i] > 0) ? ((double)m_strategyWins[i] / m_strategyTotal[i]) * 100 : 0;
       header += "\n" + stratNames[i] + "," + IntegerToString(m_strategyTotal[i]) + "," +
@@ -632,8 +632,8 @@ bool CClawAudit::GenerateWeaknessReport()
 
    // Strategy breakdown for context
    report += "\n\n=== STRATEGY PERFORMANCE FOR CONTEXT ===";
-   string stratNames[] = {"Trend_EMA", "Momentum_RSI", "Session_Breakout"};
-   for(int i = 0; i < 3; i++)
+   string stratNames[] = {"Trend_EMA", "Momentum_RSI", "Session_Breakout", "MeanRevert_BB", "SMC_Institutional"};
+   for(int i = 0; i < 5; i++)
    {
       double wr = (m_strategyTotal[i] > 0) ? ((double)m_strategyWins[i] / m_strategyTotal[i]) * 100 : 0;
       report += "\n" + stratNames[i] + ": " + IntegerToString(m_strategyTotal[i]) +

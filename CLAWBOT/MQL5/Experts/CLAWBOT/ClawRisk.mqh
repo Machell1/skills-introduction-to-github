@@ -42,6 +42,10 @@ private:
    int    m_maxDailyTrades;        // Max trades per day
    double m_minRiskReward;         // Minimum R:R ratio (e.g., 1.5)
 
+   // Partial close tracking (POSITION_COMMENT doesn't update after partial close in MT5)
+   ulong  m_partialClosedTickets[];
+   int    m_partialClosedCount;
+
    // SL/TP settings
    double m_slATRMultiplier;       // ATR multiplier for SL (e.g., 2.0)
    double m_tpATRMultiplier;       // ATR multiplier for TP (e.g., 3.0)
@@ -131,6 +135,8 @@ CClawRiskManager::CClawRiskManager()
    m_dailyResetDate = 0;
    m_dailyTradeCount = 0;
    m_peakBalance = 0;
+   m_partialClosedCount = 0;
+   ArrayResize(m_partialClosedTickets, 0);
 }
 
 //+------------------------------------------------------------------+
@@ -518,9 +524,14 @@ void CClawRiskManager::ManagePartialClose(double tp1ATRMult, double partialPct)
       if(PositionGetInteger(POSITION_MAGIC) != (long)m_magicNumber) continue;
 
       // Check if this position has already been partially closed
-      // by looking at the comment for "TP1" flag
-      string comment = PositionGetString(POSITION_COMMENT);
-      if(StringFind(comment, "TP1") >= 0) continue; // Already partially closed
+      // Note: POSITION_COMMENT is NOT updated by partial close deals in MT5,
+      // so we track partial-closed tickets in a separate array
+      bool alreadyClosed = false;
+      for(int pc = 0; pc < m_partialClosedCount; pc++)
+      {
+         if(m_partialClosedTickets[pc] == ticket) { alreadyClosed = true; break; }
+      }
+      if(alreadyClosed) continue;
 
       double openPrice = PositionGetDouble(POSITION_PRICE_OPEN);
       double volume    = PositionGetDouble(POSITION_VOLUME);
@@ -573,6 +584,11 @@ void CClawRiskManager::ManagePartialClose(double tp1ATRMult, double partialPct)
 
          if(result.retcode == TRADE_RETCODE_DONE || result.retcode == TRADE_RETCODE_PLACED)
          {
+            // Track this ticket so we don't partial close again
+            ArrayResize(m_partialClosedTickets, m_partialClosedCount + 1);
+            m_partialClosedTickets[m_partialClosedCount] = ticket;
+            m_partialClosedCount++;
+
             LogMessage("TP1", "Partial close " + DoubleToString(partialPct * 100, 0) + "% of #" +
                        IntegerToString((int)ticket) + " at profit " + DoubleToString(profit, digits));
 

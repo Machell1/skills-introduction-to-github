@@ -164,7 +164,9 @@ double NormalizeLot(string symbol, double lot)
    if(lot > maxLot) lot = maxLot;
 
    lot = MathFloor(lot / lotStep) * lotStep;
-   lot = NormalizeDouble(lot, 2);
+   // Use lot step precision (not hardcoded 2) to support brokers with finer lot steps
+   int lotDigits = (int)MathMax(0, -MathLog10(lotStep));
+   lot = NormalizeDouble(lot, lotDigits);
 
    return lot;
 }
@@ -175,10 +177,17 @@ double NormalizeLot(string symbol, double lot)
 ENUM_SESSION GetCurrentSession()
 {
    MqlDateTime dt;
-   datetime serverTime = TimeCurrent();
-   TimeToStruct(serverTime, dt);
+   // Use TimeGMT() for correct UTC hours in live trading.
+   // In Strategy Tester, TimeGMT() returns same as TimeCurrent() which is fine
+   // since historical data timestamps are server-relative.
+   // For live: apply offset correction to get true UTC.
+   datetime gmtTime = TimeGMT();
+   datetime srvTime = TimeCurrent();
+   int offsetSec    = (int)(srvTime - gmtTime);
+   // In tester, offset is 0 so we use server time directly; in live, offset corrects to UTC
+   datetime utcTime = srvTime - offsetSec;
+   TimeToStruct(utcTime, dt);
 
-   // Convert to approximate UTC (Deriv servers are typically UTC+0 or UTC+2)
    int hour = dt.hour;
 
    // Asian session: 00:00 - 07:00 UTC
@@ -206,7 +215,9 @@ ENUM_SESSION GetCurrentSession()
 bool IsWithinTradingHours(int startHour, int endHour)
 {
    MqlDateTime dt;
-   TimeToStruct(TimeCurrent(), dt);
+   datetime srvTime = TimeCurrent();
+   int offsetSec = (int)(srvTime - TimeGMT());
+   TimeToStruct(srvTime - offsetSec, dt);
 
    if(startHour < endHour)
       return (dt.hour >= startHour && dt.hour < endHour);

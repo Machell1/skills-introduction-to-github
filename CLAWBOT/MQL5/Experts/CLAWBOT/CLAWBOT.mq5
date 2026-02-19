@@ -73,7 +73,7 @@ input double   Inp_TP_ATR           = 4.0;     // TP ATR multiplier
 input double   Inp_MinSL            = 200.0;   // Minimum SL (points)
 input double   Inp_MaxSL            = 800.0;   // Maximum SL (points)
 input double   Inp_TrailActivation  = 1.5;     // Trailing activation (ATR mult)
-input double   Inp_TrailDistance    = 2.0;     // Trailing distance (ATR mult)
+input double   Inp_TrailDistance    = 1.0;     // Trailing distance (ATR mult) - must be < activation
 input double   Inp_MaxSpread        = 40.0;    // Max allowed spread (points)
 
 //--- Trend Strategy (Strategy 1)
@@ -150,9 +150,9 @@ input double   Inp_PullbackATR      = 0.3;     // Pullback distance for limit en
 input string   Inp_Separator6h      = "=== DYNAMIC CLOSURE ===";        // ----
 input bool     Inp_EnableDynClosure = true;    // Enable dynamic position closure
 input double   Inp_DynCls_MaxLossATR = 1.8;   // Max loss cap (ATR multiplier) before forced close
-input double   Inp_DynCls_StaleBars  = 20;    // Bars before stale trade check
+input double   Inp_DynCls_StaleBars  = 24;    // Bars before stale trade check
 input double   Inp_DynCls_StaleRange = 0.15;  // Stale P/L range (ATR mult) for exit
-input double   Inp_DynCls_AdverseMom = 1.0;   // Adverse momentum loss threshold (ATR mult)
+input double   Inp_DynCls_AdverseMom = 1.2;   // Adverse momentum loss threshold (ATR mult)
 
 //--- Dynamic Take Profit
 input string   Inp_Separator6i      = "=== DYNAMIC TP ===";             // ----
@@ -198,6 +198,7 @@ string g_activeSymbol;
 int    g_serverUTCOffset = 0;
 int    g_consecutiveLosses = 0;
 int    g_cooldownRemaining = 0;
+int    g_lastDominantStrategy = 0;   // Dominant strategy for last trade (for audit)
 
 //+------------------------------------------------------------------+
 //| Validate input parameters                                          |
@@ -503,57 +504,80 @@ void OnTick()
    double bestBuyEntry = 0, bestSellEntry = 0;
    double bestBuyTP = 0, bestSellTP = 0;
    double bestBuySL = 0, bestSellSL = 0;
+   // Track dominant strategy for audit (0=Trend, 1=Mom, 2=Sess, 3=MRev, 4=SMC)
+   double bestBuyStratScore = 0, bestSellStratScore = 0;
+   int    bestBuyStrat = 0, bestSellStrat = 0;
 
    int minStratScore = Inp_MinStrategyScore;
 
    // Helper: tally a weighted strategy vote
-   // Trend
+   // Trend (strategy index 0)
    if(trendSignal.direction == SIGNAL_BUY && trendSignal.score >= minStratScore)
-   {  buyVotes++; buyScore += trendSignal.score * weights.trend;
+   {  double ws = trendSignal.score * weights.trend;
+      buyVotes++; buyScore += ws;
+      if(ws > bestBuyStratScore) { bestBuyStratScore = ws; bestBuyStrat = 0; }
       buyReasons += "[TREND:" + IntegerToString(trendSignal.score) + "x" + DoubleToString(weights.trend, 1) + "] "; }
    else if(trendSignal.direction == SIGNAL_SELL && trendSignal.score >= minStratScore)
-   {  sellVotes++; sellScore += trendSignal.score * weights.trend;
+   {  double ws = trendSignal.score * weights.trend;
+      sellVotes++; sellScore += ws;
+      if(ws > bestSellStratScore) { bestSellStratScore = ws; bestSellStrat = 0; }
       sellReasons += "[TREND:" + IntegerToString(trendSignal.score) + "x" + DoubleToString(weights.trend, 1) + "] "; }
 
-   // Momentum
+   // Momentum (strategy index 1)
    if(momentumSignal.direction == SIGNAL_BUY && momentumSignal.score >= minStratScore)
-   {  buyVotes++; buyScore += momentumSignal.score * weights.momentum;
+   {  double ws = momentumSignal.score * weights.momentum;
+      buyVotes++; buyScore += ws;
+      if(ws > bestBuyStratScore) { bestBuyStratScore = ws; bestBuyStrat = 1; }
       buyReasons += "[MOM:" + IntegerToString(momentumSignal.score) + "x" + DoubleToString(weights.momentum, 1) + "] "; }
    else if(momentumSignal.direction == SIGNAL_SELL && momentumSignal.score >= minStratScore)
-   {  sellVotes++; sellScore += momentumSignal.score * weights.momentum;
+   {  double ws = momentumSignal.score * weights.momentum;
+      sellVotes++; sellScore += ws;
+      if(ws > bestSellStratScore) { bestSellStratScore = ws; bestSellStrat = 1; }
       sellReasons += "[MOM:" + IntegerToString(momentumSignal.score) + "x" + DoubleToString(weights.momentum, 1) + "] "; }
 
-   // Session
+   // Session (strategy index 2)
    if(sessionSignal.direction == SIGNAL_BUY && sessionSignal.score >= minStratScore)
-   {  buyVotes++; buyScore += sessionSignal.score * weights.session;
+   {  double ws = sessionSignal.score * weights.session;
+      buyVotes++; buyScore += ws;
+      if(ws > bestBuyStratScore) { bestBuyStratScore = ws; bestBuyStrat = 2; }
       buyReasons += "[SESS:" + IntegerToString(sessionSignal.score) + "x" + DoubleToString(weights.session, 1) + "] ";
       if(sessionSignal.entryPrice > 0) bestBuyEntry = sessionSignal.entryPrice; }
    else if(sessionSignal.direction == SIGNAL_SELL && sessionSignal.score >= minStratScore)
-   {  sellVotes++; sellScore += sessionSignal.score * weights.session;
+   {  double ws = sessionSignal.score * weights.session;
+      sellVotes++; sellScore += ws;
+      if(ws > bestSellStratScore) { bestSellStratScore = ws; bestSellStrat = 2; }
       sellReasons += "[SESS:" + IntegerToString(sessionSignal.score) + "x" + DoubleToString(weights.session, 1) + "] ";
       if(sessionSignal.entryPrice > 0) bestSellEntry = sessionSignal.entryPrice; }
 
-   // Mean Reversion
+   // Mean Reversion (strategy index 3)
    if(meanRevertSignal.direction == SIGNAL_BUY && meanRevertSignal.score >= minStratScore)
-   {  buyVotes++; buyScore += meanRevertSignal.score * weights.meanRevert;
+   {  double ws = meanRevertSignal.score * weights.meanRevert;
+      buyVotes++; buyScore += ws;
+      if(ws > bestBuyStratScore) { bestBuyStratScore = ws; bestBuyStrat = 3; }
       buyReasons += "[MREV:" + IntegerToString(meanRevertSignal.score) + "x" + DoubleToString(weights.meanRevert, 1) + "] ";
       if(meanRevertSignal.entryPrice > 0) bestBuyEntry = meanRevertSignal.entryPrice;
       if(meanRevertSignal.suggestedTP > 0) bestBuyTP = meanRevertSignal.suggestedTP; }
    else if(meanRevertSignal.direction == SIGNAL_SELL && meanRevertSignal.score >= minStratScore)
-   {  sellVotes++; sellScore += meanRevertSignal.score * weights.meanRevert;
+   {  double ws = meanRevertSignal.score * weights.meanRevert;
+      sellVotes++; sellScore += ws;
+      if(ws > bestSellStratScore) { bestSellStratScore = ws; bestSellStrat = 3; }
       sellReasons += "[MREV:" + IntegerToString(meanRevertSignal.score) + "x" + DoubleToString(weights.meanRevert, 1) + "] ";
       if(meanRevertSignal.entryPrice > 0) bestSellEntry = meanRevertSignal.entryPrice;
       if(meanRevertSignal.suggestedTP > 0) bestSellTP = meanRevertSignal.suggestedTP; }
 
-   // SMC (Strategy 5) - provides entry, SL, TP from order blocks/FVGs
+   // SMC (strategy index 4) - provides entry, SL, TP from order blocks/FVGs
    if(smcSignal.direction == SIGNAL_BUY && smcSignal.score >= 10)
-   {  buyVotes++; buyScore += smcSignal.score * weights.smc;
+   {  double ws = smcSignal.score * weights.smc;
+      buyVotes++; buyScore += ws;
+      if(ws > bestBuyStratScore) { bestBuyStratScore = ws; bestBuyStrat = 4; }
       buyReasons += "[SMC:" + IntegerToString(smcSignal.score) + "x" + DoubleToString(weights.smc, 1) + " " + smcSignal.reason + "] ";
       if(smcSignal.entryPrice > 0) bestBuyEntry = smcSignal.entryPrice;
       if(smcSignal.suggestedTP > 0) bestBuyTP = smcSignal.suggestedTP;
       if(smcSignal.suggestedSL > 0) bestBuySL = smcSignal.suggestedSL; }
    else if(smcSignal.direction == SIGNAL_SELL && smcSignal.score >= 10)
-   {  sellVotes++; sellScore += smcSignal.score * weights.smc;
+   {  double ws = smcSignal.score * weights.smc;
+      sellVotes++; sellScore += ws;
+      if(ws > bestSellStratScore) { bestSellStratScore = ws; bestSellStrat = 4; }
       sellReasons += "[SMC:" + IntegerToString(smcSignal.score) + "x" + DoubleToString(weights.smc, 1) + " " + smcSignal.reason + "] ";
       if(smcSignal.entryPrice > 0) bestSellEntry = smcSignal.entryPrice;
       if(smcSignal.suggestedTP > 0) bestSellTP = smcSignal.suggestedTP;
@@ -580,15 +604,18 @@ void OnTick()
    double suggestedTP = 0;
    double suggestedSL = 0;
 
+   int dominantStrategy = 0;
    if(buyVotes >= Inp_MinStrategies && buyScore >= adjustedMinScore && buyScore > sellScore)
    {
       finalDirection = SIGNAL_BUY; finalScore = (int)buyScore; finalReason = buyReasons;
       suggestedEntry = bestBuyEntry; suggestedTP = bestBuyTP; suggestedSL = bestBuySL;
+      dominantStrategy = bestBuyStrat;
    }
    else if(sellVotes >= Inp_MinStrategies && sellScore >= adjustedMinScore && sellScore > buyScore)
    {
       finalDirection = SIGNAL_SELL; finalScore = (int)sellScore; finalReason = sellReasons;
       suggestedEntry = bestSellEntry; suggestedTP = bestSellTP; suggestedSL = bestSellSL;
+      dominantStrategy = bestSellStrat;
    }
 
    if(finalDirection == SIGNAL_NONE) return;
@@ -606,6 +633,9 @@ void OnTick()
    {
       finalReason += "[" + g_brain.GetRegimeName() + "] ";
    }
+
+   // Store dominant strategy for audit tracking in OnTrade
+   g_lastDominantStrategy = dominantStrategy;
 
    // Place trade
    PlaceOrder(finalDirection, finalScore, finalReason,
@@ -919,7 +949,7 @@ void OnTrade()
          MqlDateTime dt;
          TimeToStruct((datetime)HistoryDealGetInteger(dealTicket, DEAL_TIME), dt);
 
-         g_audit.RecordTrade(profit, 0, dealType, 0, dt.hour, dt.day_of_week);
+         g_audit.RecordTrade(profit, 0, dealType, g_lastDominantStrategy, dt.hour, dt.day_of_week);
          g_audit.UpdateBalance(AccountInfoDouble(ACCOUNT_BALANCE));
 
          if(profit >= 0)
