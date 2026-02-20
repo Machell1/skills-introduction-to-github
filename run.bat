@@ -53,13 +53,37 @@ if not exist ".venv" (
 REM Use venv python directly (no activate.bat needed)
 set "VENV_PY=%~dp0.venv\Scripts\python.exe"
 
+if not exist "%VENV_PY%" (
+    echo   ERROR: venv python not found at %VENV_PY%
+    echo   Try deleting the .venv folder and run again.
+    pause
+    exit /b 1
+)
+
 REM -- Step 3: Dependencies ---------------------------------------
 echo [3/4] Installing dependencies ...
 
-REM Always reinstall if requirements changed
-"%VENV_PY%" -m pip install --quiet --upgrade pip
+"%VENV_PY%" -m pip install --quiet --upgrade pip 2>nul
 "%VENV_PY%" -m pip install --quiet -r requirements.txt
-echo   Dependencies ready.
+if %errorlevel% neq 0 (
+    echo   ERROR: Failed to install base dependencies.
+    pause
+    exit /b 1
+)
+echo   Base dependencies ready (numpy, pandas).
+
+REM Try to install MetaTrader5 separately (may fail on Python 3.13+)
+echo   Installing MetaTrader5 ...
+"%VENV_PY%" -m pip install --quiet MetaTrader5 2>nul
+if %errorlevel% neq 0 (
+    echo   WARNING: MetaTrader5 package could not be installed.
+    echo            This usually means your Python version is too new.
+    echo            The bot will run in synthetic/backtest mode only.
+    echo            For MT5 support, install Python 3.10 or 3.12.
+    echo.
+) else (
+    echo   MetaTrader5 ready.
+)
 
 REM -- Step 4: Launch bot -----------------------------------------
 echo.

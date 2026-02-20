@@ -22,7 +22,7 @@ import pandas as pd
 
 try:
     import MetaTrader5 as mt5
-except ImportError:
+except Exception:
     mt5 = None
 
 
