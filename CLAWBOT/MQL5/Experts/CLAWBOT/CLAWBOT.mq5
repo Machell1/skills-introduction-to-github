@@ -59,19 +59,19 @@ input ENUM_BOT_MODE   Inp_BotMode   = MODE_BACKTEST;                   // Bot Mo
 
 //--- Risk Management
 input string   Inp_Separator2       = "=== RISK MANAGEMENT ===";       // ----
-input double   Inp_RiskPerTrade     = 2.0;     // Risk per trade (%) - $2 on $100 account
-input double   Inp_MaxDailyLoss     = 6.0;     // Max daily loss (%)
-input double   Inp_MaxDrawdown      = 25.0;    // Max total drawdown (%) - room for min lot constraints
-input int      Inp_MaxConcurrent    = 1;       // Max concurrent trades (1 for micro account)
-input int      Inp_MaxDailyTrades   = 3;       // Max trades per day
+input double   Inp_RiskPerTrade     = 2.0;     // Risk % (auto-scaled by equity)
+input double   Inp_MaxDailyLoss     = 5.0;     // Max daily loss % (auto-scaled)
+input double   Inp_MaxDrawdown      = 20.0;    // Max drawdown % (auto-scaled)
+input int      Inp_MaxConcurrent    = 3;       // Max concurrent (auto-scaled)
+input int      Inp_MaxDailyTrades   = 5;       // Max daily trades (auto-scaled)
 input double   Inp_MinRiskReward    = 1.5;     // Minimum Risk:Reward ratio
 
 //--- Stop Loss / Take Profit (Gold H1: 2x ATR SL, 4x ATR TP = 1:2 R:R)
 input string   Inp_Separator3       = "=== SL/TP SETTINGS ===";        // ----
 input double   Inp_SL_ATR           = 0.5;     // SL ATR multiplier (tighter SL = smaller loss)
 input double   Inp_TP_ATR           = 2.0;     // TP ATR multiplier (achievable target = 4:1 R:R)
-input double   Inp_MinSL            = 100.0;   // Minimum SL (points) - tighter for micro
-input double   Inp_MaxSL            = 400.0;   // Maximum SL (points) - cap for $100 account
+input double   Inp_MinSL            = 150.0;   // Minimum SL points (auto-scaled)
+input double   Inp_MaxSL            = 600.0;   // Maximum SL points (auto-scaled)
 input double   Inp_TrailActivation  = 1.8;     // Trailing activation (ATR mult) - let winners develop
 input double   Inp_TrailDistance    = 0.8;     // Trailing distance (ATR mult) - room to breathe
 input double   Inp_MaxSpread        = 35.0;    // Max allowed spread (points)
@@ -162,7 +162,7 @@ input double   Inp_DynTP_RangeMult  = 0.8;    // TP regime multiplier for rangin
 
 //--- Partial Close / Profit Locking
 input string   Inp_Separator6e      = "=== PROFIT LOCKING ===";         // ----
-input bool     Inp_EnablePartialClose = false; // Disabled: 0.01 lot can't be split on micro
+input bool     Inp_EnablePartialClose = true;  // Auto-adjusted based on account equity
 input double   Inp_TP1_ATR          = 1.2;     // TP1 distance (ATR mult) - only partial at real profit
 input double   Inp_PartialClosePct  = 0.15;    // Fraction to close at TP1 (15%) - maximize runner
 
@@ -199,6 +199,81 @@ int    g_serverUTCOffset = 0;
 int    g_consecutiveLosses = 0;
 int    g_cooldownRemaining = 0;
 int    g_lastDominantStrategy = 0;   // Dominant strategy for last trade (for audit)
+
+//--- Effective parameters (set by equity scaler, override input defaults)
+double g_eff_RiskPerTrade;
+double g_eff_MaxDailyLoss;
+double g_eff_MaxDrawdown;
+int    g_eff_MaxConcurrent;
+int    g_eff_MaxDailyTrades;
+double g_eff_MinSL;
+double g_eff_MaxSL;
+double g_eff_MaxLot;
+bool   g_eff_EnablePartialClose;
+
+//+------------------------------------------------------------------+
+//| Linear interpolation helper                                        |
+//+------------------------------------------------------------------+
+double Lerp(double bal, double lo_bal, double hi_bal, double lo_val, double hi_val)
+{
+   if(bal <= lo_bal) return lo_val;
+   if(bal >= hi_bal) return hi_val;
+   double t = (bal - lo_bal) / (hi_bal - lo_bal);
+   return lo_val + t * (hi_val - lo_val);
+}
+
+//+------------------------------------------------------------------+
+//| Dynamic equity scaling - adjusts all params to account size        |
+//+------------------------------------------------------------------+
+void ScaleParamsToEquity()
+{
+   double bal = AccountInfoDouble(ACCOUNT_EQUITY);
+   if(bal <= 0) bal = AccountInfoDouble(ACCOUNT_BALANCE);
+   if(bal <= 0) bal = 100.0;  // Fallback
+
+   // Risk per trade: 1.5% (micro) -> 3.0% (large)
+   g_eff_RiskPerTrade = NormalizeDouble(Lerp(bal, 50, 10000, 1.5, 3.0), 1);
+
+   // Max daily loss: 8% (micro) -> 4% (large)
+   g_eff_MaxDailyLoss = NormalizeDouble(Lerp(bal, 50, 10000, 8.0, 4.0), 1);
+
+   // Max drawdown: 30% (micro) -> 12% (large)
+   g_eff_MaxDrawdown = NormalizeDouble(Lerp(bal, 50, 10000, 30.0, 12.0), 1);
+
+   // Max concurrent: 1 (micro) -> 3 (medium+)
+   if(bal < 500)       g_eff_MaxConcurrent = 1;
+   else if(bal < 2000) g_eff_MaxConcurrent = 2;
+   else                g_eff_MaxConcurrent = 3;
+
+   // Max daily trades: 2 (micro) -> 5 (medium+)
+   if(bal < 200)       g_eff_MaxDailyTrades = 2;
+   else if(bal < 1000) g_eff_MaxDailyTrades = 3;
+   else if(bal < 5000) g_eff_MaxDailyTrades = 4;
+   else                g_eff_MaxDailyTrades = 5;
+
+   // SL range: tighter for small, wider for large
+   g_eff_MinSL = NormalizeDouble(Lerp(bal, 50, 5000, 80.0, 150.0), 0);
+   g_eff_MaxSL = NormalizeDouble(Lerp(bal, 50, 5000, 300.0, 600.0), 0);
+
+   // Max lot: scale with account
+   g_eff_MaxLot = NormalizeDouble(Lerp(bal, 50, 50000, 0.2, 10.0), 2);
+
+   // Partial close: only if lot is large enough to split
+   // min lot for split = min_lot / partial_close_pct = 0.01 / 0.15 ≈ 0.067
+   double typicalSLpts = 300.0;
+   double typicalLot = (bal * g_eff_RiskPerTrade / 100.0) / (typicalSLpts * 1.0);
+   double minLotForSplit = 0.01 / MathMax(Inp_PartialClosePct, 0.01);
+   g_eff_EnablePartialClose = (typicalLot >= minLotForSplit);
+
+   string tier = (bal < 500 ? "MICRO" : (bal < 2000 ? "SMALL" : (bal < 10000 ? "MEDIUM" : "LARGE")));
+   LogMessage("EQUITY", "Account: $" + DoubleToString(bal, 0) + " (" + tier + ")");
+   LogMessage("EQUITY", "Risk: " + DoubleToString(g_eff_RiskPerTrade, 1) + "% | "
+              + "MaxDD: " + DoubleToString(g_eff_MaxDrawdown, 1) + "% | "
+              + "Concurrent: " + IntegerToString(g_eff_MaxConcurrent) + " | "
+              + "Daily: " + IntegerToString(g_eff_MaxDailyTrades) + " | "
+              + "SL: " + DoubleToString(g_eff_MinSL, 0) + "-" + DoubleToString(g_eff_MaxSL, 0) + "pts | "
+              + "Partial: " + (g_eff_EnablePartialClose ? "ON" : "OFF"));
+}
 
 //+------------------------------------------------------------------+
 //| Validate input parameters                                          |
@@ -270,6 +345,9 @@ int OnInit()
       LogMessage("INIT", "FATAL: Input validation failed.");
       return INIT_FAILED;
    }
+
+   // Dynamic equity scaling - auto-adjust params to account size
+   ScaleParamsToEquity();
 
    g_serverUTCOffset = GetServerUTCOffset();
    LogMessage("INIT", "Server UTC offset: " + IntegerToString(g_serverUTCOffset) + " hours");
@@ -359,11 +437,11 @@ int OnInit()
          LogMessage("INIT", "WARNING: MTF filter init failed, continuing without it");
    }
 
-   // Initialize risk manager
+   // Initialize risk manager with equity-scaled effective parameters
    if(!g_riskManager.Init(g_activeSymbol, Inp_Timeframe, Inp_MagicNumber,
-         Inp_RiskPerTrade, Inp_MaxDailyLoss, Inp_MaxDrawdown,
-         Inp_MaxConcurrent, Inp_MaxDailyTrades, Inp_MinRiskReward,
-         Inp_SL_ATR, Inp_TP_ATR, Inp_MinSL, Inp_MaxSL,
+         g_eff_RiskPerTrade, g_eff_MaxDailyLoss, g_eff_MaxDrawdown,
+         g_eff_MaxConcurrent, g_eff_MaxDailyTrades, Inp_MinRiskReward,
+         Inp_SL_ATR, Inp_TP_ATR, g_eff_MinSL, g_eff_MaxSL,
          Inp_TrailActivation, Inp_TrailDistance))
    { LogMessage("INIT", "ERROR: Risk manager init failed"); initOk = false; }
 
@@ -439,7 +517,7 @@ void OnTick()
    if(Inp_EnableDynClosure)
       g_riskManager.ManageDynamicClosure(Inp_DynCls_MaxLossATR, Inp_DynCls_StaleBars,
                                           Inp_DynCls_StaleRange, Inp_DynCls_AdverseMom);
-   if(Inp_EnablePartialClose)
+   if(g_eff_EnablePartialClose)
       g_riskManager.ManagePartialClose(Inp_TP1_ATR, Inp_PartialClosePct);
    g_riskManager.ManageBreakeven();
    g_riskManager.ManageTrailingStops();

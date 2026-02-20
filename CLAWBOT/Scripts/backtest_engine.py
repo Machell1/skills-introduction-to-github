@@ -33,20 +33,20 @@ import pandas as pd
 # ============================================================
 @dataclass
 class Config:
-    # Risk - adapted for $100 micro account
-    initial_balance: float = 100.0
-    risk_per_trade: float = 2.0       # % ($2 target per trade on $100)
-    max_daily_loss: float = 6.0       # % ($6 daily loss limit)
-    max_drawdown: float = 25.0        # % ($25 max DD - room for min lot constraints)
-    max_concurrent: int = 1           # 1 trade at a time (capital preservation)
-    max_daily_trades: int = 3         # Max 3 trades/day
+    # Risk - base defaults (dynamically adjusted by scale_config_to_equity)
+    initial_balance: float = 100.0    # Set your account equity here
+    risk_per_trade: float = 2.0       # % (auto-scaled by equity)
+    max_daily_loss: float = 6.0       # % (auto-scaled by equity)
+    max_drawdown: float = 25.0        # % (auto-scaled by equity)
+    max_concurrent: int = 1           # Auto-scaled by equity
+    max_daily_trades: int = 3         # Auto-scaled by equity
     min_risk_reward: float = 1.5
 
-    # SL / TP - tighter SL caps for micro account
+    # SL / TP
     sl_atr: float = 0.5
     tp_atr: float = 2.0
-    min_sl_pts: float = 100.0        # Tighter min SL for micro account
-    max_sl_pts: float = 400.0        # Cap at 400pts = $4 max risk per 0.01 lot
+    min_sl_pts: float = 100.0        # Auto-scaled by equity
+    max_sl_pts: float = 400.0        # Auto-scaled by equity
     trail_activation: float = 1.8     # ATR mult - let winners develop before trailing
     trail_distance: float = 0.8       # ATR mult - wide enough to avoid shakeouts
 
@@ -80,8 +80,8 @@ class Config:
     dyn_tp_trend_mult: float = 2.5
     dyn_tp_range_mult: float = 0.8
 
-    # Partial close - disabled on micro account (0.01 lot can't be split)
-    enable_partial_close: bool = False
+    # Partial close (auto-enabled/disabled based on lot size feasibility)
+    enable_partial_close: bool = True
     tp1_atr: float = 1.2             # wait for real profit before partial
     partial_close_pct: float = 0.15   # keep 85% running
 
@@ -128,8 +128,79 @@ class Config:
     point: float = 0.01
     tick_value: float = 1.0  # $ per point per 1 lot
     min_lot: float = 0.01
-    max_lot: float = 0.5     # Cap for $100 micro account
+    max_lot: float = 10.0    # Auto-scaled by equity
     lot_step: float = 0.01
+
+
+def _lerp(bal, lo_bal, hi_bal, lo_val, hi_val):
+    """Linear interpolation clamped to [lo_val, hi_val] range."""
+    if bal <= lo_bal:
+        return lo_val
+    if bal >= hi_bal:
+        return hi_val
+    t = (bal - lo_bal) / (hi_bal - lo_bal)
+    return lo_val + t * (hi_val - lo_val)
+
+
+def scale_config_to_equity(cfg: Config) -> Config:
+    """Dynamically adjust all equity-sensitive parameters based on account balance.
+
+    Works for any account size from $50 to $100,000+.
+    Smoothly interpolates parameters between tier boundaries.
+
+    Scaling philosophy:
+      - Micro ($50-500):   Conservative - 1 trade, tight SL, no partial close
+      - Small ($500-2k):   Moderate - 2 trades, medium SL, partial close enabled
+      - Medium ($2k-10k):  Standard - 3 trades, full SL range, all features
+      - Large ($10k+):     Aggressive - 3 trades, tight DD, full features
+    """
+    bal = cfg.initial_balance
+
+    # --- Risk per trade: 1.5% (micro) -> 3.0% (large) ---
+    cfg.risk_per_trade = round(_lerp(bal, 50, 10000, 1.5, 3.0), 1)
+
+    # --- Max daily loss: 8% (micro) -> 4% (large) ---
+    # Micro accounts need more room since min lot creates fixed risk
+    cfg.max_daily_loss = round(_lerp(bal, 50, 10000, 8.0, 4.0), 1)
+
+    # --- Max drawdown: 30% (micro) -> 12% (large) ---
+    # Micro accounts MUST have wide DD to survive min-lot risk spikes
+    cfg.max_drawdown = round(_lerp(bal, 50, 10000, 30.0, 12.0), 1)
+
+    # --- Max concurrent trades: 1 (micro) -> 3 (medium+) ---
+    if bal < 500:
+        cfg.max_concurrent = 1
+    elif bal < 2000:
+        cfg.max_concurrent = 2
+    else:
+        cfg.max_concurrent = 3
+
+    # --- Max daily trades: 2 (micro) -> 5 (medium+) ---
+    if bal < 200:
+        cfg.max_daily_trades = 2
+    elif bal < 1000:
+        cfg.max_daily_trades = 3
+    elif bal < 5000:
+        cfg.max_daily_trades = 4
+    else:
+        cfg.max_daily_trades = 5
+
+    # --- SL range: tighter for small, wider for large ---
+    cfg.min_sl_pts = round(_lerp(bal, 50, 5000, 80.0, 150.0), 0)
+    cfg.max_sl_pts = round(_lerp(bal, 50, 5000, 300.0, 600.0), 0)
+
+    # --- Max lot: scale with account size ---
+    cfg.max_lot = round(_lerp(bal, 50, 50000, 0.2, 10.0), 2)
+
+    # --- Partial close: auto-detect if lot size allows splitting ---
+    # Need at least min_lot after partial close: lot * partial_pct >= min_lot
+    # i.e., lot must be >= min_lot / partial_pct
+    typical_sl_pts = 300  # Rough estimate for feasibility check
+    typical_lot = (bal * cfg.risk_per_trade / 100) / (typical_sl_pts * cfg.tick_value)
+    min_lot_for_split = cfg.min_lot / cfg.partial_close_pct  # 0.01/0.15 ≈ 0.067
+    cfg.enable_partial_close = typical_lot >= min_lot_for_split
+
+    return cfg
 
 
 # ============================================================
@@ -1635,6 +1706,24 @@ def main(data_path=None, config_overrides=None):
         for k, v in config_overrides.items():
             if hasattr(cfg, k):
                 setattr(cfg, k, v)
+
+    # Command-line balance override: python backtest_engine.py [balance]
+    if len(sys.argv) > 1:
+        try:
+            cfg.initial_balance = float(sys.argv[1])
+        except ValueError:
+            pass
+
+    # Dynamic equity scaling - auto-adjust all parameters to account size
+    cfg = scale_config_to_equity(cfg)
+    tier = ("MICRO" if cfg.initial_balance < 500 else
+            "SMALL" if cfg.initial_balance < 2000 else
+            "MEDIUM" if cfg.initial_balance < 10000 else "LARGE")
+    print(f"Account: ${cfg.initial_balance:,.0f} ({tier}) | "
+          f"Risk: {cfg.risk_per_trade}% | Max DD: {cfg.max_drawdown}% | "
+          f"Concurrent: {cfg.max_concurrent} | Daily: {cfg.max_daily_trades} | "
+          f"SL: {cfg.min_sl_pts:.0f}-{cfg.max_sl_pts:.0f}pts | "
+          f"Partial: {'ON' if cfg.enable_partial_close else 'OFF'}")
 
     bt = ClawbotBacktester(cfg)
     stats = bt.run(df)

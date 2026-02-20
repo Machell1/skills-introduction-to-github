@@ -1,15 +1,8 @@
 {
   "initial_balance": 100.0,
-  "risk_per_trade": 2.0,
-  "max_daily_loss": 6.0,
-  "max_drawdown": 25.0,
-  "max_concurrent": 1,
-  "max_daily_trades": 3,
   "min_risk_reward": 1.5,
   "sl_atr": 0.5,
   "tp_atr": 2.0,
-  "min_sl_pts": 100.0,
-  "max_sl_pts": 400.0,
   "trail_activation": 1.8,
   "trail_distance": 0.8,
   "max_spread": 35.0,
@@ -32,7 +25,6 @@
   "enable_dynamic_tp": true,
   "dyn_tp_trend_mult": 2.5,
   "dyn_tp_range_mult": 0.8,
-  "enable_partial_close": false,
   "tp1_atr": 1.2,
   "partial_close_pct": 0.15,
   "min_score": 45,
@@ -65,6 +57,5 @@
   "point": 0.01,
   "tick_value": 1.0,
   "min_lot": 0.01,
-  "max_lot": 0.5,
   "lot_step": 0.01
 }
