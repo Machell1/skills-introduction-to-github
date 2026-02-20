@@ -383,6 +383,18 @@ def mt5_get_symbol_info(symbol: str) -> Optional[dict]:
     }
 
 
+def _get_filling_mode(symbol):
+    """Auto-detect the supported filling mode for a symbol."""
+    info = mt5.symbol_info(symbol)
+    if info is not None:
+        modes = info.filling_mode
+        if modes & mt5.ORDER_FILLING_FOK:
+            return mt5.ORDER_FILLING_FOK
+        if modes & mt5.ORDER_FILLING_IOC:
+            return mt5.ORDER_FILLING_IOC
+    return mt5.ORDER_FILLING_RETURN
+
+
 def mt5_place_order(symbol, direction, volume, sl=0.0, tp=0.0, comment="TradingBot", deviation=20):
     info = mt5.symbol_info(symbol)
     if info is None:
@@ -409,7 +421,7 @@ def mt5_place_order(symbol, direction, volume, sl=0.0, tp=0.0, comment="TradingB
         "action": mt5.TRADE_ACTION_DEAL, "symbol": symbol, "volume": volume,
         "type": order_type, "price": price, "sl": sl, "tp": tp,
         "deviation": deviation, "magic": 202602, "comment": comment,
-        "type_time": mt5.ORDER_TIME_GTC, "type_filling": mt5.ORDER_FILLING_IOC,
+        "type_time": mt5.ORDER_TIME_GTC, "type_filling": _get_filling_mode(symbol),
     }
 
     result = mt5.order_send(request)
@@ -470,7 +482,7 @@ def mt5_close_position(ticket):
         "action": mt5.TRADE_ACTION_DEAL, "symbol": symbol, "volume": volume,
         "type": order_type, "position": ticket, "price": price,
         "deviation": 20, "magic": 202602, "comment": "TradingBot close",
-        "type_time": mt5.ORDER_TIME_GTC, "type_filling": mt5.ORDER_FILLING_IOC,
+        "type_time": mt5.ORDER_TIME_GTC, "type_filling": _get_filling_mode(symbol),
     }
     result = mt5.order_send(request)
     if result is None or result.retcode != mt5.TRADE_RETCODE_DONE:

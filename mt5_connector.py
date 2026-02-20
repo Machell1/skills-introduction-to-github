@@ -461,7 +461,7 @@ def close_position(ticket: int) -> bool:
         "magic": 202602,
         "comment": "TradingBot close",
         "type_time": mt5.ORDER_TIME_GTC,
-        "type_filling": mt5.ORDER_FILLING_IOC,
+        "type_filling": _get_filling_mode(symbol),
     }
 
     result = mt5.order_send(request)
