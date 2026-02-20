@@ -32,6 +32,11 @@ __pycache__/
 *.sql
 *.sqlite
 
+# Virtual environment #
+######################
+.venv/
+venv/
+
 # OS generated files #
 ######################
 .DS_Store
