@@ -1,869 +1,834 @@
 #!/usr/bin/env python3
 """
-MT5 XAUUSD M1 Tight-Straddle Pending-Order Scalp Bot
-=====================================================
-Places a Buy Stop + Sell Stop sandwiching the price in the last 20 s of each
-M1 candle.  When one fills, the other is cancelled.  Exits are managed with
-break-even logic, a scalp target, a runner/trailing-stop mode, and strict
-time-in-trade and emergency-loss guards.
+==============================================================================
+  MT5 XAUUSD M1 TIGHT-STRADDLE SCALP BOT  -  DERIV BROKER
+  ONE-CLICK INSTALL  |  BACKTEST  |  LIVE TRADE  |  $0.50 MAX LOSS
+==============================================================================
 
-Run in PyCharm with the MT5 terminal already open and logged in.
-Credentials are loaded from credentials.json next to this script.
+HOW TO RUN  (one click in PyCharm):
+  1. Open MetaTrader 5 terminal, log into Deriv.
+  2. Open this file in PyCharm -> click green Run button.  Done.
+
+The script auto-installs dependencies, creates credentials on first run,
+connects to Deriv, and shows a menu:
+  [1] BACKTEST   - simulate on real historical M1 data
+  [2] LIVE       - real orders, real money
+  [3] DRY RUN    - live prices, zero real orders
+  [4] EXIT
+
+HARD RULE: max loss per trade = $0.50.  No exceptions.
 """
 
-import json
-import logging
-import math
-import os
-import sys
-import time
-from datetime import datetime, timezone
+# =====================================================================
+# STEP 0  -  AUTO INSTALL DEPENDENCIES (one-click, no manual pip)
+# =====================================================================
+import subprocess, sys, importlib
+
+_NEED = ["MetaTrader5", "numpy", "pandas"]
+
+def _auto_install():
+    miss = []
+    for p in _NEED:
+        try:
+            importlib.import_module(p)
+        except ImportError:
+            miss.append(p)
+    if miss:
+        print(f"[SETUP] Installing: {', '.join(miss)} ...")
+        subprocess.check_call(
+            [sys.executable, "-m", "pip", "install", "--quiet"] + miss
+        )
+        print("[SETUP] Done.")
+
+_auto_install()
+
+# =====================================================================
+# IMPORTS
+# =====================================================================
+import json, logging, math, os, time
+from datetime import datetime, timezone, timedelta
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+from dataclasses import dataclass
 
-try:
-    import MetaTrader5 as mt5
-except ImportError:
-    sys.exit(
-        "ERROR: MetaTrader5 package not installed.  "
-        "Run:  pip install MetaTrader5"
-    )
+import MetaTrader5 as mt5
+import numpy as np
+import pandas as pd
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CONFIGURATION  (edit here or override via environment variables)
-# ─────────────────────────────────────────────────────────────────────────────
-CFG = dict(
-    # ── Symbol / timeframe ──────────────────────────────────────────────
-    SYMBOL="XAUUSD",
+# =====================================================================
+# CONFIG  -  all tunables, Deriv-optimised, $0.50 max loss
+# =====================================================================
+CFG = {
+    "SYMBOL":                "XAUUSD",
+    # Deriv servers (wizard will also let user type custom)
+    "DERIV_SERVERS":         ["Deriv-Demo", "Deriv-Server",
+                              "Deriv-Server-02", "Deriv-Server-03"],
+    # Volume
+    "DEFAULT_VOLUME":        0.05,
+    "MARGIN_MODE":           "adaptive",   # strict | adaptive
+    "MIN_FREE_MARGIN_BUF":   1.00,         # USD reserve
 
-    # ── Volume ──────────────────────────────────────────────────────────
-    DEFAULT_VOLUME=0.05,          # lots
-    # "strict" = skip trade if margin insufficient; "adaptive" = reduce vol
-    MARGIN_MODE="adaptive",
-    MIN_FREE_MARGIN_BUFFER=2.0,   # USD – keep at least this much free margin
+    # Entry
+    "ENTRY_OFFSET_PTS":      20,           # tight sandwich
+    "SL_DISTANCE_PTS":       50,           # emergency SL on pending
+    "TP_DISTANCE_PTS":       0,            # 0 = bot manages exits
 
-    # ── Entry offsets (in *points*) ─────────────────────────────────────
-    ENTRY_OFFSET_POINTS=30,       # distance from ask/bid for pending orders
-    SL_DISTANCE_POINTS=100,       # emergency SL distance
-    TP_DISTANCE_POINTS=80,        # optional initial TP (0 = no TP)
+    # Filters
+    "MAX_SPREAD_PTS":        50,
+    "MAX_CANDLE_RANGE_PTS":  400,
+    "WIDEN_ON_VOL":          False,
+    "VOL_WIDEN_FACTOR":      1.5,
 
-    # ── Spread / volatility filters ─────────────────────────────────────
-    MAX_SPREAD_POINTS=60,         # skip if spread > this
-    MAX_CANDLE_RANGE_POINTS=500,  # skip if candle range exceeds this
-    WIDEN_ON_VOLATILITY=False,    # True = widen offsets instead of skipping
-    VOLATILITY_WIDEN_FACTOR=1.5,  # multiplier for offset when volatile
+    # === EXIT RULES (core of the $0.50 max-loss logic) ===
+    "EMERGENCY_LOSS_USD":    0.50,         # HARD CAP per trade
+    "BE_BUFFER_PTS":         2,            # SL = entry +/- 2 pts once green
+    "SCALP_TARGET_PTS":      30,           # take profit in points
+    "SCALP_TARGET_USD":      0.30,         # OR take profit in USD
+    "RUNNER_THRESHOLD_PTS":  80,           # activate trail above this
+    "TRAIL_DISTANCE_PTS":    25,           # trailing SL distance
+    "MAX_HOLD_SEC":          90,           # force close
+    "TIME_RULE_SEC":         15,           # stagnant check delay
+    "TIME_RULE_MIN_PTS":     5,            # min profit after delay
+    "STAGNANT_SEC":          8,            # close if still negative
 
-    # ── Exit management ─────────────────────────────────────────────────
-    BE_BUFFER_POINTS=5,           # move SL to entry + this once in profit
-    SCALP_TARGET_POINTS=50,       # close immediately when profit >= this
-    SCALP_TARGET_USD=0.0,         # alternative: close at USD profit (0=off)
-    RUNNER_THRESHOLD_POINTS=100,  # activate trailing stop above this
-    TRAIL_DISTANCE_POINTS=40,     # trailing-stop distance
-    MAX_HOLD_SECONDS=120,         # force-close after this many seconds
-    TIME_IN_TRADE_SECONDS=30,     # if profit < threshold after N s, close
-    TIME_IN_TRADE_MIN_PROFIT_POINTS=10,  # minimum profit after N seconds
-    EMERGENCY_LOSS_USD=1.50,      # close if floating loss exceeds this
+    # Daily caps
+    "MAX_DAILY_LOSS_USD":    3.00,
+    "MAX_TRADES_DAY":        60,
 
-    # ── Daily limits ────────────────────────────────────────────────────
-    MAX_DAILY_LOSS_USD=5.0,
-    MAX_TRADES_PER_DAY=50,
+    # Polling
+    "POLL_FAST_HZ":          10,
+    "POLL_SLOW_HZ":          2,
 
-    # ── Timing ──────────────────────────────────────────────────────────
-    POLL_FAST_HZ=10,              # polls/sec inside active window
-    POLL_SLOW_HZ=2,               # polls/sec outside active window
+    # Misc
+    "MAGIC":                 889900,
+    "CRED_FILE":             "credentials.json",
+    "LOG_FILE":              "mt5_straddle_bot.log",
+    "LOG_BYTES":             5_000_000,
+    "LOG_BACKUPS":           3,
 
-    # ── Misc ────────────────────────────────────────────────────────────
-    MAGIC=20240101,
-    DRY_RUN=False,
-    CREDENTIALS_FILE="credentials.json",
-    LOG_FILE="mt5_straddle_bot.log",
-    LOG_MAX_BYTES=5_000_000,
-    LOG_BACKUP_COUNT=3,
-)
-
-# ─────────────────────────────────────────────────────────────────────────────
-# LOGGING
-# ─────────────────────────────────────────────────────────────────────────────
-_log_fmt = "%(asctime)s [%(levelname)s] %(message)s"
-_log_datefmt = "%Y-%m-%d %H:%M:%S"
-
-logger = logging.getLogger("straddle_bot")
-logger.setLevel(logging.DEBUG)
-
-# Rotating file handler
-_fh = RotatingFileHandler(
-    CFG["LOG_FILE"],
-    maxBytes=CFG["LOG_MAX_BYTES"],
-    backupCount=CFG["LOG_BACKUP_COUNT"],
-)
-_fh.setLevel(logging.DEBUG)
-_fh.setFormatter(logging.Formatter(_log_fmt, _log_datefmt))
-logger.addHandler(_fh)
-
-# Console handler
-_ch = logging.StreamHandler()
-_ch.setLevel(logging.INFO)
-_ch.setFormatter(logging.Formatter(_log_fmt, _log_datefmt))
-logger.addHandler(_ch)
-
-# ─────────────────────────────────────────────────────────────────────────────
-# DAILY ACCOUNTING (reset on new UTC day)
-# ─────────────────────────────────────────────────────────────────────────────
-_daily = {
-    "date": None,       # date object for the current trading day
-    "pnl": 0.0,         # cumulative realized PnL today
-    "trades": 0,        # number of completed trades today
+    # Backtest
+    "BT_DAYS":               30,
+    "BT_SPREAD_PTS":         30,
 }
 
+# =====================================================================
+# LOGGING
+# =====================================================================
+_FMT = "%(asctime)s [%(levelname)s] %(message)s"
+_DFMT = "%Y-%m-%d %H:%M:%S"
+log = logging.getLogger("bot")
+log.setLevel(logging.DEBUG)
+_fh = RotatingFileHandler(CFG["LOG_FILE"], maxBytes=CFG["LOG_BYTES"],
+                           backupCount=CFG["LOG_BACKUPS"])
+_fh.setLevel(logging.DEBUG)
+_fh.setFormatter(logging.Formatter(_FMT, _DFMT))
+log.addHandler(_fh)
+_ch = logging.StreamHandler()
+_ch.setLevel(logging.INFO)
+_ch.setFormatter(logging.Formatter(_FMT, _DFMT))
+log.addHandler(_ch)
 
-def _reset_daily_if_needed():
-    """Reset daily counters when the UTC date rolls over."""
+# =====================================================================
+# DAILY ACCOUNTING
+# =====================================================================
+_day = {"date": None, "pnl": 0.0, "trades": 0, "wins": 0, "losses": 0}
+
+def _reset_day():
     today = datetime.now(timezone.utc).date()
-    if _daily["date"] != today:
-        if _daily["date"] is not None:
-            logger.info(
-                "Day rollover – previous day PnL=%.2f  trades=%d",
-                _daily["pnl"], _daily["trades"],
-            )
-        _daily["date"] = today
-        _daily["pnl"] = 0.0
-        _daily["trades"] = 0
+    if _day["date"] != today:
+        if _day["date"]:
+            log.info("DAY END pnl=$%.2f trades=%d W=%d L=%d",
+                     _day["pnl"], _day["trades"], _day["wins"], _day["losses"])
+        _day.update(date=today, pnl=0.0, trades=0, wins=0, losses=0)
 
-
-def _daily_limit_hit() -> bool:
-    """Return True if any daily limit has been reached."""
-    _reset_daily_if_needed()
-    if _daily["pnl"] <= -abs(CFG["MAX_DAILY_LOSS_USD"]):
-        logger.warning("Daily max loss (%.2f) reached.", CFG["MAX_DAILY_LOSS_USD"])
+def _day_limit() -> bool:
+    _reset_day()
+    if _day["pnl"] <= -abs(CFG["MAX_DAILY_LOSS_USD"]):
+        log.warning("DAILY LOSS CAP $%.2f HIT", CFG["MAX_DAILY_LOSS_USD"])
         return True
-    if _daily["trades"] >= CFG["MAX_TRADES_PER_DAY"]:
-        logger.warning("Daily max trades (%d) reached.", CFG["MAX_TRADES_PER_DAY"])
+    if _day["trades"] >= CFG["MAX_TRADES_DAY"]:
+        log.warning("DAILY TRADE CAP %d HIT", CFG["MAX_TRADES_DAY"])
         return True
     return False
 
+def _record(pnl: float):
+    _day["pnl"] += pnl
+    _day["trades"] += 1
+    if pnl >= 0:
+        _day["wins"] += 1
+    else:
+        _day["losses"] += 1
 
-# ─────────────────────────────────────────────────────────────────────────────
-# MT5 CONNECTION HELPERS
-# ─────────────────────────────────────────────────────────────────────────────
-def load_credentials() -> dict:
-    cred_path = Path(__file__).with_name(CFG["CREDENTIALS_FILE"])
-    if not cred_path.exists():
-        sys.exit(
-            f"ERROR: {cred_path} not found.  Create it with keys: "
-            '"login", "password", "server".'
-        )
-    with open(cred_path, "r") as f:
-        creds = json.load(f)
-    for key in ("login", "password", "server"):
-        if key not in creds:
-            sys.exit(f"ERROR: credentials.json missing key '{key}'.")
-    creds["login"] = int(creds["login"])
-    return creds
+# =====================================================================
+# CREDENTIALS  -  auto-wizard on first run
+# =====================================================================
+def _cred_path() -> Path:
+    return Path(__file__).with_name(CFG["CRED_FILE"])
 
+def _wizard():
+    print("\n" + "=" * 55)
+    print("  FIRST-RUN SETUP  -  Deriv MT5 Credentials")
+    print("=" * 55 + "\n")
+    login = input("  MT5 account number: ").strip()
+    pwd   = input("  MT5 password:       ").strip()
+    print("\n  Deriv servers:")
+    for i, s in enumerate(CFG["DERIV_SERVERS"], 1):
+        print(f"    [{i}] {s}")
+    print(f"    [{len(CFG['DERIV_SERVERS'])+1}] Other")
+    ch = input("  Pick server: ").strip()
+    try:
+        idx = int(ch) - 1
+        srv = CFG["DERIV_SERVERS"][idx] if 0 <= idx < len(CFG["DERIV_SERVERS"]) \
+              else input("  Type server: ").strip()
+    except (ValueError, IndexError):
+        srv = input("  Type server: ").strip()
+    c = {"login": int(login), "password": pwd, "server": srv}
+    with open(_cred_path(), "w") as f:
+        json.dump(c, f, indent=2)
+    print(f"\n  Saved -> {_cred_path()}\n")
+    return c
 
-def connect_mt5(creds: dict) -> bool:
-    """Initialize MT5 and log in.  Returns True on success."""
+def load_creds() -> dict:
+    p = _cred_path()
+    if not p.exists():
+        return _wizard()
+    with open(p) as f:
+        c = json.load(f)
+    for k in ("login", "password", "server"):
+        if k not in c:
+            return _wizard()
+    c["login"] = int(c["login"])
+    return c
+
+# =====================================================================
+# MT5 CONNECTION
+# =====================================================================
+def connect(creds) -> bool:
     if not mt5.initialize():
-        logger.error("mt5.initialize() failed: %s", mt5.last_error())
+        log.error("mt5.initialize() FAILED: %s", mt5.last_error())
+        print("\n  ERROR: Cannot start MT5. Is the terminal open?\n")
         return False
     if not mt5.login(creds["login"], password=creds["password"],
                      server=creds["server"]):
-        logger.error("mt5.login() failed: %s", mt5.last_error())
+        log.error("mt5.login() FAILED: %s", mt5.last_error())
+        print(f"\n  ERROR: Login failed for {creds['login']} @ {creds['server']}\n")
         mt5.shutdown()
         return False
-    logger.info(
-        "Connected – account=%d  server=%s  balance=%.2f",
-        creds["login"], creds["server"],
-        mt5.account_info().balance,
-    )
+    a = mt5.account_info()
+    log.info("CONNECTED acct=%d srv=%s bal=$%.2f lev=1:%d",
+             a.login, creds["server"], a.balance, a.leverage)
     return True
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# SYMBOL UTILITIES
-# ─────────────────────────────────────────────────────────────────────────────
-def ensure_symbol() -> bool:
-    """Make sure the symbol is visible in Market Watch."""
-    sym = CFG["SYMBOL"]
-    info = mt5.symbol_info(sym)
-    if info is None:
-        logger.error("Symbol %s not found.", sym)
-        return False
-    if not info.visible:
-        if not mt5.symbol_select(sym, True):
-            logger.error("Cannot select %s in Market Watch.", sym)
-            return False
-    return True
-
-
-def get_symbol_props() -> dict:
-    """Return a dict of useful symbol properties, or None on failure."""
+def ensure_sym() -> bool:
     info = mt5.symbol_info(CFG["SYMBOL"])
     if info is None:
-        return None
-    return {
-        "point": info.point,
-        "digits": info.digits,
-        "stops_level": info.trade_stops_level,   # minimum SL/TP distance in points
-        "freeze_level": info.trade_freeze_level,
-        "volume_min": info.volume_min,
-        "volume_max": info.volume_max,
-        "volume_step": info.volume_step,
-        "filling_mode": info.filling_mode,        # bitmask of supported modes
-        "spread": info.spread,                    # current spread in points
-        "ask": info.ask,
-        "bid": info.bid,
-    }
+        log.error("%s not found", CFG["SYMBOL"]); return False
+    if not info.visible:
+        if not mt5.symbol_select(CFG["SYMBOL"], True):
+            log.error("Cannot select %s", CFG["SYMBOL"]); return False
+    return True
 
+# =====================================================================
+# SYMBOL PROPERTIES
+# =====================================================================
+def sym_props() -> dict | None:
+    i = mt5.symbol_info(CFG["SYMBOL"])
+    if i is None: return None
+    return dict(point=i.point, digits=i.digits, stops=i.trade_stops_level,
+                freeze=i.trade_freeze_level, vmin=i.volume_min,
+                vmax=i.volume_max, vstep=i.volume_step,
+                fill=i.filling_mode, spread=i.spread,
+                ask=i.ask, bid=i.bid)
 
-def supported_filling(props: dict) -> int:
-    """Pick a filling type the broker supports."""
-    fm = props["filling_mode"]
-    # Bit 1 = FOK, Bit 2 = IOC.  Some brokers only allow RETURN (0).
-    if fm & 1:
-        return mt5.ORDER_FILLING_FOK
-    if fm & 2:
-        return mt5.ORDER_FILLING_IOC
+def best_fill(p) -> int:
+    if p["fill"] & 1: return mt5.ORDER_FILLING_FOK
+    if p["fill"] & 2: return mt5.ORDER_FILLING_IOC
     return mt5.ORDER_FILLING_RETURN
 
+# =====================================================================
+# CANDLE TIMING  -  server time only, never local clock
+# =====================================================================
+def candle_info():
+    r = mt5.copy_rates_from_pos(CFG["SYMBOL"], mt5.TIMEFRAME_M1, 0, 2)
+    if r is None or len(r) < 1: return None, None
+    tk = mt5.symbol_info_tick(CFG["SYMBOL"])
+    if tk is None: return None, None
+    return int(r[-1]["time"]), int(tk.time)
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CANDLE-TIMING LOGIC
-# ─────────────────────────────────────────────────────────────────────────────
-def get_candle_info():
-    """
-    Return (bar_time_epoch, server_now_epoch) using MT5 server time.
-    bar_time is the open time of the current M1 bar.
-    """
-    rates = mt5.copy_rates_from_pos(CFG["SYMBOL"], mt5.TIMEFRAME_M1, 0, 2)
-    if rates is None or len(rates) < 1:
-        return None, None
-    bar_time = int(rates[-1]["time"])             # latest bar open, epoch
-    server_now = int(mt5.symbol_info_tick(CFG["SYMBOL"]).time)  # server epoch
-    return bar_time, server_now
+def in_window(bar, now) -> bool:
+    """Last 20 seconds of M1 candle: [bar+40 .. bar+60)."""
+    return 40 <= (now - bar) < 60
 
+# =====================================================================
+# VOLUME  -  margin-safe for $15 accounts
+# =====================================================================
+def _rvol(v, p):
+    return round(math.floor(v / p["vstep"]) * p["vstep"], 8)
 
-def in_placement_window(bar_time: int, server_now: int) -> bool:
-    """
-    True when server_now is in [bar_time+40, bar_time+60).
-    This is the last 20 seconds of the M1 candle.
-    """
-    elapsed = server_now - bar_time
-    return 40 <= elapsed < 60
+def calc_vol(p) -> float | None:
+    v = max(CFG["DEFAULT_VOLUME"], p["vmin"])
+    v = min(v, p["vmax"])
+    v = _rvol(v, p)
+    mg = mt5.order_calc_margin(mt5.ORDER_TYPE_BUY, CFG["SYMBOL"], v, p["ask"])
+    if mg is None: return None
+    a = mt5.account_info()
+    avail = a.margin_free - CFG["MIN_FREE_MARGIN_BUF"]
+    if avail <= 0: return None
+    if mg <= avail: return v
+    if CFG["MARGIN_MODE"] == "strict": return None
+    rv = _rvol(v * (avail / mg), p)
+    return rv if rv >= p["vmin"] else None
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# VOLUME CALCULATOR
-# ─────────────────────────────────────────────────────────────────────────────
-def compute_volume(props: dict) -> float | None:
-    """
-    Return the volume to use, respecting margin and config.
-    Returns None if no valid volume can be placed.
-    """
-    vol = CFG["DEFAULT_VOLUME"]
-    # Clamp to symbol limits
-    vol = max(vol, props["volume_min"])
-    vol = min(vol, props["volume_max"])
-    # Round to volume_step
-    vol = _round_volume(vol, props)
-
-    # Check margin for a Buy Stop (worst-case side)
-    margin_needed = mt5.order_calc_margin(
-        mt5.ORDER_TYPE_BUY, CFG["SYMBOL"], vol, props["ask"]
-    )
-    if margin_needed is None:
-        logger.warning("order_calc_margin returned None.")
-        return None
-
-    acct = mt5.account_info()
-    available = acct.margin_free - CFG["MIN_FREE_MARGIN_BUFFER"]
-    if available <= 0:
-        logger.warning("Free margin (%.2f) below buffer.", acct.margin_free)
-        return None
-
-    if margin_needed <= available:
-        return vol
-
-    # Insufficient margin for requested volume
-    if CFG["MARGIN_MODE"] == "strict":
-        logger.warning(
-            "Strict mode: margin needed=%.2f > available=%.2f – skipping.",
-            margin_needed, available,
-        )
-        return None
-
-    # Adaptive: scale down
-    ratio = available / margin_needed
-    reduced = vol * ratio
-    reduced = _round_volume(reduced, props)
-    if reduced < props["volume_min"]:
-        logger.warning("Reduced volume below minimum – skipping.")
-        return None
-    logger.info("Volume reduced from %.2f to %.2f (margin adaptive).", vol, reduced)
-    return reduced
-
-
-def _round_volume(vol: float, props: dict) -> float:
-    """Round volume down to nearest volume_step."""
-    step = props["volume_step"]
-    return math.floor(vol / step) * step
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# SPREAD / VOLATILITY FILTERS
-# ─────────────────────────────────────────────────────────────────────────────
-def spread_ok(props: dict) -> bool:
-    if props["spread"] > CFG["MAX_SPREAD_POINTS"]:
-        logger.info("Spread %d > max %d – skipping.", props["spread"],
-                     CFG["MAX_SPREAD_POINTS"])
+# =====================================================================
+# FILTERS
+# =====================================================================
+def spread_ok(p) -> bool:
+    if p["spread"] > CFG["MAX_SPREAD_PTS"]:
+        log.info("Spread %d > %d SKIP", p["spread"], CFG["MAX_SPREAD_PTS"])
         return False
     return True
 
-
-def volatility_filter(props: dict) -> tuple[bool, int]:
-    """
-    Check last-candle range.  Returns (ok, adjusted_offset_points).
-    If candle range is too large and WIDEN_ON_VOLATILITY is False, ok=False.
-    """
-    rates = mt5.copy_rates_from_pos(CFG["SYMBOL"], mt5.TIMEFRAME_M1, 0, 2)
-    if rates is None or len(rates) < 2:
-        return True, CFG["ENTRY_OFFSET_POINTS"]
-
-    prev = rates[-2]  # previous completed candle
-    candle_range_pts = round((prev["high"] - prev["low"]) / props["point"])
-
-    offset = CFG["ENTRY_OFFSET_POINTS"]
-    if candle_range_pts > CFG["MAX_CANDLE_RANGE_POINTS"]:
-        if CFG["WIDEN_ON_VOLATILITY"]:
-            offset = int(offset * CFG["VOLATILITY_WIDEN_FACTOR"])
-            logger.info(
-                "Volatility high (range=%d pts) – widened offset to %d.",
-                candle_range_pts, offset,
-            )
+def vol_filter(p):
+    r = mt5.copy_rates_from_pos(CFG["SYMBOL"], mt5.TIMEFRAME_M1, 0, 2)
+    off = CFG["ENTRY_OFFSET_PTS"]
+    if r is None or len(r) < 2: return True, off
+    rng = round((r[-2]["high"] - r[-2]["low"]) / p["point"])
+    if rng > CFG["MAX_CANDLE_RANGE_PTS"]:
+        if CFG["WIDEN_ON_VOL"]:
+            off = int(off * CFG["VOL_WIDEN_FACTOR"])
+            log.info("Volatile %dpts widen->%d", rng, off)
         else:
-            logger.info(
-                "Volatility high (range=%d pts) – skipping.", candle_range_pts
-            )
-            return False, offset
-    return True, offset
+            log.info("Volatile %dpts SKIP", rng); return False, off
+    return True, off
 
-
-# ─────────────────────────────────────────────────────────────────────────────
+# =====================================================================
 # ORDER PLACEMENT
-# ─────────────────────────────────────────────────────────────────────────────
-def _clamp_sl_tp(price: float, sl: float, tp: float, order_type: int,
-                 props: dict) -> tuple[float, float]:
-    """
-    Ensure SL and TP respect the broker's minimum stop distance.
-    Adjusts outward if too close to price.
-    """
-    min_dist = props["stops_level"] * props["point"]
-    digits = props["digits"]
-
-    if order_type in (mt5.ORDER_TYPE_BUY_STOP, mt5.ORDER_TYPE_BUY):
-        # SL must be below price by at least min_dist
-        if price - sl < min_dist:
-            sl = round(price - min_dist, digits)
-        # TP must be above price by at least min_dist
-        if tp > 0 and tp - price < min_dist:
-            tp = round(price + min_dist, digits)
+# =====================================================================
+def _clamp(price, sl, tp, otype, p):
+    md = p["stops"] * p["point"]; d = p["digits"]
+    if otype in (mt5.ORDER_TYPE_BUY_STOP, mt5.ORDER_TYPE_BUY):
+        if price - sl < md: sl = round(price - md, d)
+        if tp > 0 and tp - price < md: tp = round(price + md, d)
     else:
-        # SL must be above price by at least min_dist
-        if sl - price < min_dist:
-            sl = round(price + min_dist, digits)
-        # TP must be below price by at least min_dist
-        if tp > 0 and price - tp < min_dist:
-            tp = round(price - min_dist, digits)
+        if sl - price < md: sl = round(price + md, d)
+        if tp > 0 and price - tp < md: tp = round(price - md, d)
+    return round(sl, d), round(tp, d)
 
-    return round(sl, digits), round(tp, digits)
-
-
-def place_straddle(props: dict, offset_points: int, volume: float):
-    """
-    Place Buy Stop above ask and Sell Stop below bid.
-    Returns list of order tickets placed (0–2 items).
-    """
-    point = props["point"]
-    digits = props["digits"]
-    ask = props["ask"]
-    bid = props["bid"]
-    filling = supported_filling(props)
-
-    offset_price = offset_points * point
-    sl_dist = CFG["SL_DISTANCE_POINTS"] * point
-    tp_dist = CFG["TP_DISTANCE_POINTS"] * point
-
+def place_straddle(p, off_pts, vol, dry=False):
+    pt, d = p["point"], p["digits"]
+    ask, bid = p["ask"], p["bid"]
+    fl = best_fill(p)
+    off = off_pts * pt
+    sld = CFG["SL_DISTANCE_PTS"] * pt
+    tpd = CFG["TP_DISTANCE_PTS"] * pt
     tickets = []
 
-    # ── Buy Stop ────────────────────────────────────────────────────────
-    buy_price = round(ask + offset_price, digits)
-    buy_sl = round(buy_price - sl_dist, digits)
-    buy_tp = round(buy_price + tp_dist, digits) if tp_dist > 0 else 0.0
-    buy_sl, buy_tp = _clamp_sl_tp(buy_price, buy_sl, buy_tp,
-                                  mt5.ORDER_TYPE_BUY_STOP, props)
+    # Buy Stop
+    bp = round(ask + off, d)
+    bsl = round(bp - sld, d)
+    btp = round(bp + tpd, d) if tpd > 0 else 0.0
+    bsl, btp = _clamp(bp, bsl, btp, mt5.ORDER_TYPE_BUY_STOP, p)
+    breq = {"action": mt5.TRADE_ACTION_PENDING, "symbol": CFG["SYMBOL"],
+            "volume": vol, "type": mt5.ORDER_TYPE_BUY_STOP,
+            "price": bp, "sl": bsl, "tp": btp, "deviation": 20,
+            "magic": CFG["MAGIC"], "comment": "strd_buy",
+            "type_time": mt5.ORDER_TIME_GTC, "type_filling": fl}
 
-    buy_req = {
-        "action": mt5.TRADE_ACTION_PENDING,
-        "symbol": CFG["SYMBOL"],
-        "volume": volume,
-        "type": mt5.ORDER_TYPE_BUY_STOP,
-        "price": buy_price,
-        "sl": buy_sl,
-        "tp": buy_tp,
-        "deviation": 20,
-        "magic": CFG["MAGIC"],
-        "comment": "straddle_buy",
-        "type_time": mt5.ORDER_TIME_GTC,
-        "type_filling": filling,
-    }
+    # Sell Stop
+    sp = round(bid - off, d)
+    ssl = round(sp + sld, d)
+    stp = round(sp - tpd, d) if tpd > 0 else 0.0
+    ssl, stp = _clamp(sp, ssl, stp, mt5.ORDER_TYPE_SELL_STOP, p)
+    sreq = {"action": mt5.TRADE_ACTION_PENDING, "symbol": CFG["SYMBOL"],
+            "volume": vol, "type": mt5.ORDER_TYPE_SELL_STOP,
+            "price": sp, "sl": ssl, "tp": stp, "deviation": 20,
+            "magic": CFG["MAGIC"], "comment": "strd_sell",
+            "type_time": mt5.ORDER_TIME_GTC, "type_filling": fl}
 
-    # ── Sell Stop ───────────────────────────────────────────────────────
-    sell_price = round(bid - offset_price, digits)
-    sell_sl = round(sell_price + sl_dist, digits)
-    sell_tp = round(sell_price - tp_dist, digits) if tp_dist > 0 else 0.0
-    sell_sl, sell_tp = _clamp_sl_tp(sell_price, sell_sl, sell_tp,
-                                    mt5.ORDER_TYPE_SELL_STOP, props)
-
-    sell_req = {
-        "action": mt5.TRADE_ACTION_PENDING,
-        "symbol": CFG["SYMBOL"],
-        "volume": volume,
-        "type": mt5.ORDER_TYPE_SELL_STOP,
-        "price": sell_price,
-        "sl": sell_sl,
-        "tp": sell_tp,
-        "deviation": 20,
-        "magic": CFG["MAGIC"],
-        "comment": "straddle_sell",
-        "type_time": mt5.ORDER_TIME_GTC,
-        "type_filling": filling,
-    }
-
-    for label, req in [("BUY_STOP", buy_req), ("SELL_STOP", sell_req)]:
-        fmt = f"Placing %s: price=%.*f  sl=%.*f  tp=%.*f  vol=%.2f"
-        logger.info(
-            fmt, label,
-            digits, req["price"], digits, req["sl"],
-            digits, req["tp"], req["volume"],
-        )
-
-        if CFG["DRY_RUN"]:
-            logger.info("[DRY_RUN] Would send: %s", req)
-            continue
-
-        result = mt5.order_send(req)
-        if result is None:
-            logger.error("%s order_send returned None: %s", label,
-                         mt5.last_error())
-            continue
-        if result.retcode != mt5.TRADE_RETCODE_DONE:
-            logger.error(
-                "%s REJECTED retcode=%d  comment='%s'  request=%s",
-                label, result.retcode, result.comment, req,
-            )
-            continue
-        logger.info("%s placed – ticket=%d", label, result.order)
-        tickets.append(result.order)
-
+    for lbl, rq in [("BUY_STOP", breq), ("SELL_STOP", sreq)]:
+        log.info("PLACE %s px=%.*f sl=%.*f vol=%.2f spd=%d",
+                 lbl, d, rq["price"], d, rq["sl"], vol, p["spread"])
+        if dry:
+            log.info("[DRY] %s skipped", lbl); tickets.append(0); continue
+        res = mt5.order_send(rq)
+        if res is None:
+            log.error("%s send=None %s", lbl, mt5.last_error()); continue
+        if res.retcode != mt5.TRADE_RETCODE_DONE:
+            log.error("%s REJECT %d '%s'", lbl, res.retcode, res.comment); continue
+        log.info("%s OK ticket=%d", lbl, res.order)
+        tickets.append(res.order)
     return tickets
 
+# =====================================================================
+# ORDER / POSITION HELPERS
+# =====================================================================
+def bot_orders():
+    o = mt5.orders_get(symbol=CFG["SYMBOL"])
+    return [x for x in (o or []) if x.magic == CFG["MAGIC"]]
 
-# ─────────────────────────────────────────────────────────────────────────────
-# PENDING-ORDER MANAGEMENT
-# ─────────────────────────────────────────────────────────────────────────────
-def get_bot_pending_orders() -> list:
-    """Return list of pending orders placed by this bot (by magic number)."""
-    orders = mt5.orders_get(symbol=CFG["SYMBOL"])
-    if orders is None:
-        return []
-    return [o for o in orders if o.magic == CFG["MAGIC"]]
+def cancel(ticket, dry=False):
+    if dry: return True
+    r = mt5.order_send({"action": mt5.TRADE_ACTION_REMOVE, "order": ticket})
+    ok = r and r.retcode == mt5.TRADE_RETCODE_DONE
+    if ok: log.info("CANCEL %d", ticket)
+    else:  log.error("CANCEL %d FAIL %s", ticket, r)
+    return ok
 
+def cancel_all(dry=False):
+    for o in bot_orders(): cancel(o.ticket, dry)
 
-def cancel_order(ticket: int) -> bool:
-    """Cancel a pending order by ticket."""
-    if CFG["DRY_RUN"]:
-        logger.info("[DRY_RUN] Would cancel order %d", ticket)
-        return True
-    req = {
-        "action": mt5.TRADE_ACTION_REMOVE,
-        "order": ticket,
-    }
-    result = mt5.order_send(req)
-    if result is None:
-        logger.error("Cancel order %d – order_send None: %s", ticket,
-                     mt5.last_error())
-        return False
-    if result.retcode != mt5.TRADE_RETCODE_DONE:
-        logger.error("Cancel order %d failed retcode=%d comment='%s'",
-                     ticket, result.retcode, result.comment)
-        return False
-    logger.info("Cancelled pending order %d", ticket)
-    return True
-
-
-def cancel_all_bot_orders():
-    """Cancel every pending order belonging to this bot."""
-    for o in get_bot_pending_orders():
-        cancel_order(o.ticket)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# POSITION MANAGEMENT
-# ─────────────────────────────────────────────────────────────────────────────
-def get_bot_position():
-    """Return the open position for this bot's symbol+magic, or None."""
-    positions = mt5.positions_get(symbol=CFG["SYMBOL"])
-    if positions is None:
-        return None
-    for p in positions:
-        if p.magic == CFG["MAGIC"]:
-            return p
+def bot_pos():
+    ps = mt5.positions_get(symbol=CFG["SYMBOL"])
+    if ps is None: return None
+    for x in ps:
+        if x.magic == CFG["MAGIC"]: return x
     return None
 
-
-def close_position(pos) -> bool:
-    """Market-close an open position."""
-    if CFG["DRY_RUN"]:
-        logger.info("[DRY_RUN] Would close position ticket=%d", pos.ticket)
+def close_pos(pos, dry=False):
+    if dry: log.info("[DRY] close %d", pos.ticket); return True
+    p = sym_props()
+    if p is None: return False
+    is_buy = pos.type == mt5.POSITION_TYPE_BUY
+    ct = mt5.ORDER_TYPE_SELL if is_buy else mt5.ORDER_TYPE_BUY
+    px = p["bid"] if is_buy else p["ask"]
+    rq = {"action": mt5.TRADE_ACTION_DEAL, "symbol": CFG["SYMBOL"],
+          "volume": pos.volume, "type": ct, "position": pos.ticket,
+          "price": px, "deviation": 30, "magic": CFG["MAGIC"],
+          "comment": "strd_exit", "type_filling": best_fill(p)}
+    r = mt5.order_send(rq)
+    if r and r.retcode == mt5.TRADE_RETCODE_DONE:
+        log.info("CLOSED %d px=%.2f pnl=$%.2f", pos.ticket, px, pos.profit)
         return True
+    log.error("CLOSE %d FAIL %s", pos.ticket, r); return False
 
-    # Determine close direction
-    close_type = (mt5.ORDER_TYPE_SELL if pos.type == mt5.POSITION_TYPE_BUY
-                  else mt5.ORDER_TYPE_BUY)
-    props = get_symbol_props()
-    if props is None:
-        logger.error("Cannot get symbol props to close position.")
-        return False
+def mod_sl(pos, sl, dry=False):
+    if dry: return True
+    rq = {"action": mt5.TRADE_ACTION_SLTP, "symbol": CFG["SYMBOL"],
+          "position": pos.ticket, "sl": sl, "tp": pos.tp, "magic": CFG["MAGIC"]}
+    r = mt5.order_send(rq)
+    if r and r.retcode == mt5.TRADE_RETCODE_DONE: return True
+    log.error("MOD_SL %d FAIL %s", pos.ticket, r); return False
 
-    price = props["bid"] if close_type == mt5.ORDER_TYPE_SELL else props["ask"]
-
-    req = {
-        "action": mt5.TRADE_ACTION_DEAL,
-        "symbol": CFG["SYMBOL"],
-        "volume": pos.volume,
-        "type": close_type,
-        "position": pos.ticket,
-        "price": price,
-        "deviation": 30,
-        "magic": CFG["MAGIC"],
-        "comment": "straddle_close",
-        "type_filling": supported_filling(props),
-    }
-    result = mt5.order_send(req)
-    if result is None:
-        logger.error("Close position order_send None: %s", mt5.last_error())
-        return False
-    if result.retcode != mt5.TRADE_RETCODE_DONE:
-        logger.error("Close position failed retcode=%d comment='%s'",
-                     result.retcode, result.comment)
-        return False
-    logger.info("Position %d closed at %.2f  PnL=%.2f", pos.ticket,
-                price, pos.profit)
-    return True
-
-
-def modify_sl(pos, new_sl: float) -> bool:
-    """Move the SL of an open position."""
-    if CFG["DRY_RUN"]:
-        logger.info("[DRY_RUN] Would modify SL of %d to %.5f",
-                     pos.ticket, new_sl)
-        return True
-
-    req = {
-        "action": mt5.TRADE_ACTION_SLTP,
-        "symbol": CFG["SYMBOL"],
-        "position": pos.ticket,
-        "sl": new_sl,
-        "tp": pos.tp,          # keep existing TP
-        "magic": CFG["MAGIC"],
-    }
-    result = mt5.order_send(req)
-    if result is None:
-        logger.error("Modify SL order_send None: %s", mt5.last_error())
-        return False
-    if result.retcode != mt5.TRADE_RETCODE_DONE:
-        logger.error("Modify SL failed retcode=%d comment='%s'",
-                     result.retcode, result.comment)
-        return False
-    logger.debug("SL moved to %.5f for ticket %d", new_sl, pos.ticket)
-    return True
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# EXIT MANAGEMENT
-# ─────────────────────────────────────────────────────────────────────────────
-class ExitManager:
-    """
-    Tracks an open position and applies the exit rules:
-      1. Move SL to break-even once in small profit.
-      2. Close at scalp target.
-      3. Activate trailing stop above runner threshold.
-      4. Close if profit stagnant after time-in-trade seconds.
-      5. Close if floating loss exceeds emergency limit.
-      6. Force-close after max-hold time.
-
-    NOTE: slippage and spread can still produce small realized losses; this
-    is the best-effort approximation as described in the spec.
-    """
-
+# =====================================================================
+# EXIT MANAGER  -  keeps every trade under $0.50 loss
+#
+# Tick-by-tick priority:
+#   1. Emergency $0.50 hard stop
+#   2. Negative after 8s -> close (cut fast)
+#   3. Any positive tick -> SL to break-even + 2pt
+#   4. Scalp target 30pts / $0.30 -> bank it
+#   5. Runner 80pts -> trailing stop 25pts
+#   6. Stagnant after 15s with <5pts -> close
+#   7. Max hold 90s -> force close
+# =====================================================================
+class ExitMgr:
     def __init__(self, pos):
         self.ticket = pos.ticket
-        self.entry_price = pos.price_open
-        self.direction = pos.type  # POSITION_TYPE_BUY or POSITION_TYPE_SELL
-        self.entry_time = time.time()
-        self.be_moved = False      # True once SL has been moved to break-even
-        self.trailing_active = False
-        self.trailing_sl = 0.0
+        self.entry = pos.price_open
+        self.is_buy = pos.type == mt5.POSITION_TYPE_BUY
+        self.t0 = time.time()
+        self.be_done = False
+        self.trailing = False
+        self.trail_sl = 0.0
+        p = sym_props()
+        log.info("EXIT_MGR tk=%d entry=%.5f %s spd=%s",
+                 self.ticket, self.entry,
+                 "BUY" if self.is_buy else "SELL",
+                 p["spread"] if p else "?")
 
-        # Log entry details
-        props = get_symbol_props()
-        spread = props["spread"] if props else "?"
-        logger.info(
-            "ExitManager started – ticket=%d  entry=%.5f  dir=%s  spread=%s",
-            self.ticket, self.entry_price,
-            "BUY" if self.direction == mt5.POSITION_TYPE_BUY else "SELL",
-            spread,
-        )
-
-    def update(self) -> str | None:
-        """
-        Called on every poll tick while a position is open.
-        Returns a reason string if the position was closed, else None.
-        """
-        pos = get_bot_position()
+    def tick(self, dry=False):
+        pos = bot_pos()
         if pos is None or pos.ticket != self.ticket:
-            # Position disappeared (SL/TP hit by broker)
             return "sl_tp_hit"
-
-        props = get_symbol_props()
-        if props is None:
-            return None
-
-        point = props["point"]
-        profit_usd = pos.profit
-        elapsed = time.time() - self.entry_time
-
-        # Current price for the position side
-        if self.direction == mt5.POSITION_TYPE_BUY:
-            current = props["bid"]
-            profit_pts = (current - self.entry_price) / point
+        p = sym_props()
+        if p is None: return None
+        pt, d = p["point"], p["digits"]
+        pnl = pos.profit
+        age = time.time() - self.t0
+        if self.is_buy:
+            cur = p["bid"]; ppts = (cur - self.entry) / pt
         else:
-            current = props["ask"]
-            profit_pts = (self.entry_price - current) / point
+            cur = p["ask"]; ppts = (self.entry - cur) / pt
 
-        # ── 5) Emergency loss guard ────────────────────────────────────
-        if profit_usd < 0 and abs(profit_usd) >= CFG["EMERGENCY_LOSS_USD"]:
-            logger.warning(
-                "Emergency loss %.2f >= limit %.2f – closing.",
-                profit_usd, CFG["EMERGENCY_LOSS_USD"],
-            )
-            if close_position(pos):
-                _daily["pnl"] += profit_usd
-                _daily["trades"] += 1
-                return "emergency_loss"
+        # 1. EMERGENCY $0.50
+        if pnl < 0 and abs(pnl) >= CFG["EMERGENCY_LOSS_USD"]:
+            log.warning("EMERGENCY $%.2f >= $%.2f", pnl, CFG["EMERGENCY_LOSS_USD"])
+            if close_pos(pos, dry): _record(pnl); return "emergency"
 
-        # ── 6) Max hold time ───────────────────────────────────────────
-        if elapsed >= CFG["MAX_HOLD_SECONDS"]:
-            logger.info("Max hold time %ds exceeded – closing.", int(elapsed))
-            if close_position(pos):
-                _daily["pnl"] += profit_usd
-                _daily["trades"] += 1
-                return "max_hold"
+        # 2. NEGATIVE after 8s
+        if age >= CFG["STAGNANT_SEC"] and pnl <= 0:
+            log.info("NEG %ds $%.2f -> close", int(age), pnl)
+            if close_pos(pos, dry): _record(pnl); return "neg_stagnant"
 
-        # ── 1) Break-even SL ──────────────────────────────────────────
-        if not self.be_moved and profit_pts > 0:
-            be_buffer = CFG["BE_BUFFER_POINTS"] * point
-            if self.direction == mt5.POSITION_TYPE_BUY:
-                new_sl = round(self.entry_price + be_buffer, props["digits"])
+        # 3. BREAK-EVEN
+        if not self.be_done and ppts > 0:
+            buf = CFG["BE_BUFFER_PTS"] * pt
+            nsl = round(self.entry + buf, d) if self.is_buy \
+                  else round(self.entry - buf, d)
+            if mod_sl(pos, nsl, dry):
+                self.be_done = True
+                log.info("BE SL->%.5f", nsl)
+
+        # 4. SCALP
+        scalp = False
+        if CFG["SCALP_TARGET_PTS"] > 0 and ppts >= CFG["SCALP_TARGET_PTS"]:
+            scalp = True
+        if CFG["SCALP_TARGET_USD"] > 0 and pnl >= CFG["SCALP_TARGET_USD"]:
+            scalp = True
+        if scalp and not self.trailing:
+            if ppts < CFG["RUNNER_THRESHOLD_PTS"]:
+                log.info("SCALP %.0fpts $%.2f", ppts, pnl)
+                if close_pos(pos, dry): _record(pnl); return "scalp"
+
+        # 5. RUNNER
+        if ppts >= CFG["RUNNER_THRESHOLD_PTS"]:
+            tr = CFG["TRAIL_DISTANCE_PTS"] * pt
+            if self.is_buy:
+                ideal = round(cur - tr, d)
+                if not self.trailing or ideal > self.trail_sl:
+                    self.trail_sl = ideal; self.trailing = True
+                    mod_sl(pos, ideal, dry)
             else:
-                new_sl = round(self.entry_price - be_buffer, props["digits"])
-            if modify_sl(pos, new_sl):
-                self.be_moved = True
-                logger.info("SL moved to break-even+buffer: %.5f", new_sl)
+                ideal = round(cur + tr, d)
+                if not self.trailing or ideal < self.trail_sl:
+                    self.trail_sl = ideal; self.trailing = True
+                    mod_sl(pos, ideal, dry)
 
-        # ── 2) Scalp target ───────────────────────────────────────────
-        scalp_hit = False
-        if CFG["SCALP_TARGET_POINTS"] > 0 and profit_pts >= CFG["SCALP_TARGET_POINTS"]:
-            scalp_hit = True
-        if CFG["SCALP_TARGET_USD"] > 0 and profit_usd >= CFG["SCALP_TARGET_USD"]:
-            scalp_hit = True
+        # 6. TIME RULE
+        if age >= CFG["TIME_RULE_SEC"] and ppts < CFG["TIME_RULE_MIN_PTS"] \
+                and not self.trailing:
+            log.info("TIME %ds %.0fpts<%d", int(age), ppts, CFG["TIME_RULE_MIN_PTS"])
+            if close_pos(pos, dry): _record(pnl); return "time_rule"
 
-        # Only close at scalp target if we haven't entered runner mode
-        if scalp_hit and not self.trailing_active:
-            # Check if this qualifies as a runner instead
-            if profit_pts >= CFG["RUNNER_THRESHOLD_POINTS"]:
-                pass  # fall through to runner logic below
-            else:
-                logger.info("Scalp target hit (%.1f pts / $%.2f) – closing.",
-                            profit_pts, profit_usd)
-                if close_position(pos):
-                    _daily["pnl"] += profit_usd
-                    _daily["trades"] += 1
-                    return "scalp_target"
+        # 7. MAX HOLD
+        if age >= CFG["MAX_HOLD_SEC"]:
+            log.info("MAX HOLD %ds $%.2f", int(age), pnl)
+            if close_pos(pos, dry): _record(pnl); return "max_hold"
 
-        # ── 3) Runner / trailing stop ─────────────────────────────────
-        if profit_pts >= CFG["RUNNER_THRESHOLD_POINTS"]:
-            trail = CFG["TRAIL_DISTANCE_POINTS"] * point
-            if self.direction == mt5.POSITION_TYPE_BUY:
-                ideal_sl = round(current - trail, props["digits"])
-                if not self.trailing_active or ideal_sl > self.trailing_sl:
-                    self.trailing_sl = ideal_sl
-                    self.trailing_active = True
-                    modify_sl(pos, self.trailing_sl)
-                    logger.debug("Trailing SL (BUY) updated to %.5f",
-                                 self.trailing_sl)
-            else:
-                ideal_sl = round(current + trail, props["digits"])
-                if not self.trailing_active or ideal_sl < self.trailing_sl:
-                    self.trailing_sl = ideal_sl
-                    self.trailing_active = True
-                    modify_sl(pos, self.trailing_sl)
-                    logger.debug("Trailing SL (SELL) updated to %.5f",
-                                 self.trailing_sl)
+        return None
 
-        # ── 4) Time-in-trade stagnation rule ──────────────────────────
-        if (elapsed >= CFG["TIME_IN_TRADE_SECONDS"]
-                and profit_pts < CFG["TIME_IN_TRADE_MIN_PROFIT_POINTS"]
-                and not self.trailing_active):
-            logger.info(
-                "Time-in-trade %ds, profit %.1f pts < min %d – closing.",
-                int(elapsed), profit_pts, CFG["TIME_IN_TRADE_MIN_PROFIT_POINTS"],
-            )
-            if close_position(pos):
-                _daily["pnl"] += profit_usd
-                _daily["trades"] += 1
-                return "time_stagnant"
+# =====================================================================
+#
+#   B A C K T E S T E R
+#
+# =====================================================================
+@dataclass
+class BTrade:
+    idx: int; etime: object; side: str; epx: float; sl: float
+    xpx: float = 0.0; xtime: object = None
+    ppts: float = 0.0; pusd: float = 0.0; reason: str = ""
 
-        return None  # position still open
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# MAIN LOOP
-# ─────────────────────────────────────────────────────────────────────────────
-def main():
+def run_backtest():
+    print("\n" + "=" * 60)
+    print("  BACKTEST  -  XAUUSD M1 Straddle")
     print("=" * 60)
-    print("  MT5 XAUUSD M1 Tight-Straddle Scalp Bot")
-    print("=" * 60)
+    p = sym_props()
+    if p is None: print("  ERROR: no symbol props"); return
+    pt, d = p["point"], p["digits"]
+    vol = CFG["DEFAULT_VOLUME"]
+
+    now_utc = datetime.now(timezone.utc)
+    start = now_utc - timedelta(days=CFG["BT_DAYS"])
+    rates = mt5.copy_rates_range(CFG["SYMBOL"], mt5.TIMEFRAME_M1, start, now_utc)
+    if rates is None or len(rates) < 100:
+        print(f"  ERROR: not enough data ({len(rates) if rates is not None else 0} bars)")
+        return
+    df = pd.DataFrame(rates)
+    df["time"] = pd.to_datetime(df["time"], unit="s", utc=True)
+    print(f"  {len(df)} bars  {df['time'].iloc[0]}  ->  {df['time'].iloc[-1]}")
+
+    sp_price = CFG["BT_SPREAD_PTS"] * pt
+    off_price = CFG["ENTRY_OFFSET_PTS"] * pt
+    sl_d = CFG["SL_DISTANCE_PTS"] * pt
+    usd_pt = vol * 100 * pt  # USD per point for XAUUSD
+
+    trades = []
+    i = 1
+    scalp_pts = CFG["SCALP_TARGET_PTS"]
+    runner_pts = CFG["RUNNER_THRESHOLD_PTS"]
+    trail_pts = CFG["TRAIL_DISTANCE_PTS"]
+    be_buf = CFG["BE_BUFFER_PTS"]
+    eloss = CFG["EMERGENCY_LOSS_USD"]
+    stag_bars = max(1, CFG["STAGNANT_SEC"] // 60)
+    time_bars = max(1, CFG["TIME_RULE_SEC"] // 60)
+    max_bars = max(1, CFG["MAX_HOLD_SEC"] // 60)
+
+    while i < len(df) - max_bars - 2:
+        prev = df.iloc[i - 1]
+        bar = df.iloc[i]
+
+        # Volatility filter
+        if round((prev["high"] - prev["low"]) / pt) > CFG["MAX_CANDLE_RANGE_PTS"]:
+            i += 1; continue
+
+        mid = bar["close"]
+        ask = mid + sp_price / 2
+        bid = mid - sp_price / 2
+        buy_px = round(ask + off_price, d)
+        sell_px = round(bid - off_price, d)
+        buy_sl = round(buy_px - sl_d, d)
+        sell_sl = round(sell_px + sl_d, d)
+
+        nxt = df.iloc[i + 1]
+        b_trig = nxt["high"] >= buy_px
+        s_trig = nxt["low"] <= sell_px
+
+        if b_trig and s_trig:
+            triggered = "BUY" if nxt["open"] >= mid else "SELL"
+        elif b_trig:
+            triggered = "BUY"
+        elif s_trig:
+            triggered = "SELL"
+        else:
+            i += 1; continue
+
+        epx = buy_px if triggered == "BUY" else sell_px
+        sl_px = buy_sl if triggered == "BUY" else sell_sl
+
+        t = BTrade(idx=i+1, etime=nxt["time"], side=triggered, epx=epx, sl=sl_px)
+        be_set = False; trl_active = False; trl_sl = 0.0
+
+        for j in range(i + 1, min(i + 1 + max_bars + 1, len(df))):
+            bj = df.iloc[j]; held = j - (i + 1)
+            if triggered == "BUY":
+                worst = (bj["low"] - epx) / pt
+                best = (bj["high"] - epx) / pt
+                exit_c = bj["close"] - sp_price / 2
+                pc = (exit_c - epx) / pt
+            else:
+                worst = (epx - bj["high"]) / pt
+                best = (epx - bj["low"]) / pt
+                exit_c = bj["close"] + sp_price / 2
+                pc = (epx - exit_c) / pt
+
+            # Emergency
+            if worst * usd_pt <= -eloss:
+                t.ppts = -eloss / usd_pt; t.pusd = -eloss
+                t.reason = "emergency"; t.xtime = bj["time"]; break
+
+            # SL hit
+            if triggered == "BUY" and bj["low"] <= sl_px:
+                t.ppts = (sl_px - epx) / pt; t.pusd = t.ppts * usd_pt
+                t.reason = "sl_hit"; t.xtime = bj["time"]; break
+            if triggered == "SELL" and bj["high"] >= sl_px:
+                t.ppts = (epx - sl_px) / pt; t.pusd = t.ppts * usd_pt
+                t.reason = "sl_hit"; t.xtime = bj["time"]; break
+
+            # BE
+            if not be_set and best > 0:
+                if triggered == "BUY": sl_px = epx + be_buf * pt
+                else: sl_px = epx - be_buf * pt
+                be_set = True
+
+            # Stagnant negative
+            if held >= stag_bars and pc <= 0:
+                t.ppts = pc; t.pusd = pc * usd_pt
+                t.reason = "stagnant"; t.xtime = bj["time"]; break
+
+            # Scalp
+            if best >= scalp_pts and best < runner_pts:
+                t.ppts = scalp_pts; t.pusd = scalp_pts * usd_pt
+                t.reason = "scalp"; t.xtime = bj["time"]; break
+
+            # Runner
+            if best >= runner_pts:
+                trl_active = True
+                if triggered == "BUY":
+                    ideal = bj["high"] - trail_pts * pt
+                    if ideal > trl_sl: trl_sl = ideal
+                    if bj["low"] <= trl_sl:
+                        t.ppts = (trl_sl - epx) / pt; t.pusd = t.ppts * usd_pt
+                        t.reason = "trail"; t.xtime = bj["time"]; break
+                else:
+                    ideal = bj["low"] + trail_pts * pt
+                    if trl_sl == 0 or ideal < trl_sl: trl_sl = ideal
+                    if bj["high"] >= trl_sl:
+                        t.ppts = (epx - trl_sl) / pt; t.pusd = t.ppts * usd_pt
+                        t.reason = "trail"; t.xtime = bj["time"]; break
+
+            # Time rule
+            if held >= time_bars and pc < CFG["TIME_RULE_MIN_PTS"] and not trl_active:
+                t.ppts = pc; t.pusd = pc * usd_pt
+                t.reason = "time"; t.xtime = bj["time"]; break
+
+            # Max hold
+            if held >= max_bars:
+                t.ppts = pc; t.pusd = pc * usd_pt
+                t.reason = "max_hold"; t.xtime = bj["time"]; break
+        else:
+            t.ppts = pc; t.pusd = pc * usd_pt
+            t.reason = "end_data"; t.xtime = bj["time"]
+
+        # Hard cap loss
+        if t.pusd < -eloss: t.pusd = -eloss
+        trades.append(t)
+        i += max(2, j - i + 1)
+
+    # ── REPORT ──────────────────────────────────────────────────────
+    if not trades:
+        print("  No trades. Increase BT_DAYS."); return
+
+    tot = len(trades)
+    wins = sum(1 for x in trades if x.pusd >= 0)
+    losses = tot - wins
+    wr = wins / tot * 100
+    tpnl = sum(x.pusd for x in trades)
+    aw = np.mean([x.pusd for x in trades if x.pusd >= 0]) if wins else 0
+    al = np.mean([x.pusd for x in trades if x.pusd < 0]) if losses else 0
+    bw = max(x.pusd for x in trades)
+    bl = min(x.pusd for x in trades)
+
+    eq = 0.0; peak = 0.0; mdd = 0.0
+    for x in trades:
+        eq += x.pusd
+        if eq > peak: peak = eq
+        dd = peak - eq
+        if dd > mdd: mdd = dd
+
+    reasons = {}
+    for x in trades:
+        reasons[x.reason] = reasons.get(x.reason, 0) + 1
+
+    print("\n" + "-" * 55)
+    print(f"  RESULTS  ({CFG['BT_DAYS']} days, {len(df)} bars)")
+    print("-" * 55)
+    print(f"  Total trades:    {tot}")
+    print(f"  Wins:            {wins}")
+    print(f"  Losses:          {losses}")
+    print(f"  WIN RATE:        {wr:.1f}%")
+    print(f"  Total PnL:       ${tpnl:.2f}")
+    print(f"  Avg win:         ${aw:.3f}")
+    print(f"  Avg loss:        ${al:.3f}")
+    print(f"  Biggest win:     ${bw:.2f}")
+    print(f"  Biggest loss:    ${bl:.2f}  (capped at $0.50)")
+    print(f"  Max drawdown:    ${mdd:.2f}")
     print()
-    print("IMPORTANT: Make sure the MetaTrader 5 terminal is open and")
-    print("logged in before running this script.")
+    print("  Exit reasons:")
+    for r, c in sorted(reasons.items(), key=lambda x: -x[1]):
+        print(f"    {r:<16s} {c:>5d}  ({c/tot*100:.1f}%)")
+
+    # Equity curve
+    print("\n  EQUITY CURVE:")
+    eq = 0.0; step = max(1, tot // 20)
+    for idx, x in enumerate(trades):
+        eq += x.pusd
+        if idx % step == 0 or idx == tot - 1:
+            bar = "#" * max(0, min(int(eq * 10), 50))
+            print(f"    {idx+1:>5d}  ${eq:>8.2f}  {bar}")
+    print("-" * 55)
+    print("  Backtest done. Review before going live.\n")
+
+# =====================================================================
+#
+#   L I V E   T R A D I N G
+#
+# =====================================================================
+def run_live(dry=False):
+    tag = "DRY RUN" if dry else "LIVE"
+    print(f"\n{'='*60}")
+    print(f"  {tag}  -  XAUUSD M1 Straddle on Deriv")
+    print(f"{'='*60}")
+    print(f"  Max loss/trade: ${CFG['EMERGENCY_LOSS_USD']:.2f}")
+    print(f"  Volume: {CFG['DEFAULT_VOLUME']}  Daily cap: ${CFG['MAX_DAILY_LOSS_USD']:.2f}")
+    if dry: print("  *** NO REAL ORDERS ***")
     print()
-    if CFG["DRY_RUN"]:
-        print("*** DRY-RUN MODE – no real orders will be sent ***")
-        print()
 
-    # ── Connect ─────────────────────────────────────────────────────────
-    creds = load_credentials()
-    if not connect_mt5(creds):
-        sys.exit("Failed to connect to MT5.")
-    if not ensure_symbol():
-        mt5.shutdown()
-        sys.exit("Symbol setup failed.")
-
-    # Track state across the main loop
-    exit_mgr: ExitManager | None = None     # active when a position is open
-    last_candle_placed = 0                   # bar_time of last straddle placed
-    straddle_tickets: list[int] = []         # pending order tickets we placed
-
-    logger.info("Bot started.  DRY_RUN=%s  MAGIC=%d", CFG["DRY_RUN"], CFG["MAGIC"])
+    emgr = None; last_bar = 0; tix = []
+    log.info("START mode=%s magic=%d", tag, CFG["MAGIC"])
 
     try:
         while True:
-            # ── Timing ──────────────────────────────────────────────────
-            bar_time, server_now = get_candle_info()
-            if bar_time is None or server_now is None:
-                logger.warning("No candle data – connection issue?  Cancelling orders.")
-                cancel_all_bot_orders()
-                straddle_tickets.clear()
-                time.sleep(2)
-                continue
+            bt, now = candle_info()
+            if bt is None:
+                log.warning("No data - cancel all")
+                cancel_all(dry); tix.clear(); time.sleep(2); continue
 
-            in_window = in_placement_window(bar_time, server_now)
-
-            # ── Daily limits ────────────────────────────────────────────
-            _reset_daily_if_needed()
-
-            # ── Position monitoring ─────────────────────────────────────
-            pos = get_bot_position()
+            iw = in_window(bt, now); _reset_day()
+            pos = bot_pos()
 
             if pos is not None:
-                # We have an open position – manage exits
-                if exit_mgr is None or exit_mgr.ticket != pos.ticket:
-                    exit_mgr = ExitManager(pos)
-                    # Cancel any remaining pending order from the straddle
-                    cancel_all_bot_orders()
-                    straddle_tickets.clear()
-
-                reason = exit_mgr.update()
+                if emgr is None or emgr.ticket != pos.ticket:
+                    emgr = ExitMgr(pos); cancel_all(dry); tix.clear()
+                reason = emgr.tick(dry)
                 if reason:
-                    logger.info("Position closed – reason=%s", reason)
-                    exit_mgr = None
-                    # After close, make sure no stale pending orders linger
-                    cancel_all_bot_orders()
-                    straddle_tickets.clear()
-
+                    log.info("CLOSED %s daily=$%.2f W=%d L=%d",
+                             reason, _day["pnl"], _day["wins"], _day["losses"])
+                    emgr = None; cancel_all(dry); tix.clear()
             else:
-                # No open position
-                exit_mgr = None
+                emgr = None
+                if tix and bt != last_bar:
+                    cancel_all(dry); tix.clear()
+                if iw and bt != last_bar and not tix and not _day_limit():
+                    p = sym_props()
+                    if p and spread_ok(p):
+                        ok, off = vol_filter(p)
+                        if ok:
+                            v = calc_vol(p)
+                            if v:
+                                tix = place_straddle(p, off, v, dry)
+                                last_bar = bt
 
-                # If we have straddle tickets, check if they are still alive
-                if straddle_tickets:
-                    live = get_bot_pending_orders()
-                    live_tickets = {o.ticket for o in live}
-
-                    # If one filled (became a position), the position branch
-                    # above handles it on the next iteration.
-                    # If candle changed, cancel leftover pending orders.
-                    if bar_time != last_candle_placed:
-                        logger.info("Candle changed – cancelling stale pending orders.")
-                        cancel_all_bot_orders()
-                        straddle_tickets.clear()
-                    else:
-                        # Keep only tickets still alive
-                        straddle_tickets = [
-                            t for t in straddle_tickets if t in live_tickets
-                        ]
-
-                # ── Place new straddle if in window ─────────────────────
-                if (in_window
-                        and bar_time != last_candle_placed
-                        and not straddle_tickets
-                        and not _daily_limit_hit()):
-
-                    props = get_symbol_props()
-                    if props is None:
-                        logger.warning("Cannot read symbol props – skipping.")
-                    elif not spread_ok(props):
-                        pass  # logged inside spread_ok
-                    else:
-                        vol_ok, offset = volatility_filter(props)
-                        if not vol_ok:
-                            pass  # logged inside
-                        else:
-                            volume = compute_volume(props)
-                            if volume is None:
-                                logger.info("Volume check failed – skipping.")
-                            else:
-                                tickets = place_straddle(props, offset, volume)
-                                straddle_tickets = tickets
-                                last_candle_placed = bar_time
-
-            # ── Sleep based on activity ─────────────────────────────────
-            if pos is not None or in_window:
-                time.sleep(1.0 / CFG["POLL_FAST_HZ"])
-            else:
-                time.sleep(1.0 / CFG["POLL_SLOW_HZ"])
+            time.sleep(1.0 / (CFG["POLL_FAST_HZ"] if pos or iw
+                              else CFG["POLL_SLOW_HZ"]))
 
     except KeyboardInterrupt:
-        logger.info("KeyboardInterrupt – shutting down.")
+        log.info("Ctrl+C")
     except Exception:
-        logger.exception("Unhandled exception – shutting down.")
+        log.exception("FATAL")
     finally:
-        # Safety: cancel any remaining pending orders before exit
-        logger.info("Cleaning up: cancelling all bot pending orders.")
-        cancel_all_bot_orders()
+        cancel_all(dry)
+        print(f"\n  Stopped. PnL=${_day['pnl']:.2f} Trades={_day['trades']}"
+              f" W={_day['wins']} L={_day['losses']}")
         mt5.shutdown()
-        logger.info("MT5 shutdown complete.")
+        log.info("SHUTDOWN")
+
+# =====================================================================
+#
+#   M A I N   M E N U
+#
+# =====================================================================
+def main():
+    print()
+    print("=" * 60)
+    print("   XAUUSD M1 TIGHT-STRADDLE SCALP BOT")
+    print("   Broker: DERIV  |  Max Loss: $0.50/trade")
+    print("=" * 60)
+    print()
+    print("   Make sure MetaTrader 5 terminal is OPEN and")
+    print("   logged into your Deriv account.")
+    print()
+
+    creds = load_creds()
+    if not connect(creds): sys.exit(1)
+    if not ensure_sym(): mt5.shutdown(); sys.exit(1)
+
+    a = mt5.account_info()
+    print(f"   Account:  {a.login}")
+    print(f"   Server:   {creds['server']}")
+    print(f"   Balance:  ${a.balance:.2f}")
+    print(f"   Leverage: 1:{a.leverage}")
+    print()
+    print("   [1] BACKTEST   - simulate on historical data")
+    print("   [2] LIVE       - real trading (REAL MONEY)")
+    print("   [3] DRY RUN    - live feed, no real orders")
+    print("   [4] EXIT")
+    print()
+
+    ch = input("   Select (1/2/3/4): ").strip()
+    if ch == "1":
+        run_backtest()
+    elif ch == "2":
+        print()
+        ok = input("   TYPE 'YES' TO CONFIRM REAL TRADING: ").strip()
+        if ok.upper() == "YES":
+            run_live(dry=False)
+        else:
+            print("   Aborted.")
+    elif ch == "3":
+        run_live(dry=True)
+    else:
+        print("   Goodbye.")
+    mt5.shutdown()
 
 
 if __name__ == "__main__":
