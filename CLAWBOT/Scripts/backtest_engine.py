@@ -33,20 +33,20 @@ import pandas as pd
 # ============================================================
 @dataclass
 class Config:
-    # Risk
-    initial_balance: float = 10000.0
-    risk_per_trade: float = 3.0       # %
-    max_daily_loss: float = 4.0       # %
-    max_drawdown: float = 12.0        # %
-    max_concurrent: int = 3
-    max_daily_trades: int = 5
+    # Risk - adapted for $100 micro account
+    initial_balance: float = 100.0
+    risk_per_trade: float = 2.0       # % ($2 target per trade on $100)
+    max_daily_loss: float = 6.0       # % ($6 daily loss limit)
+    max_drawdown: float = 25.0        # % ($25 max DD - room for min lot constraints)
+    max_concurrent: int = 1           # 1 trade at a time (capital preservation)
+    max_daily_trades: int = 3         # Max 3 trades/day
     min_risk_reward: float = 1.5
 
-    # SL / TP
+    # SL / TP - tighter SL caps for micro account
     sl_atr: float = 0.5
     tp_atr: float = 2.0
-    min_sl_pts: float = 150.0
-    max_sl_pts: float = 600.0
+    min_sl_pts: float = 100.0        # Tighter min SL for micro account
+    max_sl_pts: float = 400.0        # Cap at 400pts = $4 max risk per 0.01 lot
     trail_activation: float = 1.8     # ATR mult - let winners develop before trailing
     trail_distance: float = 0.8       # ATR mult - wide enough to avoid shakeouts
 
@@ -80,8 +80,8 @@ class Config:
     dyn_tp_trend_mult: float = 2.5
     dyn_tp_range_mult: float = 0.8
 
-    # Partial close
-    enable_partial_close: bool = True
+    # Partial close - disabled on micro account (0.01 lot can't be split)
+    enable_partial_close: bool = False
     tp1_atr: float = 1.2             # wait for real profit before partial
     partial_close_pct: float = 0.15   # keep 85% running
 
@@ -128,7 +128,7 @@ class Config:
     point: float = 0.01
     tick_value: float = 1.0  # $ per point per 1 lot
     min_lot: float = 0.01
-    max_lot: float = 10.0
+    max_lot: float = 0.5     # Cap for $100 micro account
     lot_step: float = 0.01
 
 
