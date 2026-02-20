@@ -1,26 +1,25 @@
 @echo off
 REM ================================================================
-REM  Trading Bot - One-Click Install and Run (Windows)
+REM  Trading Bot - Backtest to Live (Windows / MT5 / Deriv)
 REM ================================================================
-REM  Usage:  Double-click run.bat  OR  run.bat in a terminal
-REM
-REM  Handles everything:
-REM    1. Checks for Python
-REM    2. Creates a virtual environment (if needed)
-REM    3. Installs dependencies (if needed)
-REM    4. Runs the trading bot calibration
+REM  Usage:
+REM    Double-click run.bat          -> Connect MT5, backtest, go live
+REM    run.bat --mode backtest       -> Backtest only (no live trading)
+REM    run.bat --mode synthetic      -> Use synthetic data (no MT5)
+REM    run.bat --symbol "EURUSD"     -> Trade a different symbol
+REM    run.bat --login 123 --password xxx --server Deriv-Demo
 REM ================================================================
 
 cd /d "%~dp0"
 
 echo.
 echo ==============================================================
-echo   TRADING BOT - ONE-CLICK INSTALLER
+echo   TRADING BOT - BACKTEST TO LIVE (MT5 / Deriv)
 echo ==============================================================
 echo.
 
 REM -- Step 1: Find Python ----------------------------------------
-echo [1/3] Checking Python installation ...
+echo [1/4] Checking Python installation ...
 
 where python >nul 2>&1
 if %errorlevel% neq 0 (
@@ -41,7 +40,7 @@ if %errorlevel% neq 0 (
 echo.
 
 REM -- Step 2: Virtual environment --------------------------------
-echo [2/3] Setting up virtual environment ...
+echo [2/4] Setting up virtual environment ...
 
 if not exist ".venv" (
     echo   Creating virtual environment ...
@@ -51,25 +50,20 @@ if not exist ".venv" (
     echo   Already exists - reusing.
 )
 
-REM Use venv python/pip directly (no activate.bat needed)
+REM Use venv python directly (no activate.bat needed)
 set "VENV_PY=%~dp0.venv\Scripts\python.exe"
 
 REM -- Step 3: Dependencies ---------------------------------------
-echo [3/3] Installing dependencies ...
+echo [3/4] Installing dependencies ...
 
-if not exist ".venv\.deps_installed" (
-    "%VENV_PY%" -m pip install --quiet --upgrade pip
-    "%VENV_PY%" -m pip install --quiet -r requirements.txt
-    echo installed> ".venv\.deps_installed"
-    echo   Installed.
-) else (
-    echo   Already up to date - skipping.
-)
+REM Always reinstall if requirements changed
+"%VENV_PY%" -m pip install --quiet --upgrade pip
+"%VENV_PY%" -m pip install --quiet -r requirements.txt
+echo   Dependencies ready.
 
-REM -- Run the bot ------------------------------------------------
+REM -- Step 4: Launch bot -----------------------------------------
 echo.
-echo ==============================================================
-echo   LAUNCHING TRADING BOT
+echo [4/4] Launching trading bot ...
 echo ==============================================================
 echo.
 

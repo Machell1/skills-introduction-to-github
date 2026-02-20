@@ -1,9 +1,13 @@
 """
 Synthetic OHLCV Data Generator
-───────────────────────────────
+-------------------------------
 Generates realistic-looking market data so the bot can backtest
 without external data dependencies.
 """
+
+from __future__ import annotations
+
+from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -14,7 +18,7 @@ def generate_ohlcv(
     bars: int = SYNTHETIC_BARS,
     volatility: float = SYNTHETIC_VOLATILITY,
     drift: float = SYNTHETIC_DRIFT,
-    seed: int | None = None,
+    seed: Optional[int] = None,
 ) -> pd.DataFrame:
     """Return a DataFrame with columns: open, high, low, close, volume."""
     rng = np.random.default_rng(seed)
