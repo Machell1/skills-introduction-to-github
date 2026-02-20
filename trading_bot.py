@@ -193,7 +193,6 @@ BREAKOUT_THRESHOLD = 1.0
 VOLUME_SURGE_MULT = 1.3
 ATR_PERIOD = 14
 
-REWARD_RISK_RATIO = 3.0
 TRAILING_STOP_ATR_MULT = 1.5
 TAKE_PROFIT_ATR_MULT = 5.0
 
@@ -209,7 +208,7 @@ PARAM_STEP_SIZES = {
 }
 PARAM_BOUNDS = {
     "LOOKBACK_PERIOD": (5, 40),
-    "BREAKOUT_THRESHOLD": (0.3, 3.0),
+    "BREAKOUT_THRESHOLD": (0.1, 3.0),
     "VOLUME_SURGE_MULT": (1.0, 3.0),
     "TRAILING_STOP_ATR_MULT": (0.3, 4.0),
     "TAKE_PROFIT_ATR_MULT": (2.0, 15.0),
@@ -531,6 +530,9 @@ def mt5_place_order(symbol, direction, volume, sl=0.0, tp=0.0, comment="TradingB
             print(f"    Switched to ORDER_FILLING_RETURN")
         elif check.retcode == 10016:
             return _place_without_stops(request, sl, tp, symbol, direction, volume, digits)
+        else:
+            print(f"  ERROR: Pre-check failed with unhandled code {check.retcode}")
+            return None
 
     result = mt5.order_send(request)
     if result is None:
@@ -545,9 +547,9 @@ def mt5_place_order(symbol, direction, volume, sl=0.0, tp=0.0, comment="TradingB
 
     print(f"  ORDER FILLED: {'BUY' if direction == 1 else 'SELL'} {volume} {symbol} @ {result.price}")
     if sl > 0:
-        print(f"    SL: {sl:.5f}")
+        print(f"    SL: {sl:.{digits}f}")
     if tp > 0:
-        print(f"    TP: {tp:.5f}")
+        print(f"    TP: {tp:.{digits}f}")
     print(f"    Ticket: {result.order}")
     return {"ticket": result.order, "price": result.price, "volume": result.volume, "symbol": symbol, "direction": direction}
 
@@ -558,18 +560,25 @@ def mt5_modify_position(ticket, sl=0.0, tp=0.0):
         print(f"  ERROR: Position {ticket} not found")
         return False
     position = positions[0]
+    symbol = position.symbol
+    info = mt5.symbol_info(symbol)
+    digits = info.digits if info else 2
+    tick_size = info.trade_tick_size if info and hasattr(info, 'trade_tick_size') and info.trade_tick_size > 0 else (info.point if info else 0.01)
+    # Normalize prices to valid tick levels
+    final_sl = _align_price(sl, tick_size, digits) if sl > 0 else position.sl
+    final_tp = _align_price(tp, tick_size, digits) if tp > 0 else position.tp
     request = {
         "action": mt5.TRADE_ACTION_SLTP, "position": ticket,
-        "symbol": position.symbol,
-        "sl": sl if sl > 0 else position.sl,
-        "tp": tp if tp > 0 else position.tp,
+        "symbol": symbol,
+        "sl": final_sl,
+        "tp": final_tp,
     }
     result = mt5.order_send(request)
     if result is None or result.retcode != mt5.TRADE_RETCODE_DONE:
         error = result.comment if result else mt5.last_error()
         print(f"  ERROR: Modify failed: {error}")
         return False
-    print(f"  Position {ticket} modified: SL={sl:.5f} TP={tp:.5f}")
+    print(f"  Position {ticket} modified: SL={final_sl:.{digits}f} TP={final_tp:.{digits}f}")
     return True
 
 
@@ -873,7 +882,6 @@ def default_params() -> dict:
         "BREAKOUT_THRESHOLD": BREAKOUT_THRESHOLD,
         "VOLUME_SURGE_MULT": VOLUME_SURGE_MULT,
         "ATR_PERIOD": ATR_PERIOD,
-        "REWARD_RISK_RATIO": REWARD_RISK_RATIO,
         "TRAILING_STOP_ATR_MULT": TRAILING_STOP_ATR_MULT,
         "TAKE_PROFIT_ATR_MULT": TAKE_PROFIT_ATR_MULT,
         "RISK_PER_TRADE_PCT": RISK_PER_TRADE_PCT,
@@ -1155,13 +1163,13 @@ def run_live(symbol, timeframe, params, max_daily_loss_pct=10.0, check_interval_
                         if new_trail > open_trail_stop:
                             open_trail_stop = new_trail
                             mt5_modify_position(open_ticket, sl=open_trail_stop)
-                            print(f"  [{_now()}] Trail stop updated: {open_trail_stop:.5f}")
+                            print(f"  [{_now()}] Trail stop updated: {open_trail_stop:.2f}")
                     elif open_direction == -1:
                         new_trail = close_price + trail_mult * atr
                         if new_trail < open_trail_stop:
                             open_trail_stop = new_trail
                             mt5_modify_position(open_ticket, sl=open_trail_stop)
-                            print(f"  [{_now()}] Trail stop updated: {open_trail_stop:.5f}")
+                            print(f"  [{_now()}] Trail stop updated: {open_trail_stop:.2f}")
 
             if open_ticket is None and latest["signal"] != 0 and atr > 0:
                 direction = int(latest["signal"])
@@ -1203,12 +1211,13 @@ def run_live(symbol, timeframe, params, max_daily_loss_pct=10.0, check_interval_
                     time_mod.sleep(check_interval_seconds)
                     continue
 
+                digits = sym_info["digits"]
                 print(f"\n  [{_now()}] SIGNAL: {'BUY' if direction == 1 else 'SELL'}")
-                print(f"    Live {'Ask' if direction == 1 else 'Bid'}: {entry_price:.5f}")
-                print(f"    ATR:    {atr:.5f}")
-                print(f"    SL:     {sl_price:.5f}")
-                print(f"    TP:     {tp_price:.5f}")
-                print(f"    Lots:   {lots:.2f}")
+                print(f"    Live {'Ask' if direction == 1 else 'Bid'}: {entry_price:.{digits}f}")
+                print(f"    ATR:    {atr:.{digits}f}")
+                print(f"    SL:     {sl_price:.{digits}f}")
+                print(f"    TP:     {tp_price:.{digits}f}")
+                print(f"    Lots:   {lots:.3f}")
 
                 result = mt5_place_order(
                     symbol=symbol, direction=direction, volume=lots,
@@ -1230,8 +1239,9 @@ def run_live(symbol, timeframe, params, max_daily_loss_pct=10.0, check_interval_
                             sl_price = actual_fill + trail_mult * atr
                             tp_price = actual_fill - tp_mult * atr
                         open_trail_stop = sl_price
+                        # mt5_modify_position normalizes prices internally
                         mt5_modify_position(open_ticket, sl=sl_price, tp=tp_price)
-                        print(f"    Adjusted SL/TP to actual fill {actual_fill:.5f}")
+                        print(f"    Adjusted SL/TP to actual fill {actual_fill:.2f}")
                     print(f"    Trade #{trade_count} opened: ticket {open_ticket}")
                 else:
                     print(f"    Order failed - will retry on next signal")
