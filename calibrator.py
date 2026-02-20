@@ -64,18 +64,26 @@ def _score(metrics: dict, target: float) -> float:
     """
     Scoring function — maximises average volume won per trade.
     Heavily rewards hitting the profit target.
+    Penalises parameter sets that generate zero trades.
     """
     vol_won = metrics["avg_volume_won_per_trade"]
     ret = metrics["total_return_pct"]
     total_vol = metrics["total_volume_won"]
+    num_trades = metrics["total_trades"]
+
+    # Zero trades is the worst possible outcome — heavily penalise
+    if num_trades == 0:
+        return -10000.0
 
     if ret >= target:
         # Big bonus for meeting target + reward volume won
         return total_vol + vol_won * 10 + (ret - target) * 2.0
     else:
         # Proportional reward for progress toward target
+        # Also reward having more trades (more chances to compound)
         progress = ret / max(target, 1) * 100  # 0-100 scale
-        return vol_won + progress * 0.5 - (target - ret) * 0.1
+        trade_bonus = min(num_trades, 200) * 0.1  # Reward trade generation
+        return vol_won + progress * 0.5 + trade_bonus - (target - ret) * 0.1
 
 
 def calibrate(df, params: dict | None = None, verbose: bool = True) -> dict:
@@ -203,9 +211,11 @@ def calibrate(df, params: dict | None = None, verbose: bool = True) -> dict:
         if not improved:
             stall_count += 1
             if stall_count >= max_stall:
+                few_trades = best_metrics["total_trades"] < 10
                 if verbose:
-                    print(f"  [Round {round_num:>3}] Stall detected — random restart")
-                best_params = _random_perturb(best_params)
+                    tag = "entry-biased restart" if few_trades else "random restart"
+                    print(f"  [Round {round_num:>3}] Stall detected — {tag}")
+                best_params = _random_perturb(best_params, favor_entries=few_trades)
                 best_metrics = run_backtest(df, best_params)
                 best_score = _score(best_metrics, target)
                 stall_count = 0
@@ -221,16 +231,36 @@ def calibrate(df, params: dict | None = None, verbose: bool = True) -> dict:
     }
 
 
-def _random_perturb(params: dict) -> dict:
-    """Randomly perturb all tunable params within bounds."""
+def _random_perturb(params: dict, favor_entries: bool = False) -> dict:
+    """
+    Randomly perturb all tunable params within bounds.
+
+    If favor_entries=True, bias toward parameters that generate more
+    trade entries (lower thresholds, shorter lookbacks, wider sizing).
+    Used when the current best has zero or very few trades.
+    """
     p = copy.deepcopy(params)
     for key in PARAM_STEP_SIZES:
         lo, hi = PARAM_BOUNDS[key]
-        # Uniform random within bounds
-        if key == "LOOKBACK_PERIOD":
-            p[key] = random.randint(int(lo), int(hi))
+        if favor_entries:
+            # Bias toward entry-generating values
+            if key == "BREAKOUT_THRESHOLD":
+                p[key] = round(random.uniform(lo, lo + (hi - lo) * 0.4), 4)
+            elif key == "VOLUME_SURGE_MULT":
+                p[key] = round(random.uniform(lo, lo + (hi - lo) * 0.3), 4)
+            elif key == "LOOKBACK_PERIOD":
+                p[key] = random.randint(int(lo), int(lo + (hi - lo) * 0.5))
+            elif key == "RISK_PER_TRADE_PCT":
+                p[key] = round(random.uniform(hi * 0.4, hi), 4)
+            elif key == "MAX_POSITION_SIZE_PCT":
+                p[key] = round(random.uniform(hi * 0.5, hi), 4)
+            else:
+                p[key] = round(random.uniform(lo, hi), 4)
         else:
-            p[key] = round(random.uniform(lo, hi), 4)
+            if key == "LOOKBACK_PERIOD":
+                p[key] = random.randint(int(lo), int(hi))
+            else:
+                p[key] = round(random.uniform(lo, hi), 4)
     return p
 
 

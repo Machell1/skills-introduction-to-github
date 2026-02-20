@@ -44,13 +44,13 @@ PARAM_STEP_SIZES = {
     "MAX_POSITION_SIZE_PCT": 5.0,
 }
 PARAM_BOUNDS = {
-    "LOOKBACK_PERIOD": (5, 40),
-    "BREAKOUT_THRESHOLD": (0.3, 3.0),
-    "VOLUME_SURGE_MULT": (1.0, 3.0),
-    "TRAILING_STOP_ATR_MULT": (0.3, 4.0),
-    "TAKE_PROFIT_ATR_MULT": (2.0, 15.0),
-    "RISK_PER_TRADE_PCT": (2.0, 15.0),
-    "MAX_POSITION_SIZE_PCT": (30.0, 100.0),
+    "LOOKBACK_PERIOD": (3, 50),
+    "BREAKOUT_THRESHOLD": (0.1, 3.0),
+    "VOLUME_SURGE_MULT": (0.5, 3.0),
+    "TRAILING_STOP_ATR_MULT": (0.2, 4.0),
+    "TAKE_PROFIT_ATR_MULT": (1.5, 20.0),
+    "RISK_PER_TRADE_PCT": (1.0, 20.0),
+    "MAX_POSITION_SIZE_PCT": (20.0, 100.0),
 }
 
 # -- Synthetic Data (fallback when MT5 not available) -------------------------

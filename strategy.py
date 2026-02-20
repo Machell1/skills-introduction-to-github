@@ -50,7 +50,18 @@ def compute_indicators(df: pd.DataFrame, params: dict) -> pd.DataFrame:
 
     # Volume average & surge flag
     out["vol_avg"] = out["volume"].rolling(lookback).mean()
-    out["vol_surge"] = out["volume"] > (params["VOLUME_SURGE_MULT"] * out["vol_avg"])
+
+    # Detect synthetic indices with flat/meaningless tick volume.
+    # If volume coefficient of variation is very low, the volume filter
+    # would block ALL entries. Auto-bypass it in that case.
+    vol_mean = out["volume"].mean()
+    vol_std = out["volume"].std()
+    vol_cv = vol_std / vol_mean if vol_mean > 0 else 0.0
+    if vol_cv < 0.3:
+        # Volume data is near-constant (synthetic index) — bypass filter
+        out["vol_surge"] = True
+    else:
+        out["vol_surge"] = out["volume"] > (params["VOLUME_SURGE_MULT"] * out["vol_avg"])
 
     # EMA trend filter (fast/slow crossover for directional bias)
     out["ema_fast"] = out["close"].ewm(span=max(5, lookback // 2), adjust=False).mean()
