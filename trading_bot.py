@@ -217,6 +217,12 @@ PARAM_BOUNDS = {
     "MAX_POSITION_SIZE_PCT": (30.0, 100.0),
 }
 
+# Execution cost model — makes the backtest more realistic.
+# SPREAD_POINTS: half-spread applied on entry AND exit (full round-trip cost).
+# SLIPPAGE_POINTS: additional adverse slippage on stop-loss fills.
+SPREAD_POINTS = 50.0        # ~50 points typical for Vol 75 on Deriv
+SLIPPAGE_POINTS = 30.0      # conservative estimate for stop slippage
+
 
 # =====================================================================
 #  MT5 CONNECTOR
@@ -603,38 +609,52 @@ def run_backtest(df: pd.DataFrame, params: dict) -> dict:
             atr_now = row["atr"] if not np.isnan(row["atr"]) and row["atr"] > 0 else 0
 
             if open_trade.direction == 1:
-                if atr_now > 0:
-                    new_trail = row["close"] - trail_mult * atr_now
-                    if new_trail > open_trade.trail_stop:
-                        open_trade.trail_stop = new_trail
+                # Check SL/TP BEFORE updating trail (fixes intra-bar ordering bias)
                 if row["low"] <= open_trade.trail_stop:
-                    _close_trade(open_trade, i, max(open_trade.trail_stop, row["low"]))
+                    # Stop hit — add slippage (adverse fill on stops)
+                    fill = open_trade.trail_stop - SLIPPAGE_POINTS
+                    _close_trade(open_trade, i, fill)
                     balance += open_trade.pnl
                     balance = max(balance, 1.0)
                     trades.append(open_trade)
                     open_trade = None
                 elif row["high"] >= open_trade.take_profit:
-                    _close_trade(open_trade, i, open_trade.take_profit)
+                    # TP hit — apply spread on exit (sell at bid = tp - half_spread)
+                    fill = open_trade.take_profit - SPREAD_POINTS
+                    _close_trade(open_trade, i, fill)
                     balance += open_trade.pnl
                     trades.append(open_trade)
                     open_trade = None
+                else:
+                    # Only ratchet trail AFTER confirming no SL/TP was hit this bar
+                    if atr_now > 0:
+                        new_trail = row["close"] - trail_mult * atr_now
+                        if new_trail > open_trade.trail_stop:
+                            open_trade.trail_stop = new_trail
 
             elif open_trade.direction == -1:
-                if atr_now > 0:
-                    new_trail = row["close"] + trail_mult * atr_now
-                    if new_trail < open_trade.trail_stop:
-                        open_trade.trail_stop = new_trail
+                # Check SL/TP BEFORE updating trail
                 if row["high"] >= open_trade.trail_stop:
-                    _close_trade(open_trade, i, min(open_trade.trail_stop, row["high"]))
+                    # Stop hit — add slippage (adverse fill on stops)
+                    fill = open_trade.trail_stop + SLIPPAGE_POINTS
+                    _close_trade(open_trade, i, fill)
                     balance += open_trade.pnl
                     balance = max(balance, 1.0)
                     trades.append(open_trade)
                     open_trade = None
                 elif row["low"] <= open_trade.take_profit:
-                    _close_trade(open_trade, i, open_trade.take_profit)
+                    # TP hit — apply spread on exit (buy at ask = tp + half_spread)
+                    fill = open_trade.take_profit + SPREAD_POINTS
+                    _close_trade(open_trade, i, fill)
                     balance += open_trade.pnl
                     trades.append(open_trade)
                     open_trade = None
+                else:
+                    # Only ratchet trail AFTER confirming no SL/TP was hit this bar
+                    if atr_now > 0:
+                        new_trail = row["close"] + trail_mult * atr_now
+                        if new_trail < open_trade.trail_stop:
+                            open_trade.trail_stop = new_trail
 
         if open_trade is None and row["signal"] != 0:
             atr = row["atr"]
@@ -642,8 +662,13 @@ def run_backtest(df: pd.DataFrame, params: dict) -> dict:
                 equity_curve.append(balance)
                 continue
 
-            entry_price = row["close"]
             direction = int(row["signal"])
+            # Apply half-spread to entry (BUY at ask = close + spread/2, SELL at bid = close - spread/2)
+            half_spread = SPREAD_POINTS
+            if direction == 1:
+                entry_price = row["close"] + half_spread  # buy at ask
+            else:
+                entry_price = row["close"] - half_spread  # sell at bid
 
             if direction == 1:
                 stop_price = entry_price - trail_mult * atr
@@ -977,6 +1002,10 @@ def run_live(symbol, timeframe, params, max_daily_loss_pct=10.0, check_interval_
                 time_mod.sleep(check_interval_seconds)
                 continue
 
+            # Drop the last row — it's the current INCOMPLETE bar (position 0).
+            # The backtest only uses complete bars, so live must too.
+            df = df.iloc[:-1]
+
             current_bar_time = df.index[-1]
             if last_bar_time is not None and current_bar_time <= last_bar_time:
                 time_mod.sleep(check_interval_seconds)
@@ -1031,7 +1060,13 @@ def run_live(symbol, timeframe, params, max_daily_loss_pct=10.0, check_interval_
 
             if open_ticket is None and latest["signal"] != 0 and atr > 0:
                 direction = int(latest["signal"])
-                entry_price = latest["close"]
+
+                # Get the LIVE bid/ask for SL/TP calculation (not bar close)
+                tick = mt5.symbol_info_tick(symbol)
+                if tick is None:
+                    time_mod.sleep(check_interval_seconds)
+                    continue
+                entry_price = tick.ask if direction == 1 else tick.bid
 
                 if direction == 1:
                     sl_price = entry_price - trail_mult * atr
@@ -1064,7 +1099,7 @@ def run_live(symbol, timeframe, params, max_daily_loss_pct=10.0, check_interval_
                     continue
 
                 print(f"\n  [{_now()}] SIGNAL: {'BUY' if direction == 1 else 'SELL'}")
-                print(f"    Price:  {entry_price:.5f}")
+                print(f"    Live {'Ask' if direction == 1 else 'Bid'}: {entry_price:.5f}")
                 print(f"    ATR:    {atr:.5f}")
                 print(f"    SL:     {sl_price:.5f}")
                 print(f"    TP:     {tp_price:.5f}")
@@ -1080,6 +1115,18 @@ def run_live(symbol, timeframe, params, max_daily_loss_pct=10.0, check_interval_
                     open_direction = direction
                     open_trail_stop = sl_price
                     trade_count += 1
+                    # Recalculate SL/TP from actual fill price if it differs
+                    actual_fill = result["price"]
+                    if abs(actual_fill - entry_price) > 0.01:
+                        if direction == 1:
+                            sl_price = actual_fill - trail_mult * atr
+                            tp_price = actual_fill + tp_mult * atr
+                        else:
+                            sl_price = actual_fill + trail_mult * atr
+                            tp_price = actual_fill - tp_mult * atr
+                        open_trail_stop = sl_price
+                        mt5_modify_position(open_ticket, sl=sl_price, tp=tp_price)
+                        print(f"    Adjusted SL/TP to actual fill {actual_fill:.5f}")
                     print(f"    Trade #{trade_count} opened: ticket {open_ticket}")
                 else:
                     print(f"    Order failed - will retry on next signal")
@@ -1185,8 +1232,15 @@ def main():
     print(f"  Got {len(df)} bars of real market data.")
     print()
 
-    # ── Step 3: Calibrate on real data ────────────────────────────
+    # ── Step 3: Calibrate on real data (with proper train/test split) ─
+    #  Use first 70% for calibration (in-sample), last 30% for validation (out-of-sample)
+    train_size = int(len(df) * 0.70)
+    df_train = df.iloc[:train_size].copy()
+    df_test = df.iloc[train_size:].copy()
+
     print("[3/4] Calibrating strategy on REAL historical data ...")
+    print(f"      Train set: {len(df_train)} bars ({df_train.index[0]} to {df_train.index[-1]})")
+    print(f"      Test set:  {len(df_test)} bars ({df_test.index[0]} to {df_test.index[-1]})")
     print(f"      Target: {args.target}% return | Max rounds: {MAX_CALIBRATION_ROUNDS}")
     print(f"      Balance: ${args.balance:,.2f} -> Goal: ${args.balance * (1 + args.target / 100):,.2f}")
     print("-" * 70)
@@ -1195,31 +1249,52 @@ def main():
     params["INITIAL_BALANCE"] = args.balance
     params["PROFIT_TARGET_PCT"] = args.target
 
-    result = calibrate(df, params=params, verbose=True)
+    result = calibrate(df_train, params=params, verbose=True)
 
-    # Validate on time windows
+    # Out-of-sample validation on unseen test data
     print()
-    print("  Validating on time windows of real data ...")
+    print("  OUT-OF-SAMPLE validation on unseen test data ...")
     validation_results = []
     cal_params = result["best_params"]
 
-    total_bars = len(df)
-    chunk = total_bars // 4
-    if chunk >= 200:
+    oos_metrics = run_backtest(df_test, cal_params)
+    validation_results.append(oos_metrics)
+    oos_status = "PASS" if oos_metrics["total_return_pct"] > 0 else "FAIL"
+    print(
+        f"      OOS Test: {oos_metrics['total_return_pct']:>9.1f}% return  |  "
+        f"VolWon/Trade: ${oos_metrics['avg_volume_won_per_trade']:>8.2f}  |  "
+        f"Trades: {oos_metrics['total_trades']}  |  WR: {oos_metrics['win_rate_pct']:.1f}%  |  "
+        f"DD: {oos_metrics['max_drawdown_pct']:.1f}%  |  {oos_status}"
+    )
+
+    # Also validate on rolling windows of the test set
+    total_test_bars = len(df_test)
+    chunk = total_test_bars // 3
+    if chunk >= 100:
         for i in range(3):
             start = i * chunk
-            end = start + chunk
-            df_val = df.iloc[start:end].copy()
+            end = min(start + chunk, total_test_bars)
+            df_val = df_test.iloc[start:end].copy()
             val_metrics = run_backtest(df_val, cal_params)
             validation_results.append(val_metrics)
-            status = "PASS" if val_metrics["total_return_pct"] >= args.target else "----"
+            status = "PASS" if val_metrics["total_return_pct"] > 0 else "----"
             print(
-                f"      Window {i+1}: {val_metrics['total_return_pct']:>9.1f}% return  |  "
+                f"      OOS Window {i+1}: {val_metrics['total_return_pct']:>9.1f}% return  |  "
                 f"VolWon/Trade: ${val_metrics['avg_volume_won_per_trade']:>8.2f}  |  "
                 f"Trades: {val_metrics['total_trades']}  |  {status}"
             )
     else:
-        print("      (Not enough bars for window validation)")
+        print("      (Not enough test bars for window validation)")
+
+    # Warn if OOS performance severely degrades vs in-sample
+    in_sample_ret = result["best_metrics"]["total_return_pct"]
+    oos_ret = oos_metrics["total_return_pct"]
+    if in_sample_ret > 0 and oos_ret < in_sample_ret * 0.2:
+        print()
+        print("  WARNING: Out-of-sample return is <20% of in-sample return.")
+        print(f"           In-sample: {in_sample_ret:.1f}%  |  Out-of-sample: {oos_ret:.1f}%")
+        print("           This suggests the parameters are OVERFIT to training data.")
+        print("           Live performance is likely to disappoint.")
 
     # ── Step 4: Final Report ──────────────────────────────────────
     print()
@@ -1248,6 +1323,12 @@ def main():
     print(f"  Profit Factor:        {m['profit_factor']:.2f}")
     print(f"  Max Drawdown:         {m['max_drawdown_pct']:.1f}%")
     print(f"  Calibration Rounds:   {result['rounds_run']}")
+    print()
+    print(f"  OUT-OF-SAMPLE (unseen data):")
+    print(f"    OOS Return:         {oos_metrics['total_return_pct']:.1f}%")
+    print(f"    OOS Win Rate:       {oos_metrics['win_rate_pct']:.1f}%")
+    print(f"    OOS Max Drawdown:   {oos_metrics['max_drawdown_pct']:.1f}%")
+    print(f"    OOS Trades:         {oos_metrics['total_trades']}")
     print()
     print("  Calibrated Parameters:")
     display_keys = sorted(
@@ -1278,6 +1359,15 @@ def main():
     print(f"\n  Results saved to calibration_results.json")
 
     # ── Decision: Go Live or Stay ─────────────────────────────────
+    # Require positive OOS return before going live
+    oos_positive = oos_metrics["total_return_pct"] > 0
+    if not oos_positive and result["target_met"]:
+        print()
+        print("  SAFETY: Target met in-sample but OUT-OF-SAMPLE return is NEGATIVE.")
+        print("          Refusing to go live — parameters are likely overfit.")
+        print("          Try with more --bars or a different --timeframe.")
+        result["target_met"] = False
+
     if result["target_met"] and args.mode == "live":
         print()
         print("*" * 70)
