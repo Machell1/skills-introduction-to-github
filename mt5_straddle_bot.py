@@ -50,6 +50,7 @@ from datetime import datetime, timezone, timedelta
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from dataclasses import dataclass
+from typing import Optional, Tuple
 
 import MetaTrader5 as mt5
 import numpy as np
@@ -231,7 +232,7 @@ def ensure_sym() -> bool:
 # =====================================================================
 # SYMBOL PROPERTIES
 # =====================================================================
-def sym_props() -> dict | None:
+def sym_props() -> Optional[dict]:
     i = mt5.symbol_info(CFG["SYMBOL"])
     if i is None: return None
     return dict(point=i.point, digits=i.digits, stops=i.trade_stops_level,
@@ -265,7 +266,7 @@ def in_window(bar, now) -> bool:
 def _rvol(v, p):
     return round(math.floor(v / p["vstep"]) * p["vstep"], 8)
 
-def calc_vol(p) -> float | None:
+def calc_vol(p) -> Optional[float]:
     v = max(CFG["DEFAULT_VOLUME"], p["vmin"])
     v = min(v, p["vmax"])
     v = _rvol(v, p)
