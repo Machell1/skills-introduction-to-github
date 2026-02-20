@@ -64,37 +64,45 @@ CFG = {
     # Deriv servers (wizard will also let user type custom)
     "DERIV_SERVERS":         ["Deriv-Demo", "Deriv-Server",
                               "Deriv-Server-02", "Deriv-Server-03"],
-    # Volume
-    "DEFAULT_VOLUME":        0.05,
+    # Volume  ── 0.01 lots: 1 pt = $0.01, spread ~25pts = $0.25
+    #            leaves $0.25 room within the $0.50 cap
+    "DEFAULT_VOLUME":        0.01,
     "MARGIN_MODE":           "adaptive",   # strict | adaptive
     "MIN_FREE_MARGIN_BUF":   1.00,         # USD reserve
 
-    # Entry
-    "ENTRY_OFFSET_PTS":      20,           # tight sandwich
-    "SL_DISTANCE_PTS":       50,           # emergency SL on pending
+    # Entry  ── wider offset = only real breakouts trigger
+    "ENTRY_OFFSET_PTS":      50,           # needs genuine momentum
+    "SL_DISTANCE_PTS":       80,           # emergency SL on pending
     "TP_DISTANCE_PTS":       0,            # 0 = bot manages exits
 
     # Filters
-    "MAX_SPREAD_PTS":        50,
-    "MAX_CANDLE_RANGE_PTS":  400,
+    "MAX_SPREAD_PTS":        40,           # skip when spread too wide
+    "MAX_CANDLE_RANGE_PTS":  300,          # skip wild bars
     "WIDEN_ON_VOL":          False,
     "VOL_WIDEN_FACTOR":      1.5,
 
+    # ── QUALITY FILTERS (prevent blind entries) ──
+    "CONSOLIDATION_BARS":    5,            # look-back for range check
+    "CONSOL_MAX_AVG_RNG":    120,          # avg range < N pts = tight
+    "MIN_BODY_RATIO":        0.0,          # 0 = disabled
+    "ACTIVE_HOURS":          (7, 21),      # UTC hours (London+NY sessions)
+    "COOLDOWN_BARS":         3,            # skip N bars after a loss
+
     # === EXIT RULES (core of the $0.50 max-loss logic) ===
     "EMERGENCY_LOSS_USD":    0.50,         # HARD CAP per trade
-    "BE_BUFFER_PTS":         2,            # SL = entry +/- 2 pts once green
-    "SCALP_TARGET_PTS":      30,           # take profit in points
+    "BE_BUFFER_PTS":         3,            # SL = entry +/- 3 pts once green
+    "SCALP_TARGET_PTS":      50,           # take profit in points ($0.50)
     "SCALP_TARGET_USD":      0.30,         # OR take profit in USD
-    "RUNNER_THRESHOLD_PTS":  80,           # activate trail above this
-    "TRAIL_DISTANCE_PTS":    25,           # trailing SL distance
-    "MAX_HOLD_SEC":          90,           # force close
-    "TIME_RULE_SEC":         15,           # stagnant check delay
-    "TIME_RULE_MIN_PTS":     5,            # min profit after delay
-    "STAGNANT_SEC":          8,            # close if still negative
+    "RUNNER_THRESHOLD_PTS":  100,          # activate trail above this
+    "TRAIL_DISTANCE_PTS":    30,           # trailing SL distance
+    "MAX_HOLD_SEC":          180,          # 3 minutes force close
+    "TIME_RULE_SEC":         45,           # stagnant check delay
+    "TIME_RULE_MIN_PTS":     10,           # min profit after delay
+    "STAGNANT_SEC":          20,           # close if still negative
 
     # Daily caps
     "MAX_DAILY_LOSS_USD":    3.00,
-    "MAX_TRADES_DAY":        60,
+    "MAX_TRADES_DAY":        40,
 
     # Polling
     "POLL_FAST_HZ":          10,
@@ -109,7 +117,7 @@ CFG = {
 
     # Backtest
     "BT_DAYS":               30,
-    "BT_SPREAD_PTS":         30,
+    "BT_SPREAD_PTS":         25,           # realistic Deriv spread
 }
 
 # =====================================================================
@@ -283,6 +291,8 @@ def calc_vol(p) -> Optional[float]:
 # =====================================================================
 # FILTERS
 # =====================================================================
+_cooldown_until = 0  # bar index or timestamp after which trading resumes
+
 def spread_ok(p) -> bool:
     if p["spread"] > CFG["MAX_SPREAD_PTS"]:
         log.info("Spread %d > %d SKIP", p["spread"], CFG["MAX_SPREAD_PTS"])
@@ -301,6 +311,47 @@ def vol_filter(p):
         else:
             log.info("Volatile %dpts SKIP", rng); return False, off
     return True, off
+
+def session_ok() -> bool:
+    """Only trade during active London+NY hours (UTC)."""
+    lo, hi = CFG["ACTIVE_HOURS"]
+    h = datetime.now(timezone.utc).hour
+    if lo <= h < hi:
+        return True
+    log.debug("Outside active hours %02d:00 (need %d-%d)", h, lo, hi)
+    return False
+
+def consolidation_ok(p) -> bool:
+    """Check that recent candles show tight range (= compression before breakout)."""
+    n = CFG["CONSOLIDATION_BARS"]
+    if n <= 0:
+        return True
+    r = mt5.copy_rates_from_pos(CFG["SYMBOL"], mt5.TIMEFRAME_M1, 1, n)
+    if r is None or len(r) < n:
+        return True  # not enough data, allow
+    pt = p["point"]
+    ranges = [(bar["high"] - bar["low"]) / pt for bar in r]
+    avg_rng = sum(ranges) / len(ranges)
+    if avg_rng > CFG["CONSOL_MAX_AVG_RNG"]:
+        log.info("No consolidation: avg_range=%.0f > %d SKIP",
+                 avg_rng, CFG["CONSOL_MAX_AVG_RNG"])
+        return False
+    return True
+
+def cooldown_active() -> bool:
+    global _cooldown_until
+    if _cooldown_until <= 0:
+        return False
+    if time.time() < _cooldown_until:
+        return True
+    _cooldown_until = 0
+    return False
+
+def set_cooldown():
+    global _cooldown_until
+    secs = CFG["COOLDOWN_BARS"] * 60  # M1 bars
+    _cooldown_until = time.time() + secs
+    log.info("COOLDOWN %d bars (%ds)", CFG["COOLDOWN_BARS"], secs)
 
 # =====================================================================
 # ORDER PLACEMENT
@@ -415,12 +466,12 @@ def mod_sl(pos, sl, dry=False):
 #
 # Tick-by-tick priority:
 #   1. Emergency $0.50 hard stop
-#   2. Negative after 8s -> close (cut fast)
-#   3. Any positive tick -> SL to break-even + 2pt
-#   4. Scalp target 30pts / $0.30 -> bank it
-#   5. Runner 80pts -> trailing stop 25pts
-#   6. Stagnant after 15s with <5pts -> close
-#   7. Max hold 90s -> force close
+#   2. Negative after 20s -> close (cut losers, but give room)
+#   3. Any positive tick -> SL to break-even + 3pt
+#   4. Scalp target 50pts / $0.30 -> bank it
+#   5. Runner 100pts -> trailing stop 30pts
+#   6. Stagnant after 45s with <10pts -> close
+#   7. Max hold 180s -> force close
 # =====================================================================
 class ExitMgr:
     def __init__(self, pos):
@@ -454,12 +505,16 @@ class ExitMgr:
         # 1. EMERGENCY $0.50
         if pnl < 0 and abs(pnl) >= CFG["EMERGENCY_LOSS_USD"]:
             log.warning("EMERGENCY $%.2f >= $%.2f", pnl, CFG["EMERGENCY_LOSS_USD"])
-            if close_pos(pos, dry): _record(pnl); return "emergency"
+            if close_pos(pos, dry):
+                _record(pnl); set_cooldown(); return "emergency"
 
-        # 2. NEGATIVE after 8s
+        # 2. NEGATIVE after stagnant period
         if age >= CFG["STAGNANT_SEC"] and pnl <= 0:
             log.info("NEG %ds $%.2f -> close", int(age), pnl)
-            if close_pos(pos, dry): _record(pnl); return "neg_stagnant"
+            if close_pos(pos, dry):
+                _record(pnl)
+                if pnl < 0: set_cooldown()
+                return "neg_stagnant"
 
         # 3. BREAK-EVEN
         if not self.be_done and ppts > 0:
@@ -554,13 +609,39 @@ def run_backtest():
     time_bars = max(1, CFG["TIME_RULE_SEC"] // 60)
     max_bars = max(1, CFG["MAX_HOLD_SEC"] // 60)
 
+    # Quality filter settings
+    consol_n = CFG["CONSOLIDATION_BARS"]
+    consol_max = CFG["CONSOL_MAX_AVG_RNG"]
+    lo_hr, hi_hr = CFG["ACTIVE_HOURS"]
+    cooldown_left = 0  # bars to skip after a loss
+
     while i < len(df) - max_bars - 2:
+        # ── Cooldown after loss ──
+        if cooldown_left > 0:
+            cooldown_left -= 1; i += 1; continue
+
         prev = df.iloc[i - 1]
         bar = df.iloc[i]
 
-        # Volatility filter
+        # ── Session filter (UTC hour) ──
+        bar_hour = pd.Timestamp(bar["time"], unit="s", tz="UTC").hour \
+                   if not isinstance(bar["time"], pd.Timestamp) \
+                   else bar["time"].hour
+        if not (lo_hr <= bar_hour < hi_hr):
+            i += 1; continue
+
+        # ── Volatility filter ──
         if round((prev["high"] - prev["low"]) / pt) > CFG["MAX_CANDLE_RANGE_PTS"]:
             i += 1; continue
+
+        # ── Consolidation filter: avg range of last N bars ──
+        if consol_n > 0 and i >= consol_n:
+            rngs = []
+            for k in range(i - consol_n, i):
+                bk = df.iloc[k]
+                rngs.append((bk["high"] - bk["low"]) / pt)
+            if sum(rngs) / len(rngs) > consol_max:
+                i += 1; continue
 
         mid = bar["close"]
         ask = mid + sp_price / 2
@@ -615,7 +696,7 @@ def run_backtest():
                 t.ppts = (epx - sl_px) / pt; t.pusd = t.ppts * usd_pt
                 t.reason = "sl_hit"; t.xtime = bj["time"]; break
 
-            # BE
+            # BE move: once price goes positive, lock in breakeven + buffer
             if not be_set and best > 0:
                 if triggered == "BUY": sl_px = epx + be_buf * pt
                 else: sl_px = epx - be_buf * pt
@@ -663,6 +744,11 @@ def run_backtest():
         # Hard cap loss
         if t.pusd < -eloss: t.pusd = -eloss
         trades.append(t)
+
+        # Cooldown after a loss
+        if t.pusd < 0:
+            cooldown_left = CFG["COOLDOWN_BARS"]
+
         i += max(2, j - i + 1)
 
     # ── REPORT ──────────────────────────────────────────────────────
@@ -760,14 +846,19 @@ def run_live(dry=False):
                 if tix and bt != last_bar:
                     cancel_all(dry); tix.clear()
                 if iw and bt != last_bar and not tix and not _day_limit():
-                    p = sym_props()
-                    if p and spread_ok(p):
-                        ok, off = vol_filter(p)
-                        if ok:
-                            v = calc_vol(p)
-                            if v:
-                                tix = place_straddle(p, off, v, dry)
-                                last_bar = bt
+                    if cooldown_active():
+                        log.debug("COOLDOWN active, skip")
+                    elif not session_ok():
+                        pass
+                    else:
+                        p = sym_props()
+                        if p and spread_ok(p) and consolidation_ok(p):
+                            ok, off = vol_filter(p)
+                            if ok:
+                                v = calc_vol(p)
+                                if v:
+                                    tix = place_straddle(p, off, v, dry)
+                                    last_bar = bt
 
             time.sleep(1.0 / (CFG["POLL_FAST_HZ"] if pos or iw
                               else CFG["POLL_SLOW_HZ"]))
