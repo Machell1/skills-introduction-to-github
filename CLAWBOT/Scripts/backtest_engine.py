@@ -51,7 +51,7 @@ class Config:
     trail_distance: float = 99.0      # Disabled: trades close at SL/TP only
 
     # Spread
-    max_spread: float = 35.0          # points
+    max_spread: float = 50.0          # points
     avg_spread: float = 10.0          # simulated spread points (Deriv XAUUSD typical)
 
     # Strategies
@@ -86,9 +86,9 @@ class Config:
     partial_close_pct: float = 0.15   # keep 85% running
 
     # Confluence
-    min_score: int = 45
-    min_strategies: int = 2
-    min_strat_score: int = 30
+    min_score: int = 30
+    min_strategies: int = 1
+    min_strat_score: int = 25
     cooldown_losses: int = 2
     cooldown_bars: int = 6
 
@@ -571,15 +571,14 @@ def detect_regime(i, df, cfg):
          'score_adj': 0, 'allow': True}
 
     if atr_ratio > 1.5:
-        # Volatile expansion - Phase 4: much stricter
-        w['trend'] = 0.4
-        w['momentum'] = 0.4
-        w['mean_revert'] = 0.2
-        w['session'] = 0.2
-        w['smc'] = 0.7
-        w['lot_mult'] = 0.3
-        w['score_adj'] = 25
-        w['allow'] = atr_ratio < 2.0
+        # Volatile expansion - cautious but allow trading
+        w['trend'] = 0.6
+        w['momentum'] = 0.6
+        w['mean_revert'] = 0.3
+        w['session'] = 0.4
+        w['smc'] = 0.8
+        w['lot_mult'] = 0.4
+        w['score_adj'] = 5
     elif adx > 30 and atr_ratio >= 1.0:
         # Strong trend
         w['trend'] = 1.6
@@ -599,17 +598,23 @@ def detect_regime(i, df, cfg):
         w['lot_mult'] = 0.85
         w['score_adj'] = 0
     elif adx < 20 and atr_ratio < 1.2:
-        # Ranging - Phase 4: stricter
-        w['trend'] = 0.2
-        w['momentum'] = 0.6
+        # Ranging - moderate caution
+        w['trend'] = 0.4
+        w['momentum'] = 0.7
         w['mean_revert'] = 1.6
-        w['session'] = 0.4
+        w['session'] = 0.5
         w['smc'] = 1.0
-        w['lot_mult'] = 0.45
-        w['score_adj'] = 12
+        w['lot_mult'] = 0.6
+        w['score_adj'] = 0
     else:
-        # Transitioning - Phase 4: BLOCK trades
-        w['allow'] = False
+        # Transitioning - cautious but allow trading
+        w['trend'] = 0.5
+        w['momentum'] = 1.1
+        w['mean_revert'] = 0.9
+        w['session'] = 0.5
+        w['smc'] = 1.4
+        w['lot_mult'] = 0.5
+        w['score_adj'] = 0
 
     return w
 
@@ -850,8 +855,8 @@ class ClawbotBacktester:
         if dd > cfg.max_drawdown: return
         if d['day_of_week'][i] >= 5: return
         hr = d['hour'][i]; dow = d['day_of_week'][i]
-        # Session restrictions: no Asian early, no late Friday, no early Monday
-        if hr < 4: return  # Early Asian - too quiet
+        # Session restrictions: skip lowest-quality hours
+        if hr < 4: return  # Early Asian - too quiet, wide spreads
         if hr >= 21: return  # Off hours
         if dow == 4 and hr >= 16: return  # Friday after 16:00
         if dow == 0 and hr < 5: return  # Monday early
@@ -860,11 +865,10 @@ class ClawbotBacktester:
         adx = d['adx'][i]
         atr_avg = d['atr'][max(0,i-50):i+1].mean() if i > 10 else atr
         ar = atr / max(atr_avg, 0.01)
-        wt = wm = ws = wmr = wsmc = 1.0; lm = 1.0; sa = 0; allow = True
+        wt = wm = ws = wmr = wsmc = 1.0; lm = 1.0; sa = 0
         if ar > 1.5 and (adx > 20 or (i >= 3 and d['adx'][i] - d['adx'][i-2] > 5)):
-            # Volatile expansion - Phase 4: much stricter
-            wt=0.4; wm=0.4; ws=0.2; wmr=0.2; wsmc=0.7; lm=0.3; sa=25
-            allow = ar < 2.0  # Tighter volatility ceiling
+            # Volatile expansion - cautious but allow trading
+            wt=0.6; wm=0.6; ws=0.4; wmr=0.3; wsmc=0.8; lm=0.4; sa=5
         elif adx > 30 and ar >= 1.0:
             # Strong trend - best regime, give it room
             wt=1.6; wm=1.3; ws=1.1; wmr=0.2; wsmc=1.5; lm=1.2; sa=-8
@@ -872,14 +876,15 @@ class ClawbotBacktester:
             # Weak trend
             wt=1.3; wm=1.1; ws=0.9; wmr=0.4; wsmc=1.3; lm=0.85; sa=0
         elif adx < 20 and ar < 1.2:
-            # Ranging - Phase 4: stricter score requirement
-            wt=0.2; wm=0.6; ws=0.4; wmr=1.6; wsmc=1.0; lm=0.45; sa=12
+            # Ranging - moderate caution
+            wt=0.4; wm=0.7; ws=0.5; wmr=1.6; wsmc=1.0; lm=0.6; sa=0
         else:
-            # Transitioning - Phase 4: BLOCK all trades (most unpredictable regime)
-            return
-        if not allow: return
-        # Phase 4: Disable Asian session entirely (no trades before London)
-        if hr < 7: return  # No Asian session trades
+            # Transitioning - cautious
+            wt=0.5; wm=1.1; ws=0.5; wmr=0.9; wsmc=1.4; lm=0.5; sa=0
+
+        # Session weight adjustments
+        if hr < 7:  # Late Asian (4-7)
+            wt *= 0.4; wm *= 0.5; ws *= 0.3; wmr *= 1.2; lm *= 0.5
         if 7 <= hr < 10:  # London open
             wt *= 1.2; ws *= 1.5; wsmc *= 1.4; wmr *= 0.5; lm *= 1.1
         elif 12 <= hr < 16:  # Overlap
@@ -910,19 +915,15 @@ class ClawbotBacktester:
         bs = sum(w for x,w,_ in sigs if x == 1)
         ss = sum(w for x,w,_ in sigs if x == -1)
 
-        # Phase 1: Directional conflict filter - reject mixed signals
+        # Directional conflict filter - reject mixed signals
         if bv > 0 and sv > 0: return
 
-        # Phase 1: Volatility-relative score scaling - stricter in extreme ATR
+        # Volatility-relative score scaling
         vol_penalty = 0
-        if ar > 1.8: vol_penalty = 10  # Very high volatility
-        elif ar < 0.6: vol_penalty = 8  # Very low volatility (choppy)
+        if ar > 2.0: vol_penalty = 5   # Extreme volatility
+        elif ar < 0.5: vol_penalty = 3  # Very low volatility (choppy)
 
         ams = cfg.min_score + sa + vol_penalty
-
-        # Phase 1: Require best individual raw score >= 25
-        best_raw = max(w for _,w,_ in sigs) if sigs else 0
-        if best_raw < 25: return
 
         direction = 0; score = 0; dom = 0
         if bv >= cfg.min_strategies and bs >= ams and bs > ss:
@@ -1393,23 +1394,18 @@ class ClawbotBacktester:
         buy_score = sum(ws for d, ws, _ in signals if d == 1)
         sell_score = sum(ws for d, ws, _ in signals if d == -1)
 
-        # Phase 1: Directional conflict filter
+        # Directional conflict filter
         if buy_votes > 0 and sell_votes > 0:
             return
 
-        # Phase 1: Volatility-relative score scaling
+        # Volatility-relative score scaling
         atr_avg = df['atr'].iloc[max(0, i - 50):i + 1].mean() if i > 10 else atr
         ar = atr / max(atr_avg, 0.01)
         vol_penalty = 0
-        if ar > 1.8: vol_penalty = 10
-        elif ar < 0.6: vol_penalty = 8
+        if ar > 2.0: vol_penalty = 5
+        elif ar < 0.5: vol_penalty = 3
 
         adj_min_score = cfg.min_score + weights['score_adj'] + vol_penalty
-
-        # Phase 1: Require best individual raw score >= 25
-        best_raw = max(ws for _, ws, _ in signals) if signals else 0
-        if best_raw < 25:
-            return
 
         direction = 0
         score = 0

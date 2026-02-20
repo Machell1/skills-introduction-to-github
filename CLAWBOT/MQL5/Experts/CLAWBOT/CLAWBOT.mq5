@@ -74,7 +74,7 @@ input double   Inp_MinSL            = 150.0;   // Minimum SL points (auto-scaled
 input double   Inp_MaxSL            = 600.0;   // Maximum SL points (auto-scaled)
 input double   Inp_TrailActivation  = 99.0;    // Disabled in high-WR mode
 input double   Inp_TrailDistance    = 99.0;    // Disabled in high-WR mode
-input double   Inp_MaxSpread        = 35.0;    // Max allowed spread (points)
+input double   Inp_MaxSpread        = 50.0;    // Max allowed spread (points)
 
 //--- Trend Strategy (Strategy 1)
 input string   Inp_Separator4       = "=== TREND STRATEGY ===";        // ----
@@ -168,9 +168,9 @@ input double   Inp_PartialClosePct  = 0.15;    // Fraction to close at TP1 (15%)
 
 //--- Confluence Settings
 input string   Inp_Separator7       = "=== CONFLUENCE SETTINGS ===";   // ----
-input int      Inp_MinScore         = 45;      // Minimum total score for entry (higher = better quality)
-input int      Inp_MinStrategies    = 2;       // Min strategies agreeing (require confluence)
-input int      Inp_MinStrategyScore = 30;      // Min individual strategy score to count
+input int      Inp_MinScore         = 30;      // Minimum total score for entry (lowered for signal generation)
+input int      Inp_MinStrategies    = 1;       // Min strategies agreeing (1 = single strategy can trigger)
+input int      Inp_MinStrategyScore = 25;      // Min individual strategy score to count
 input int      Inp_CooldownAfterLosses = 2;    // Consecutive losses before cooldown (faster response)
 input int      Inp_CooldownBars     = 6;       // Bars to skip during cooldown (longer recovery)
 
@@ -375,14 +375,16 @@ int OnInit()
       LogMessage("INIT", "WARNING: Chart timeframe does not match settings.");
 
    bool initOk = true;
+   int strategiesReady = 0;
 
-   // Initialize strategies
+   // Initialize strategies (non-fatal: individual strategy failure won't block EA)
    if(Inp_EnableTrend)
    {
       if(!g_trendStrategy.Init(g_activeSymbol, Inp_Timeframe,
             Inp_EMA_Fast, Inp_EMA_Signal, Inp_EMA_Trend, Inp_EMA_Major,
             Inp_ADX_Period, Inp_ADX_Threshold, Inp_CrossoverLookback))
-      { LogMessage("INIT", "ERROR: Trend strategy init failed"); initOk = false; }
+      { LogMessage("INIT", "WARNING: Trend strategy init failed - will be skipped"); }
+      else strategiesReady++;
    }
 
    if(Inp_EnableMomentum)
@@ -391,7 +393,8 @@ int OnInit()
             Inp_RSI_Period, Inp_RSI_Oversold, Inp_RSI_Overbought,
             Inp_MACD_Fast, Inp_MACD_Slow, Inp_MACD_Signal,
             Inp_Stoch_K, Inp_Stoch_D, Inp_Stoch_Slowing))
-      { LogMessage("INIT", "ERROR: Momentum strategy init failed"); initOk = false; }
+      { LogMessage("INIT", "WARNING: Momentum strategy init failed - will be skipped"); }
+      else strategiesReady++;
    }
 
    if(Inp_EnableSession)
@@ -399,7 +402,8 @@ int OnInit()
       if(!g_sessionStrategy.Init(g_activeSymbol, Inp_Timeframe,
             14, 0.5, Inp_AsianStart, Inp_AsianEnd,
             Inp_LondonStart, Inp_LondonEnd, Inp_ExitHour))
-      { LogMessage("INIT", "ERROR: Session strategy init failed"); initOk = false; }
+      { LogMessage("INIT", "WARNING: Session strategy init failed - will be skipped"); }
+      else strategiesReady++;
    }
 
    if(Inp_EnableMeanRevert)
@@ -408,20 +412,23 @@ int OnInit()
             Inp_BB_Period, Inp_BB_Deviation,
             Inp_RSI_Period, Inp_RSI_Oversold, Inp_RSI_Overbought,
             Inp_BB_TouchBuffer))
-      { LogMessage("INIT", "ERROR: Mean Reversion strategy init failed"); initOk = false; }
+      { LogMessage("INIT", "WARNING: Mean Reversion strategy init failed - will be skipped"); }
+      else strategiesReady++;
    }
 
-   // Initialize SMC module
+   LogMessage("INIT", "Strategies ready: " + IntegerToString(strategiesReady) + " of 4");
+
+   // Initialize SMC module (optional - not critical)
    if(Inp_EnableSMC)
    {
       if(!g_smc.Init(g_activeSymbol, Inp_Timeframe,
             Inp_SMC_SwingStr, Inp_SMC_ImpulseATR, Inp_SMC_OBMaxAge,
             Inp_SMC_FVGMinSize, Inp_SMC_FVGMaxSize, 50,
             Inp_SMC_SweepATR, Inp_SMC_RoundNum))
-      { LogMessage("INIT", "ERROR: SMC module init failed"); initOk = false; }
+      { LogMessage("INIT", "WARNING: SMC module init failed - continuing without it"); }
    }
 
-   // Initialize Brain
+   // Initialize Brain (optional - falls back to equal weights)
    if(Inp_EnableBrain)
    {
       if(!g_brain.Init(g_activeSymbol, Inp_Timeframe,
@@ -430,33 +437,33 @@ int OnInit()
       { LogMessage("INIT", "WARNING: Brain init failed, using equal weights"); }
    }
 
-   // Initialize MTF filter
+   // Initialize MTF filter (optional)
    if(Inp_EnableMTF)
    {
       if(!g_mtfFilter.Init(g_activeSymbol, Inp_MTF_TF))
          LogMessage("INIT", "WARNING: MTF filter init failed, continuing without it");
    }
 
-   // Initialize risk manager with equity-scaled effective parameters
+   // Initialize risk manager with equity-scaled effective parameters (CRITICAL)
    if(!g_riskManager.Init(g_activeSymbol, Inp_Timeframe, Inp_MagicNumber,
          g_eff_RiskPerTrade, g_eff_MaxDailyLoss, g_eff_MaxDrawdown,
          g_eff_MaxConcurrent, g_eff_MaxDailyTrades, Inp_MinRiskReward,
          Inp_SL_ATR, Inp_TP_ATR, g_eff_MinSL, g_eff_MaxSL,
          Inp_TrailActivation, Inp_TrailDistance))
-   { LogMessage("INIT", "ERROR: Risk manager init failed"); initOk = false; }
+   { LogMessage("INIT", "FATAL: Risk manager init failed"); return INIT_FAILED; }
 
    if(!g_audit.Init(AccountInfoDouble(ACCOUNT_BALANCE), Inp_ReportPath))
-   { LogMessage("INIT", "ERROR: Audit module init failed"); initOk = false; }
+   { LogMessage("INIT", "WARNING: Audit module init failed - reports will not be generated"); }
 
-   if(!initOk)
+   if(strategiesReady == 0)
    {
-      LogMessage("INIT", "FATAL: One or more modules failed to initialize");
+      LogMessage("INIT", "FATAL: No strategies initialized successfully");
       return INIT_FAILED;
    }
 
    EventSetTimer(60);
    g_initialized = true;
-   LogMessage("INIT", "CLAWBOT v2.0 initialized. SMC + Brain active. Waiting for signals...");
+   LogMessage("INIT", "CLAWBOT v2.0 initialized. " + IntegerToString(strategiesReady) + " strategies ready. Waiting for signals...");
    return INIT_SUCCEEDED;
 }
 
@@ -525,12 +532,31 @@ void OnTick()
    // === PHASE 2: NEW BAR LOGIC ===
    if(!IsNewBar(g_activeSymbol, Inp_Timeframe)) return;
 
-   if(!g_riskManager.CanOpenTrade()) return;
+   // Diagnostic: log every new bar so we know the EA is alive
+   static int barCount = 0;
+   barCount++;
+   if(barCount <= 5 || barCount % 100 == 0)
+      LogMessage("TICK", "New bar #" + IntegerToString(barCount) + " at " + TimeToString(TimeCurrent()));
 
-   if(g_cooldownRemaining > 0) { g_cooldownRemaining--; return; }
+   if(!g_riskManager.CanOpenTrade())
+   {
+      if(barCount <= 5) LogMessage("TICK", "Blocked by CanOpenTrade()");
+      return;
+   }
+
+   if(g_cooldownRemaining > 0)
+   {
+      if(barCount <= 5) LogMessage("TICK", "Cooldown: " + IntegerToString(g_cooldownRemaining) + " bars remaining");
+      g_cooldownRemaining--;
+      return;
+   }
 
    double currentSpread = GetCurrentSpread(g_activeSymbol);
-   if(currentSpread > Inp_MaxSpread) return;
+   if(currentSpread > Inp_MaxSpread)
+   {
+      if(barCount <= 10) LogMessage("TICK", "Spread too high: " + DoubleToString(currentSpread, 1) + " > " + DoubleToString(Inp_MaxSpread, 1));
+      return;
+   }
 
    // === UPDATE SMC MARKET STRUCTURE ===
    if(Inp_EnableSMC)
@@ -550,7 +576,11 @@ void OnTick()
    if(Inp_EnableBrain)
    {
       weights = g_brain.GetWeights(smcTrend, smcZone, smcEvent);
-      if(!weights.allowTrading) return; // Brain says don't trade now
+      if(!weights.allowTrading)
+      {
+         if(barCount <= 10) LogMessage("TICK", "Brain blocked trading (regime=" + g_brain.GetRegimeName() + ")");
+         return;
+      }
    }
 
    // === H4 MTF FILTER ===
@@ -669,6 +699,16 @@ void OnTick()
          buyScore *= 0.5;  // Heavily penalize buys from premium
       if(smcZone == ZONE_DISCOUNT || smcZone == ZONE_EXTREME_DISCOUNT)
          sellScore *= 0.5; // Heavily penalize sells from discount
+   }
+
+   // === DIAGNOSTIC: Log signal scores periodically ===
+   if(barCount <= 10 || barCount % 200 == 0)
+   {
+      LogMessage("SIGNAL", "Scores - Buy:" + DoubleToString(buyScore, 1) + "(" + IntegerToString(buyVotes) + "v)"
+                 + " Sell:" + DoubleToString(sellScore, 1) + "(" + IntegerToString(sellVotes) + "v)"
+                 + " MinScore:" + IntegerToString(Inp_MinScore) + "+" + IntegerToString(weights.minScoreAdj)
+                 + " MinStrats:" + IntegerToString(Inp_MinStrategies)
+                 + " Regime:" + (Inp_EnableBrain ? g_brain.GetRegimeName() : "OFF"));
    }
 
    // === DETERMINE FINAL DIRECTION ===

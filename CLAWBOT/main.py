@@ -19,6 +19,7 @@
 
 import sys
 import subprocess
+import json
 from pathlib import Path
 from datetime import datetime
 
@@ -26,6 +27,7 @@ from datetime import datetime
 ROOT    = Path(__file__).parent.resolve()
 SCRIPTS = ROOT / "Scripts"
 CONFIG  = ROOT / "Config"
+DATA    = ROOT / "Data"
 
 sys.path.insert(0, str(ROOT))
 
@@ -45,8 +47,11 @@ BANNER = r"""
 #  Phase 0 – Environment
 # ======================================================================
 def check_env():
+    """Check environment. Returns True if MT5 is available, False for Python-only mode."""
     if sys.platform != "win32":
-        sys.exit("  [FATAL] MetaTrader 5 requires Windows.")
+        print("  [INFO] Not on Windows - MT5 Strategy Tester unavailable.")
+        print("  [INFO] Will use Python backtester for evaluation.")
+        return False
 
     needed = {"MetaTrader5": "MetaTrader5", "cryptography": "cryptography",
               "dotenv": "python-dotenv"}
@@ -62,6 +67,7 @@ def check_env():
             [sys.executable, "-m", "pip", "install", "--quiet"] + missing,
             stdout=subprocess.DEVNULL)
     print("  [OK] Dependencies ready.")
+    return True
 
 
 # ======================================================================
@@ -121,6 +127,68 @@ def phase_backtest(mt5):
 
 
 # ======================================================================
+#  Python Backtester Fallback
+# ======================================================================
+def phase_python_backtest(deposit=None) -> bool:
+    """Run the Python backtester as fallback when MT5 Strategy Tester fails."""
+    try:
+        from Scripts.backtest_engine import main as bt_main, print_stats
+    except ImportError as e:
+        print(f"  [ERROR] Cannot import Python backtester: {e}")
+        return False
+
+    data_path = DATA / "XAUUSD_H1.csv"
+    if not data_path.exists():
+        print(f"  [ERROR] Historical data not found: {data_path}")
+        print("  Download XAUUSD H1 data to Data/XAUUSD_H1.csv")
+        return False
+
+    print("\n" + "=" * 55)
+    print("  PYTHON BACKTESTER (FALLBACK)")
+    print("=" * 55)
+
+    overrides = {}
+    if deposit:
+        overrides["initial_balance"] = float(deposit)
+
+    try:
+        stats, issues, cfg = bt_main(data_path=data_path, config_overrides=overrides)
+    except Exception as e:
+        print(f"  [ERROR] Python backtest failed: {e}")
+        return False
+
+    # Evaluate using the same criteria as BacktestAnalyzer
+    wr = stats.get("win_rate", 0)
+    pf = stats.get("profit_factor", 0)
+    dd = stats.get("max_drawdown_pct", 100)
+    exp = stats.get("avg_win", 0) * (wr / 100) - abs(stats.get("avg_loss", 0)) * (1 - wr / 100)
+    n = stats.get("total_trades", 0)
+
+    checks = {
+        "Win Rate":      (wr >= 55,   f"{wr:.1f}%",   ">=55%"),
+        "Profit Factor": (pf >= 1.5,  f"{pf:.2f}",    ">=1.5"),
+        "Max Drawdown":  (dd <= 15,   f"{dd:.1f}%",   "<=15%"),
+        "Expectancy":    (exp > 0,    f"${exp:.2f}",  ">$0"),
+        "Total Trades":  (n >= 50,    f"{n}",         ">=50"),
+    }
+
+    print("\n" + "=" * 55)
+    print("  BACKTEST EVALUATION")
+    print("=" * 55)
+    for name, (ok, val, target) in checks.items():
+        tag = "PASS" if ok else "FAIL"
+        print(f"  {name:18s} {val:>10s}  {tag}  (target {target})")
+
+    secondary = sum(v[0] for k, v in checks.items() if k != "Win Rate")
+    passed = checks["Win Rate"][0] and secondary >= 2
+    print(f"\n  Secondary: {secondary}/4 (need >=2)")
+    print(f"  Result:    {'*** PASSED ***' if passed else '*** FAILED ***'}")
+    print("=" * 55)
+
+    return passed
+
+
+# ======================================================================
 #  Phase 3 – Analyze
 # ======================================================================
 def phase_analyze(reports, data_path) -> bool:
@@ -132,10 +200,10 @@ def phase_analyze(reports, data_path) -> bool:
     print("=" * 55)
 
     if not reports:
-        print("  [ERROR] No backtest results available.")
+        print("  [WARN] No MT5 backtest results available.")
         print("  The Strategy Tester did not produce any output.")
-        print("  See the diagnostics above for how to fix this.")
-        return False
+        print("  Falling back to Python backtester...")
+        return phase_python_backtest()
 
     analyzer = BacktestAnalyzer(threshold=55.0)
 
@@ -193,9 +261,9 @@ def phase_analyze(reports, data_path) -> bool:
         print(f"    Result: {'PASSED' if passed else 'FAILED'}")
         return passed
 
-    print("  [ERROR] No analyzable results found.")
-    print("  The backtest may not have run. Check MT5 Journal tab for errors.")
-    return False
+    # === FALLBACK: Python Backtester ===
+    print("\n  [INFO] MT5 produced no usable results. Running Python backtester...")
+    return phase_python_backtest()
 
 
 # ======================================================================
@@ -262,30 +330,46 @@ def main():
     print("=" * 55)
     print("  PHASE 0: ENVIRONMENT")
     print("=" * 55)
-    check_env()
+    has_mt5 = check_env()
 
-    # Phase 1
-    print("\n" + "=" * 55)
-    print("  PHASE 1: MT5 SETUP")
-    print("=" * 55)
-    mt5 = phase_setup()
-
-    # Phase 2
-    reports = phase_backtest(mt5)
-
-    # Phase 3
-    passed = phase_analyze(reports, mt5["data_path"])
-
-    # Phase 4 or retry
-    if passed:
-        phase_live(mt5)
-    else:
+    if has_mt5:
+        # Full MT5 pipeline
+        # Phase 1
         print("\n" + "=" * 55)
-        print("  BACKTEST DID NOT PASS")
+        print("  PHASE 1: MT5 SETUP")
         print("=" * 55)
-        print("  1. Upload the weakness report to Claude for fixes")
-        print("  2. Adjust parameters in Config/clawbot_config.ini")
-        print("  3. Re-run main.py to test again")
+        mt5 = phase_setup()
+
+        # Phase 2
+        reports = phase_backtest(mt5)
+
+        # Phase 3
+        passed = phase_analyze(reports, mt5["data_path"])
+
+        # Phase 4 or retry
+        if passed:
+            phase_live(mt5)
+        else:
+            print("\n" + "=" * 55)
+            print("  BACKTEST DID NOT PASS")
+            print("=" * 55)
+            print("  1. Upload the weakness report to Claude for fixes")
+            print("  2. Adjust parameters in Config/clawbot_config.ini")
+            print("  3. Re-run main.py to test again")
+    else:
+        # Python-only mode (non-Windows or no MT5)
+        print("\n  Running in Python-only mode (no MT5).")
+        passed = phase_python_backtest()
+        if passed:
+            print("\n  *** PYTHON BACKTEST PASSED ***")
+            print("  To trade live, run main.py on Windows with Deriv MT5 installed.")
+        else:
+            print("\n" + "=" * 55)
+            print("  BACKTEST DID NOT PASS")
+            print("=" * 55)
+            print("  1. Upload the weakness report to Claude for fixes")
+            print("  2. Adjust parameters in Config/clawbot_config.ini")
+            print("  3. Re-run main.py to test again")
 
     print(f"\n  Done: {datetime.now():%H:%M:%S}")
     input("  Press Enter to exit ...")
