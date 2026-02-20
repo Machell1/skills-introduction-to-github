@@ -400,12 +400,13 @@ double CClawRiskManager::CalculateTPPrice(ENUM_SIGNAL_TYPE direction, double ent
    double slDistance = MathAbs(entryPrice - slPrice);
    double tpDistance = atr * m_tpATRMultiplier;
 
-   // Ensure minimum risk:reward ratio (at least 1.5:1 for positive expectancy)
-   double minTPDistance = slDistance * 1.5;
-   if(m_minRiskReward > 1.5)
-      minTPDistance = slDistance * m_minRiskReward;
-   if(tpDistance < minTPDistance)
-      tpDistance = minTPDistance;
+   // Ensure minimum risk:reward ratio if configured (0 = no forced minimum, high-WR mode)
+   if(m_minRiskReward > 0)
+   {
+      double minTPDistance = slDistance * m_minRiskReward;
+      if(tpDistance < minTPDistance)
+         tpDistance = minTPDistance;
+   }
 
    int digits = (int)SymbolInfoInteger(m_symbol, SYMBOL_DIGITS);
 
@@ -733,11 +734,13 @@ double CClawRiskManager::CalculateTPPriceFromEntry(ENUM_SIGNAL_TYPE direction, d
    double slDistance = MathAbs(entryPrice - slPrice);
    double tpDistance = atr * m_tpATRMultiplier;
 
-   // Enforce minimum R:R of at least 1.5:1
-   double effectiveMinRR = MathMax(m_minRiskReward, 1.5);
-   double minTPDistance = slDistance * effectiveMinRR;
-   if(tpDistance < minTPDistance)
-      tpDistance = minTPDistance;
+   // Enforce minimum R:R if configured (0 = no forced minimum, high-WR mode)
+   if(m_minRiskReward > 0)
+   {
+      double minTPDistance = slDistance * m_minRiskReward;
+      if(tpDistance < minTPDistance)
+         tpDistance = minTPDistance;
+   }
 
    int digits = (int)SymbolInfoInteger(m_symbol, SYMBOL_DIGITS);
 
@@ -1007,9 +1010,12 @@ double CClawRiskManager::CalculateDynamicTP(ENUM_SIGNAL_TYPE direction, double e
    double minTP = atr * 1.0;
    if(tpDistance < minTP) tpDistance = minTP;
 
-   // Enforce minimum R:R of 1.5 (critical: TP must be 1.5x SL distance for positive expectancy)
-   double minRRDist = slDistance * 1.5;
-   if(tpDistance < minRRDist) tpDistance = minRRDist;
+   // Enforce minimum R:R if configured (0 = no forced minimum, high-WR mode)
+   if(m_minRiskReward > 0)
+   {
+      double minRRDist = slDistance * m_minRiskReward;
+      if(tpDistance < minRRDist) tpDistance = minRRDist;
+   }
 
    if(direction == SIGNAL_BUY)
       return NormalizeDouble(entryPrice + tpDistance, digits);

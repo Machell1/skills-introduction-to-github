@@ -64,16 +64,16 @@ input double   Inp_MaxDailyLoss     = 5.0;     // Max daily loss % (auto-scaled)
 input double   Inp_MaxDrawdown      = 20.0;    // Max drawdown % (auto-scaled)
 input int      Inp_MaxConcurrent    = 3;       // Max concurrent (auto-scaled)
 input int      Inp_MaxDailyTrades   = 5;       // Max daily trades (auto-scaled)
-input double   Inp_MinRiskReward    = 1.5;     // Minimum Risk:Reward ratio
+input double   Inp_MinRiskReward    = 0.0;     // 0 = allow TP closer than SL (high-WR mode)
 
 //--- Stop Loss / Take Profit (Gold H1: 2x ATR SL, 4x ATR TP = 1:2 R:R)
 input string   Inp_Separator3       = "=== SL/TP SETTINGS ===";        // ----
-input double   Inp_SL_ATR           = 0.5;     // SL ATR multiplier (tighter SL = smaller loss)
-input double   Inp_TP_ATR           = 2.0;     // TP ATR multiplier (achievable target = 4:1 R:R)
+input double   Inp_SL_ATR           = 0.6;     // SL ATR multiplier (moderate SL for high-WR mode)
+input double   Inp_TP_ATR           = 0.3;     // TP ATR multiplier (tight TP for 55%+ win rate)
 input double   Inp_MinSL            = 150.0;   // Minimum SL points (auto-scaled)
 input double   Inp_MaxSL            = 600.0;   // Maximum SL points (auto-scaled)
-input double   Inp_TrailActivation  = 1.8;     // Trailing activation (ATR mult) - let winners develop
-input double   Inp_TrailDistance    = 0.8;     // Trailing distance (ATR mult) - room to breathe
+input double   Inp_TrailActivation  = 99.0;    // Disabled in high-WR mode
+input double   Inp_TrailDistance    = 99.0;    // Disabled in high-WR mode
 input double   Inp_MaxSpread        = 35.0;    // Max allowed spread (points)
 
 //--- Trend Strategy (Strategy 1)
@@ -149,14 +149,14 @@ input double   Inp_PullbackATR      = 0.3;     // Pullback distance for limit en
 //--- Dynamic Position Closure
 input string   Inp_Separator6h      = "=== DYNAMIC CLOSURE ===";        // ----
 input bool     Inp_EnableDynClosure = true;    // Enable dynamic position closure
-input double   Inp_DynCls_MaxLossATR = 0.6;   // Max loss cap (ATR mult) - hard ceiling on loss
-input double   Inp_DynCls_StaleBars  = 10;    // Bars before stale trade check
-input double   Inp_DynCls_StaleRange = 0.2;   // Stale P/L range (ATR mult) for exit
-input double   Inp_DynCls_AdverseMom = 0.15;  // Adverse momentum loss threshold (ATR mult)
+input double   Inp_DynCls_MaxLossATR = 0.4;   // Max loss cap (ATR mult) - hard ceiling on loss
+input double   Inp_DynCls_StaleBars  = 8;     // Bars before stale trade check
+input double   Inp_DynCls_StaleRange = 0.2;    // Stale P/L range (ATR mult) for exit
+input double   Inp_DynCls_AdverseMom = 0.2;   // Adverse momentum loss threshold (ATR mult)
 
 //--- Dynamic Take Profit
 input string   Inp_Separator6i      = "=== DYNAMIC TP ===";             // ----
-input bool     Inp_EnableDynamicTP  = true;    // Enable SMC-aware dynamic TP
+input bool     Inp_EnableDynamicTP  = false;   // Disabled: keeps TP tight for high WR
 input double   Inp_DynTP_TrendMult  = 2.5;    // TP regime multiplier for trending (bigger targets)
 input double   Inp_DynTP_RangeMult  = 0.8;    // TP regime multiplier for ranging (take what you can)
 

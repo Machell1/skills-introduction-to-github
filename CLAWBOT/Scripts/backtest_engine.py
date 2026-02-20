@@ -40,15 +40,15 @@ class Config:
     max_drawdown: float = 25.0        # % (auto-scaled by equity)
     max_concurrent: int = 1           # Auto-scaled by equity
     max_daily_trades: int = 3         # Auto-scaled by equity
-    min_risk_reward: float = 1.5
+    min_risk_reward: float = 0.0      # 0 = use tp_atr directly (no forced R:R floor)
 
-    # SL / TP
-    sl_atr: float = 0.5
-    tp_atr: float = 2.0
+    # SL / TP - tight TP for high win rate (55%+)
+    sl_atr: float = 0.6              # Moderate SL: room for noise, not excessive risk
+    tp_atr: float = 0.3              # Tight TP: capture quick wins at high probability
     min_sl_pts: float = 100.0        # Auto-scaled by equity
     max_sl_pts: float = 400.0        # Auto-scaled by equity
-    trail_activation: float = 1.8     # ATR mult - let winners develop before trailing
-    trail_distance: float = 0.8       # ATR mult - wide enough to avoid shakeouts
+    trail_activation: float = 99.0    # Disabled: trailing drops WR below 55% target
+    trail_distance: float = 99.0      # Disabled: trades close at SL/TP only
 
     # Spread
     max_spread: float = 35.0          # points
@@ -70,13 +70,13 @@ class Config:
 
     # Dynamic closure
     enable_dyn_closure: bool = True
-    dyn_max_loss_atr: float = 0.6     # hard ceiling - tighter loss cap
+    dyn_max_loss_atr: float = 0.4     # hard ceiling - tighter loss cap for tight-TP mode
     dyn_stale_bars: int = 10
     dyn_stale_range: float = 0.2
     dyn_adverse_mom: float = 0.15     # cut early on adverse momentum
 
     # Dynamic TP
-    enable_dynamic_tp: bool = True
+    enable_dynamic_tp: bool = False   # Disabled: keeps TP tight for high WR
     dyn_tp_trend_mult: float = 2.5
     dyn_tp_range_mult: float = 0.8
 
@@ -716,16 +716,44 @@ class ClawbotBacktester:
         atr = d['atr'][i]
         if atr <= 0: return
         for pos in list(self.positions):
-            bh = d['high'][i]; bl = d['low'][i]; bc = d['close'][i]
+            bh = d['high'][i]; bl = d['low'][i]; bc = d['close'][i]; bo = d['open'][i]
             bars_held = i - pos.open_bar
             unr = (bc - pos.entry_price) if pos.direction == 1 else (pos.entry_price - bc)
-            # SL/TP
+            # SL/TP with realistic intra-bar execution order:
+            # Bullish bar (close >= open): assumed path Open -> Low -> High -> Close
+            # Bearish bar (close < open):  assumed path Open -> High -> Low -> Close
+            # When both SL and TP could be hit within the same bar, the bar direction
+            # determines which was hit first.
+            is_bullish_bar = bc >= bo
+            sl_hit = False; tp_hit = False
             if pos.direction == 1:
-                if bl <= pos.sl: self._close_position_np(pos, i, "SL", pos.sl); continue
-                if bh >= pos.tp: self._close_position_np(pos, i, "TP", pos.tp); continue
+                sl_hit = bl <= pos.sl
+                tp_hit = bh >= pos.tp
+                if sl_hit and tp_hit:
+                    # Both hit: bullish bar -> went low first -> SL first
+                    #           bearish bar -> went high first -> TP first
+                    if is_bullish_bar:
+                        self._close_position_np(pos, i, "SL", pos.sl); continue
+                    else:
+                        self._close_position_np(pos, i, "TP", pos.tp); continue
+                elif sl_hit:
+                    self._close_position_np(pos, i, "SL", pos.sl); continue
+                elif tp_hit:
+                    self._close_position_np(pos, i, "TP", pos.tp); continue
             else:
-                if bh >= pos.sl: self._close_position_np(pos, i, "SL", pos.sl); continue
-                if bl <= pos.tp: self._close_position_np(pos, i, "TP", pos.tp); continue
+                sl_hit = bh >= pos.sl
+                tp_hit = bl <= pos.tp
+                if sl_hit and tp_hit:
+                    # Both hit: bearish bar -> went high first -> SL first
+                    #           bullish bar -> went low first -> TP first
+                    if not is_bullish_bar:
+                        self._close_position_np(pos, i, "SL", pos.sl); continue
+                    else:
+                        self._close_position_np(pos, i, "TP", pos.tp); continue
+                elif sl_hit:
+                    self._close_position_np(pos, i, "SL", pos.sl); continue
+                elif tp_hit:
+                    self._close_position_np(pos, i, "TP", pos.tp); continue
             # Dynamic closure
             if cfg.enable_dyn_closure and bars_held >= 3:
                 if unr < -(cfg.dyn_max_loss_atr * atr):
@@ -923,9 +951,10 @@ class ClawbotBacktester:
             elif adx < 20 and ar < 1.2:  # Ranging
                 tp_mult *= cfg.dyn_tp_range_mult
         tpd = atr * tp_mult
-        # Enforce minimum R:R of 1.5:1
-        mtp = sld * max(cfg.min_risk_reward, 1.5)
-        if tpd < mtp: tpd = mtp
+        # Enforce minimum R:R (configurable, not hardcoded)
+        if cfg.min_risk_reward > 0:
+            mtp = sld * cfg.min_risk_reward
+            if tpd < mtp: tpd = mtp
 
         if direction == 1:
             entry = close + spread/2; sl = entry - sld; tp = entry + tpd
