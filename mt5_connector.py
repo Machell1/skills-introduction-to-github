@@ -280,6 +280,20 @@ def get_current_price(symbol: str) -> Optional[dict]:
     }
 
 
+def _get_filling_mode(symbol: str):
+    """Auto-detect the supported filling mode for a symbol."""
+    info = mt5.symbol_info(symbol)
+    if info is not None:
+        modes = info.filling_mode
+        # Check FOK first (most common for Deriv synthetics)
+        if modes & mt5.ORDER_FILLING_FOK:
+            return mt5.ORDER_FILLING_FOK
+        if modes & mt5.ORDER_FILLING_IOC:
+            return mt5.ORDER_FILLING_IOC
+    # Fallback to RETURN (works on most brokers)
+    return mt5.ORDER_FILLING_RETURN
+
+
 def place_market_order(
     symbol: str,
     direction: int,
@@ -336,6 +350,9 @@ def place_market_order(
         order_type = mt5.ORDER_TYPE_SELL
         price = tick.bid
 
+    # Auto-detect supported filling mode for this symbol
+    filling_mode = _get_filling_mode(symbol)
+
     request = {
         "action": mt5.TRADE_ACTION_DEAL,
         "symbol": symbol,
@@ -348,7 +365,7 @@ def place_market_order(
         "magic": 202602,
         "comment": comment,
         "type_time": mt5.ORDER_TIME_GTC,
-        "type_filling": mt5.ORDER_FILLING_IOC,
+        "type_filling": filling_mode,
     }
 
     result = mt5.order_send(request)
