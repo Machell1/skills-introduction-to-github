@@ -281,16 +281,23 @@ def get_current_price(symbol: str) -> Optional[dict]:
 
 
 def _get_filling_mode(symbol: str):
-    """Auto-detect the supported filling mode for a symbol."""
+    """Auto-detect the supported filling mode for a symbol.
+
+    IMPORTANT: symbol_info().filling_mode is a bitmask using SYMBOL_FILLING_*
+    constants (FOK=1, IOC=2), which are DIFFERENT from ORDER_FILLING_* constants
+    (FOK=0, IOC=1, RETURN=2). You cannot use ORDER_FILLING_* for bitwise checks.
+
+    For Deriv synthetic indices, ORDER_FILLING_RETURN is the correct mode.
+    """
     info = mt5.symbol_info(symbol)
     if info is not None:
         modes = info.filling_mode
-        # Check FOK first (most common for Deriv synthetics)
-        if modes & mt5.ORDER_FILLING_FOK:
+        # SYMBOL_FILLING_FOK = 1 (bit 0), SYMBOL_FILLING_IOC = 2 (bit 1)
+        if modes & 1:  # FOK supported
             return mt5.ORDER_FILLING_FOK
-        if modes & mt5.ORDER_FILLING_IOC:
+        if modes & 2:  # IOC supported
             return mt5.ORDER_FILLING_IOC
-    # Fallback to RETURN (works on most brokers)
+    # RETURN works for Deriv synthetics and most exchange-execution brokers
     return mt5.ORDER_FILLING_RETURN
 
 

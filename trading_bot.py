@@ -390,14 +390,23 @@ def mt5_get_symbol_info(symbol: str) -> Optional[dict]:
 
 
 def _get_filling_mode(symbol):
-    """Auto-detect the supported filling mode for a symbol."""
+    """Auto-detect the supported filling mode for a symbol.
+
+    IMPORTANT: symbol_info().filling_mode is a bitmask using SYMBOL_FILLING_*
+    constants (FOK=1, IOC=2), which are DIFFERENT from ORDER_FILLING_* constants
+    (FOK=0, IOC=1, RETURN=2). You cannot use ORDER_FILLING_* for bitwise checks.
+
+    For Deriv synthetic indices, ORDER_FILLING_RETURN is the correct mode.
+    """
     info = mt5.symbol_info(symbol)
     if info is not None:
         modes = info.filling_mode
-        if modes & mt5.ORDER_FILLING_FOK:
+        # SYMBOL_FILLING_FOK = 1 (bit 0), SYMBOL_FILLING_IOC = 2 (bit 1)
+        if modes & 1:  # FOK supported
             return mt5.ORDER_FILLING_FOK
-        if modes & mt5.ORDER_FILLING_IOC:
+        if modes & 2:  # IOC supported
             return mt5.ORDER_FILLING_IOC
+    # RETURN works for Deriv synthetics and most exchange-execution brokers
     return mt5.ORDER_FILLING_RETURN
 
 
@@ -423,12 +432,35 @@ def mt5_place_order(symbol, direction, volume, sl=0.0, tp=0.0, comment="TradingB
         order_type = mt5.ORDER_TYPE_SELL
         price = tick.bid
 
+    filling = _get_filling_mode(symbol)
+    filling_names = {0: "FOK", 1: "IOC", 2: "RETURN"}
+    print(f"    Filling mode: {filling_names.get(filling, filling)} (raw={filling}, "
+          f"symbol_modes={info.filling_mode})")
+
     request = {
         "action": mt5.TRADE_ACTION_DEAL, "symbol": symbol, "volume": volume,
         "type": order_type, "price": price, "sl": sl, "tp": tp,
         "deviation": deviation, "magic": 202602, "comment": comment,
-        "type_time": mt5.ORDER_TIME_GTC, "type_filling": _get_filling_mode(symbol),
+        "type_time": mt5.ORDER_TIME_GTC, "type_filling": filling,
     }
+
+    # Pre-check the order before sending
+    check = mt5.order_check(request)
+    if check is None:
+        print(f"  ERROR: order_check failed: {mt5.last_error()}")
+        return None
+    if check.retcode != 0:
+        print(f"  ERROR: order_check rejected: {check.comment} (code {check.retcode})")
+        # If filling mode was rejected, try RETURN as fallback
+        if check.retcode == 10030:
+            print(f"    Retrying with ORDER_FILLING_RETURN ...")
+            request["type_filling"] = mt5.ORDER_FILLING_RETURN
+            check = mt5.order_check(request)
+            if check is None or check.retcode != 0:
+                err = check.comment if check else mt5.last_error()
+                print(f"    RETURN also rejected: {err}")
+                return None
+            print(f"    ORDER_FILLING_RETURN accepted by pre-check")
 
     result = mt5.order_send(request)
     if result is None:
