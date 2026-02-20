@@ -59,11 +59,11 @@ input ENUM_BOT_MODE   Inp_BotMode   = MODE_BACKTEST;                   // Bot Mo
 
 //--- Risk Management
 input string   Inp_Separator2       = "=== RISK MANAGEMENT ===";       // ----
-input double   Inp_RiskPerTrade     = 1.5;     // Risk per trade (%)
+input double   Inp_RiskPerTrade     = 3.0;     // Risk per trade (%)
 input double   Inp_MaxDailyLoss     = 4.0;     // Max daily loss (%)
 input double   Inp_MaxDrawdown      = 12.0;    // Max total drawdown (%)
 input int      Inp_MaxConcurrent    = 3;       // Max concurrent trades
-input int      Inp_MaxDailyTrades   = 8;       // Max trades per day
+input int      Inp_MaxDailyTrades   = 5;       // Max trades per day
 input double   Inp_MinRiskReward    = 1.5;     // Minimum Risk:Reward ratio
 
 //--- Stop Loss / Take Profit (Gold H1: 2x ATR SL, 4x ATR TP = 1:2 R:R)
@@ -72,8 +72,8 @@ input double   Inp_SL_ATR           = 0.5;     // SL ATR multiplier (tighter SL 
 input double   Inp_TP_ATR           = 2.0;     // TP ATR multiplier (achievable target = 4:1 R:R)
 input double   Inp_MinSL            = 150.0;   // Minimum SL (points)
 input double   Inp_MaxSL            = 600.0;   // Maximum SL (points)
-input double   Inp_TrailActivation  = 1.5;     // Trailing activation (ATR mult) - let winners develop
-input double   Inp_TrailDistance    = 0.6;     // Trailing distance (ATR mult) - room to breathe
+input double   Inp_TrailActivation  = 1.8;     // Trailing activation (ATR mult) - let winners develop
+input double   Inp_TrailDistance    = 0.8;     // Trailing distance (ATR mult) - room to breathe
 input double   Inp_MaxSpread        = 35.0;    // Max allowed spread (points)
 
 //--- Trend Strategy (Strategy 1)
@@ -149,30 +149,30 @@ input double   Inp_PullbackATR      = 0.3;     // Pullback distance for limit en
 //--- Dynamic Position Closure
 input string   Inp_Separator6h      = "=== DYNAMIC CLOSURE ===";        // ----
 input bool     Inp_EnableDynClosure = true;    // Enable dynamic position closure
-input double   Inp_DynCls_MaxLossATR = 0.7;   // Max loss cap (ATR mult) = 1.4x SL - hard ceiling on loss
-input double   Inp_DynCls_StaleBars  = 12;    // Bars before stale trade check
+input double   Inp_DynCls_MaxLossATR = 0.6;   // Max loss cap (ATR mult) - hard ceiling on loss
+input double   Inp_DynCls_StaleBars  = 10;    // Bars before stale trade check
 input double   Inp_DynCls_StaleRange = 0.2;   // Stale P/L range (ATR mult) for exit
 input double   Inp_DynCls_AdverseMom = 0.15;  // Adverse momentum loss threshold (ATR mult)
 
 //--- Dynamic Take Profit
 input string   Inp_Separator6i      = "=== DYNAMIC TP ===";             // ----
 input bool     Inp_EnableDynamicTP  = true;    // Enable SMC-aware dynamic TP
-input double   Inp_DynTP_TrendMult  = 2.0;    // TP regime multiplier for trending (bigger targets)
+input double   Inp_DynTP_TrendMult  = 2.5;    // TP regime multiplier for trending (bigger targets)
 input double   Inp_DynTP_RangeMult  = 0.8;    // TP regime multiplier for ranging (take what you can)
 
 //--- Partial Close / Profit Locking
 input string   Inp_Separator6e      = "=== PROFIT LOCKING ===";         // ----
 input bool     Inp_EnablePartialClose = true;  // Enable partial close at TP1
-input double   Inp_TP1_ATR          = 1.0;     // TP1 distance (ATR mult) - only partial at real profit
+input double   Inp_TP1_ATR          = 1.2;     // TP1 distance (ATR mult) - only partial at real profit
 input double   Inp_PartialClosePct  = 0.15;    // Fraction to close at TP1 (15%) - maximize runner
 
 //--- Confluence Settings
 input string   Inp_Separator7       = "=== CONFLUENCE SETTINGS ===";   // ----
-input int      Inp_MinScore         = 40;      // Minimum total score for entry (higher = better quality)
+input int      Inp_MinScore         = 45;      // Minimum total score for entry (higher = better quality)
 input int      Inp_MinStrategies    = 2;       // Min strategies agreeing (require confluence)
-input int      Inp_MinStrategyScore = 25;      // Min individual strategy score to count
+input int      Inp_MinStrategyScore = 30;      // Min individual strategy score to count
 input int      Inp_CooldownAfterLosses = 2;    // Consecutive losses before cooldown (faster response)
-input int      Inp_CooldownBars     = 4;       // Bars to skip during cooldown (longer recovery)
+input int      Inp_CooldownBars     = 6;       // Bars to skip during cooldown (longer recovery)
 
 //--- Backtest / Audit Settings
 input string   Inp_Separator8       = "=== AUDIT SETTINGS ===";        // ----

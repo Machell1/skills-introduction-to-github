@@ -35,11 +35,11 @@ import pandas as pd
 class Config:
     # Risk
     initial_balance: float = 10000.0
-    risk_per_trade: float = 1.5       # %
+    risk_per_trade: float = 3.0       # %
     max_daily_loss: float = 4.0       # %
     max_drawdown: float = 12.0        # %
     max_concurrent: int = 3
-    max_daily_trades: int = 8
+    max_daily_trades: int = 5
     min_risk_reward: float = 1.5
 
     # SL / TP
@@ -47,8 +47,8 @@ class Config:
     tp_atr: float = 2.0
     min_sl_pts: float = 150.0
     max_sl_pts: float = 600.0
-    trail_activation: float = 1.5     # ATR mult - let winners develop before trailing
-    trail_distance: float = 0.6       # ATR mult - wide enough to avoid shakeouts
+    trail_activation: float = 1.8     # ATR mult - let winners develop before trailing
+    trail_distance: float = 0.8       # ATR mult - wide enough to avoid shakeouts
 
     # Spread
     max_spread: float = 35.0          # points
@@ -70,27 +70,27 @@ class Config:
 
     # Dynamic closure
     enable_dyn_closure: bool = True
-    dyn_max_loss_atr: float = 0.7     # hard ceiling at 1.4x SL
-    dyn_stale_bars: int = 12
+    dyn_max_loss_atr: float = 0.6     # hard ceiling - tighter loss cap
+    dyn_stale_bars: int = 10
     dyn_stale_range: float = 0.2
     dyn_adverse_mom: float = 0.15     # cut early on adverse momentum
 
     # Dynamic TP
     enable_dynamic_tp: bool = True
-    dyn_tp_trend_mult: float = 2.0
+    dyn_tp_trend_mult: float = 2.5
     dyn_tp_range_mult: float = 0.8
 
     # Partial close
     enable_partial_close: bool = True
-    tp1_atr: float = 1.0             # wait for real profit before partial
+    tp1_atr: float = 1.2             # wait for real profit before partial
     partial_close_pct: float = 0.15   # keep 85% running
 
     # Confluence
-    min_score: int = 40
+    min_score: int = 45
     min_strategies: int = 2
-    min_strat_score: int = 25
+    min_strat_score: int = 30
     cooldown_losses: int = 2
-    cooldown_bars: int = 4
+    cooldown_bars: int = 6
 
     # Trend strategy
     ema_fast: int = 8
@@ -500,15 +500,15 @@ def detect_regime(i, df, cfg):
          'score_adj': 0, 'allow': True}
 
     if atr_ratio > 1.5:
-        # Volatile expansion
+        # Volatile expansion - Phase 4: much stricter
         w['trend'] = 0.4
         w['momentum'] = 0.4
         w['mean_revert'] = 0.2
         w['session'] = 0.2
         w['smc'] = 0.7
         w['lot_mult'] = 0.3
-        w['score_adj'] = 15
-        w['allow'] = atr_ratio < 2.5
+        w['score_adj'] = 25
+        w['allow'] = atr_ratio < 2.0
     elif adx > 30 and atr_ratio >= 1.0:
         # Strong trend
         w['trend'] = 1.6
@@ -528,23 +528,17 @@ def detect_regime(i, df, cfg):
         w['lot_mult'] = 0.85
         w['score_adj'] = 0
     elif adx < 20 and atr_ratio < 1.2:
-        # Ranging
+        # Ranging - Phase 4: stricter
         w['trend'] = 0.2
         w['momentum'] = 0.6
         w['mean_revert'] = 1.6
         w['session'] = 0.4
         w['smc'] = 1.0
         w['lot_mult'] = 0.45
-        w['score_adj'] = 8
+        w['score_adj'] = 12
     else:
-        # Transitioning
-        w['trend'] = 0.3
-        w['momentum'] = 1.1
-        w['mean_revert'] = 0.9
-        w['session'] = 0.4
-        w['smc'] = 1.4
-        w['lot_mult'] = 0.4
-        w['score_adj'] = 8
+        # Transitioning - Phase 4: BLOCK trades
+        w['allow'] = False
 
     return w
 
@@ -567,6 +561,7 @@ class ClawbotBacktester:
         self.cooldown_remaining = 0
         self.current_day = None
         self.partial_closed_tickets = set()
+        self.daily_cooldown_count = 0  # Phase 6: escalating cooldown counter
 
     def run(self, df: pd.DataFrame, silent: bool = False) -> dict:
         """Run full backtest on H1 OHLC data. Returns stats dict."""
@@ -595,6 +590,7 @@ class ClawbotBacktester:
                 self.current_day = day
                 self.daily_start_balance = self.balance
                 self.daily_trades = 0
+                self.daily_cooldown_count = 0  # Phase 6: reset daily cooldown counter
 
             # PHASE 1: Manage existing positions (every bar)
             self._manage_positions_np(i)
@@ -688,6 +684,18 @@ class ClawbotBacktester:
                         sp = cfg.avg_spread * cfg.point
                         if pos.direction == 1: pos.sl = max(pos.sl, pos.entry_price + sp)
                         else: pos.sl = min(pos.sl, pos.entry_price - sp)
+            # Phase 3: Momentum-based TP extension (extend TP when trend is accelerating)
+            if unr > 0 and bars_held >= 2 and i >= 3:
+                adx_now = d['adx'][i]; adx_prev = d['adx'][i-2]
+                if adx_now > adx_prev + 3 and adx_now > 25:  # ADX rising = trend strengthening
+                    curr_tp_dist = abs(pos.tp - pos.entry_price)
+                    ext_tp = curr_tp_dist * 1.3  # Extend TP by 30%
+                    if pos.direction == 1:
+                        new_tp = pos.entry_price + ext_tp
+                        if new_tp > pos.tp: pos.tp = new_tp
+                    else:
+                        new_tp = pos.entry_price - ext_tp
+                        if new_tp < pos.tp: pos.tp = new_tp
             # Breakeven: activate at 50% of trailing activation (separate from trail)
             be_act = atr * cfg.trail_activation * 0.5
             if pos.direction == 1:
@@ -714,10 +722,13 @@ class ClawbotBacktester:
                 if pd_ >= ta:
                     ns = bc + td
                     if ns < pos.sl and ns < pos.entry_price: pos.sl = ns
-            # Progressive SL (aggressive schedule matching ClawRisk.mqh)
-            if cfg.enable_dyn_closure and unr < 0 and bars_held >= 5:
+            # Phase 2: 18-bar mandatory exit for losing trades
+            if cfg.enable_dyn_closure and bars_held >= 18 and unr < 0:
+                self._close_position_np(pos, i, "TME"); continue
+            # Progressive SL (Phase 2: start at 4 bars, graduated schedule)
+            if cfg.enable_dyn_closure and unr < 0 and bars_held >= 4:
                 osd = abs(pos.entry_price - pos.original_sl) or atr * cfg.sl_atr
-                f = 0.30 if bars_held >= 16 else (0.45 if bars_held >= 10 else 0.65)
+                f = 0.25 if bars_held >= 12 else (0.40 if bars_held >= 8 else 0.60)
                 if f < 1.0:
                     nsd = max(osd * f, cfg.min_sl_pts * cfg.point * 0.5)
                     if pos.direction == 1:
@@ -752,26 +763,25 @@ class ClawbotBacktester:
         ar = atr / max(atr_avg, 0.01)
         wt = wm = ws = wmr = wsmc = 1.0; lm = 1.0; sa = 0; allow = True
         if ar > 1.5 and (adx > 20 or (i >= 3 and d['adx'][i] - d['adx'][i-2] > 5)):
-            # Volatile expansion
-            wt=0.4; wm=0.4; ws=0.2; wmr=0.2; wsmc=0.7; lm=0.3; sa=15
-            allow = ar < 2.5
+            # Volatile expansion - Phase 4: much stricter
+            wt=0.4; wm=0.4; ws=0.2; wmr=0.2; wsmc=0.7; lm=0.3; sa=25
+            allow = ar < 2.0  # Tighter volatility ceiling
         elif adx > 30 and ar >= 1.0:
-            # Strong trend
+            # Strong trend - best regime, give it room
             wt=1.6; wm=1.3; ws=1.1; wmr=0.2; wsmc=1.5; lm=1.2; sa=-8
         elif adx > 20:
             # Weak trend
             wt=1.3; wm=1.1; ws=0.9; wmr=0.4; wsmc=1.3; lm=0.85; sa=0
         elif adx < 20 and ar < 1.2:
-            # Ranging
-            wt=0.2; wm=0.6; ws=0.4; wmr=1.6; wsmc=1.0; lm=0.45; sa=8
+            # Ranging - Phase 4: stricter score requirement
+            wt=0.2; wm=0.6; ws=0.4; wmr=1.6; wsmc=1.0; lm=0.45; sa=12
         else:
-            # Transitioning
-            wt=0.3; wm=1.1; ws=0.4; wmr=0.9; wsmc=1.4; lm=0.4; sa=8
+            # Transitioning - Phase 4: BLOCK all trades (most unpredictable regime)
+            return
         if not allow: return
-        # Session-based adjustments
-        if hr < 7:  # Asian
-            wt *= 0.3; wm *= 0.4; ws *= 0.2; wmr *= 1.1; wsmc *= 0.5; lm *= 0.4
-        elif 7 <= hr < 10:  # London open
+        # Phase 4: Disable Asian session entirely (no trades before London)
+        if hr < 7: return  # No Asian session trades
+        if 7 <= hr < 10:  # London open
             wt *= 1.2; ws *= 1.5; wsmc *= 1.4; wmr *= 0.5; lm *= 1.1
         elif 12 <= hr < 16:  # Overlap
             wt *= 1.2; wm *= 1.2; ws *= 1.2; wsmc *= 1.3; lm *= 1.1
@@ -800,7 +810,20 @@ class ClawbotBacktester:
         sv = sum(1 for x,_,_ in sigs if x == -1)
         bs = sum(w for x,w,_ in sigs if x == 1)
         ss = sum(w for x,w,_ in sigs if x == -1)
-        ams = cfg.min_score + sa
+
+        # Phase 1: Directional conflict filter - reject mixed signals
+        if bv > 0 and sv > 0: return
+
+        # Phase 1: Volatility-relative score scaling - stricter in extreme ATR
+        vol_penalty = 0
+        if ar > 1.8: vol_penalty = 10  # Very high volatility
+        elif ar < 0.6: vol_penalty = 8  # Very low volatility (choppy)
+
+        ams = cfg.min_score + sa + vol_penalty
+
+        # Phase 1: Require best individual raw score >= 25
+        best_raw = max(w for _,w,_ in sigs) if sigs else 0
+        if best_raw < 25: return
 
         direction = 0; score = 0; dom = 0
         if bv >= cfg.min_strategies and bs >= ams and bs > ss:
@@ -821,7 +844,14 @@ class ClawbotBacktester:
         sld = atr * cfg.sl_atr; slp = sld / cfg.point
         if slp < cfg.min_sl_pts: sld = cfg.min_sl_pts * cfg.point
         if slp > cfg.max_sl_pts: sld = cfg.max_sl_pts * cfg.point
-        tpd = atr * cfg.tp_atr
+        # Phase 3: Dynamic TP based on regime
+        tp_mult = cfg.tp_atr
+        if cfg.enable_dynamic_tp:
+            if adx > 30 and ar >= 1.0:  # Strong trend
+                tp_mult *= cfg.dyn_tp_trend_mult / 2.0  # Apply trend multiplier
+            elif adx < 20 and ar < 1.2:  # Ranging
+                tp_mult *= cfg.dyn_tp_range_mult
+        tpd = atr * tp_mult
         # Enforce minimum R:R of 1.5:1
         mtp = sld * max(cfg.min_risk_reward, 1.5)
         if tpd < mtp: tpd = mtp
@@ -868,7 +898,13 @@ class ClawbotBacktester:
         if profit < 0:
             self.consec_losses += 1
             if self.consec_losses >= cfg.cooldown_losses:
-                self.cooldown_remaining = cfg.cooldown_bars; self.consec_losses = 0
+                self.daily_cooldown_count += 1
+                # Phase 6: Escalating cooldown - 2nd trigger shuts down for the day
+                if self.daily_cooldown_count >= 2:
+                    self.cooldown_remaining = 999  # Shut down for rest of day
+                else:
+                    self.cooldown_remaining = cfg.cooldown_bars
+                self.consec_losses = 0
         else:
             self.consec_losses = 0
 
@@ -882,30 +918,37 @@ class ClawbotBacktester:
         pc = d['close'][i-1]; rsi = d['rsi'][i]
         body = abs(cl - op); rng = hi - lo
         sc = 0; dr = 0
+        # Phase 5: Require EMA50 > EMA200 for buy (structural trend confirmation)
         if ef > es and es > et and et > em and cl > em:
+            # Phase 5: MUST have pullback - no weak entries without pullback
             pb = False
             for k in range(min(3, i)):
                 if d['low'][i-k] <= es * 1.003 and d['low'][i-k] >= et * 0.997: pb = True; break
+            if not pb: return 0, 0  # Phase 5: Eliminate weak (no-pullback) entries
             bounce = cl > ef and cl > op and (rng > 0 and body / rng > 0.45)
-            if pb and bounce:
+            if bounce:
                 sc = 35; dr = 1
                 if d['plus_di'][i] > d['minus_di'][i] * 1.2: sc += 8
                 if ax > 30: sc += 5
                 if 40 < rsi < 65: sc += 5
                 if rng > 0 and body / rng > 0.65: sc += 5
                 if i >= 1 and d['close'][i-1] > d['open'][i-1]: sc += 3
+                # Phase 5: Bonus for EMA trend slope (rising 50 EMA)
+                if i >= 5 and et > d['ema_trend'][i-5]: sc += 3
         elif ef < es and es < et and et < em and cl < em:
             pb = False
             for k in range(min(3, i)):
                 if d['high'][i-k] >= es * 0.997 and d['high'][i-k] <= et * 1.003: pb = True; break
+            if not pb: return 0, 0  # Phase 5: Eliminate weak entries
             bounce = cl < ef and cl < op and (rng > 0 and body / rng > 0.45)
-            if pb and bounce:
+            if bounce:
                 sc = 35; dr = -1
                 if d['minus_di'][i] > d['plus_di'][i] * 1.2: sc += 8
                 if ax > 30: sc += 5
                 if 35 < rsi < 60: sc += 5
                 if rng > 0 and body / rng > 0.65: sc += 5
                 if i >= 1 and d['close'][i-1] < d['open'][i-1]: sc += 3
+                if i >= 5 and et < d['ema_trend'][i-5]: sc += 3
         return dr, sc
 
     def _t_mom(self, i):
@@ -913,15 +956,23 @@ class ClawbotBacktester:
         if i < cfg.rsi_period + 5: return 0, 0
         rsi = d['rsi'][i]; rp = d['rsi'][i-1]; rp2 = d['rsi'][i-2] if i >= 2 else rp
         cl = d['close'][i]; op = d['open'][i]; em = d['ema_major'][i]; et = d['ema_trend'][i]
+        hi = d['high'][i]; lo = d['low'][i]; rng = hi - lo; body = abs(cl - op)
+        # Phase 5: Require RSI 2-bar reversal (was extreme then turned)
         if rsi < cfg.rsi_oversold and rsi > rp and rp <= rp2:
             if cl > em and cl > et and cl > op:
+                # Phase 5: Require bullish candle body confirmation
+                if rng > 0 and body / rng < 0.4: return 0, 0
                 sc = 30 + int((cfg.rsi_oversold - rsi) * 1.0)
                 if d['plus_di'][i] > d['minus_di'][i]: sc += 5
+                # Phase 5: MACD histogram check (positive momentum)
+                if i >= 3 and d['close'][i] > d['close'][i-3]: sc += 3
                 return 1, min(sc, 45)
         elif rsi > cfg.rsi_overbought and rsi < rp and rp >= rp2:
             if cl < em and cl < et and cl < op:
+                if rng > 0 and body / rng < 0.4: return 0, 0
                 sc = 30 + int((rsi - cfg.rsi_overbought) * 1.0)
                 if d['minus_di'][i] > d['plus_di'][i]: sc += 5
+                if i >= 3 and d['close'][i] < d['close'][i-3]: sc += 3
                 return -1, min(sc, 45)
         return 0, 0
 
@@ -952,13 +1003,17 @@ class ClawbotBacktester:
         cl = d['close'][i]; op = d['open'][i]
         bu = d['bb_upper'][i]; bl = d['bb_lower'][i]; rsi = d['rsi'][i]
         hi = d['high'][i]; lo = d['low'][i]; rng = hi - lo
-        if bl <= bu and lo <= bl and cl > bl and rsi < 35:
+        rp = d['rsi'][i-1] if i >= 1 else rsi
+        # Mean reversion at BB extremes with RSI confirmation
+        if bl <= bu and lo <= bl and cl > bl and rsi < 35 and rsi > rp:
+            # RSI turning up from oversold = reversal confirmation
             if cl > op and rng > 0:
                 lw = min(cl, op) - lo
                 if lw > rng * 0.3:
                     sc = 25; sc += 8 if rsi < 25 else 0; sc += 5 if d['adx'][i] < 25 else 0
                     return 1, min(sc, 40)
-        if bu >= bl and hi >= bu and cl < bu and rsi > 65:
+        if bu >= bl and hi >= bu and cl < bu and rsi > 65 and rsi < rp:
+            # RSI was higher and is now falling = reversal confirmation
             if cl < op and rng > 0:
                 uw = hi - max(cl, op)
                 if uw > rng * 0.3:
@@ -1087,6 +1142,22 @@ class ClawbotBacktester:
                         else:
                             pos.sl = min(pos.sl, pos.entry_price - spread)
 
+            # --- Phase 3: Momentum-based TP extension ---
+            if unrealized > 0 and bars_held >= 2 and i >= 3:
+                adx_now = df['adx'].iloc[i]
+                adx_prev = df['adx'].iloc[i - 2]
+                if adx_now > adx_prev + 3 and adx_now > 25:
+                    curr_tp_dist = abs(pos.tp - pos.entry_price)
+                    ext_tp = curr_tp_dist * 1.3
+                    if pos.direction == 1:
+                        new_tp = pos.entry_price + ext_tp
+                        if new_tp > pos.tp:
+                            pos.tp = new_tp
+                    else:
+                        new_tp = pos.entry_price - ext_tp
+                        if new_tp < pos.tp:
+                            pos.tp = new_tp
+
             # --- Breakeven: activate at 50% of trailing activation ---
             be_act_dist = atr * self.cfg.trail_activation * 0.5
             if pos.direction == 1:
@@ -1120,19 +1191,24 @@ class ClawbotBacktester:
                     if new_sl < pos.sl and new_sl < pos.entry_price:
                         pos.sl = new_sl
 
-            # --- Progressive SL tightening (aggressive schedule) ---
-            if self.cfg.enable_dyn_closure and unrealized < 0 and bars_held >= 5:
+            # --- Phase 2: 18-bar mandatory exit for losing trades ---
+            if self.cfg.enable_dyn_closure and bars_held >= 18 and unrealized < 0:
+                self._close_position(pos, i, df, "TIME_EXIT")
+                continue
+
+            # --- Progressive SL tightening (Phase 2: start at 4 bars) ---
+            if self.cfg.enable_dyn_closure and unrealized < 0 and bars_held >= 4:
                 orig_sl_dist = abs(pos.entry_price - pos.original_sl)
                 if orig_sl_dist <= 0:
                     orig_sl_dist = atr * self.cfg.sl_atr
 
                 factor = 1.0
-                if bars_held >= 16:
-                    factor = 0.30
-                elif bars_held >= 10:
-                    factor = 0.45
-                elif bars_held >= 5:
-                    factor = 0.65
+                if bars_held >= 12:
+                    factor = 0.25
+                elif bars_held >= 8:
+                    factor = 0.40
+                elif bars_held >= 4:
+                    factor = 0.60
 
                 if factor < 1.0:
                     new_sl_dist = orig_sl_dist * factor
@@ -1217,7 +1293,23 @@ class ClawbotBacktester:
         buy_score = sum(ws for d, ws, _ in signals if d == 1)
         sell_score = sum(ws for d, ws, _ in signals if d == -1)
 
-        adj_min_score = cfg.min_score + weights['score_adj']
+        # Phase 1: Directional conflict filter
+        if buy_votes > 0 and sell_votes > 0:
+            return
+
+        # Phase 1: Volatility-relative score scaling
+        atr_avg = df['atr'].iloc[max(0, i - 50):i + 1].mean() if i > 10 else atr
+        ar = atr / max(atr_avg, 0.01)
+        vol_penalty = 0
+        if ar > 1.8: vol_penalty = 10
+        elif ar < 0.6: vol_penalty = 8
+
+        adj_min_score = cfg.min_score + weights['score_adj'] + vol_penalty
+
+        # Phase 1: Require best individual raw score >= 25
+        best_raw = max(ws for _, ws, _ in signals) if signals else 0
+        if best_raw < 25:
+            return
 
         direction = 0
         score = 0
@@ -1257,7 +1349,17 @@ class ClawbotBacktester:
         if sl_pts > cfg.max_sl_pts:
             sl_dist = cfg.max_sl_pts * cfg.point
 
-        tp_dist = atr * cfg.tp_atr
+        # Phase 3: Dynamic TP based on regime
+        tp_mult = cfg.tp_atr
+        if cfg.enable_dynamic_tp:
+            atr_avg = df['atr'].iloc[max(0, i - 50):i + 1].mean() if i > 10 else atr
+            ar = atr / max(atr_avg, 0.01)
+            adx_val = df['adx'].iloc[i]
+            if adx_val > 30 and ar >= 1.0:  # Strong trend
+                tp_mult *= cfg.dyn_tp_trend_mult / 2.0
+            elif adx_val < 20 and ar < 1.2:  # Ranging
+                tp_mult *= cfg.dyn_tp_range_mult
+        tp_dist = atr * tp_mult
         min_tp = sl_dist * cfg.min_risk_reward
         if tp_dist < min_tp:
             tp_dist = min_tp
@@ -1344,7 +1446,12 @@ class ClawbotBacktester:
         if profit < 0:
             self.consec_losses += 1
             if self.consec_losses >= self.cfg.cooldown_losses:
-                self.cooldown_remaining = self.cfg.cooldown_bars
+                self.daily_cooldown_count += 1
+                # Phase 6: Escalating cooldown
+                if self.daily_cooldown_count >= 2:
+                    self.cooldown_remaining = 999  # Shut down for rest of day
+                else:
+                    self.cooldown_remaining = self.cfg.cooldown_bars
                 self.consec_losses = 0
         else:
             self.consec_losses = 0
