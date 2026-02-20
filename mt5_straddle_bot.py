@@ -65,44 +65,48 @@ CFG = {
     "DERIV_SERVERS":         ["Deriv-Demo", "Deriv-Server",
                               "Deriv-Server-02", "Deriv-Server-03"],
     # Volume  ── 0.01 lots: 1 pt = $0.01, spread ~25pts = $0.25
-    #            leaves $0.25 room within the $0.50 cap
+    #            $0.50 cap = 50pts room, minus 25pts spread = 25pts buffer
     "DEFAULT_VOLUME":        0.01,
     "MARGIN_MODE":           "adaptive",   # strict | adaptive
     "MIN_FREE_MARGIN_BUF":   1.00,         # USD reserve
 
-    # Entry  ── wider offset = only real breakouts trigger
-    "ENTRY_OFFSET_PTS":      50,           # needs genuine momentum
+    # Entry  ── offset must be < (emergency_pts - spread/2) to survive
+    #            trigger bar.  50pts emergency, 12.5pts half-spread -> max ~35
+    "ENTRY_OFFSET_PTS":      30,           # breakout offset from ask/bid
     "SL_DISTANCE_PTS":       80,           # emergency SL on pending
     "TP_DISTANCE_PTS":       0,            # 0 = bot manages exits
 
     # Filters
     "MAX_SPREAD_PTS":        40,           # skip when spread too wide
-    "MAX_CANDLE_RANGE_PTS":  300,          # skip wild bars
+    "MAX_CANDLE_RANGE_PTS":  250,          # skip wild bars
     "WIDEN_ON_VOL":          False,
     "VOL_WIDEN_FACTOR":      1.5,
 
     # ── QUALITY FILTERS (prevent blind entries) ──
     "CONSOLIDATION_BARS":    5,            # look-back for range check
-    "CONSOL_MAX_AVG_RNG":    120,          # avg range < N pts = tight
-    "MIN_BODY_RATIO":        0.0,          # 0 = disabled
-    "ACTIVE_HOURS":          (7, 21),      # UTC hours (London+NY sessions)
-    "COOLDOWN_BARS":         3,            # skip N bars after a loss
+    "CONSOL_MAX_AVG_RNG":    80,           # tighter = only compression zones
+    "ACTIVE_HOURS":          (8, 17),      # UTC hours (London+NY overlap)
+    "COOLDOWN_BARS":         5,            # skip N bars after a loss
+
+    # ── TREND FILTER (EMA direction gating) ──
+    "TREND_MODE":            True,         # only enter in EMA direction
+    "EMA_PERIOD":            20,           # M1 EMA lookback
 
     # === EXIT RULES (core of the $0.50 max-loss logic) ===
     "EMERGENCY_LOSS_USD":    0.50,         # HARD CAP per trade
-    "BE_BUFFER_PTS":         3,            # SL = entry +/- 3 pts once green
-    "SCALP_TARGET_PTS":      50,           # take profit in points ($0.50)
-    "SCALP_TARGET_USD":      0.30,         # OR take profit in USD
-    "RUNNER_THRESHOLD_PTS":  100,          # activate trail above this
-    "TRAIL_DISTANCE_PTS":    30,           # trailing SL distance
-    "MAX_HOLD_SEC":          180,          # 3 minutes force close
-    "TIME_RULE_SEC":         45,           # stagnant check delay
-    "TIME_RULE_MIN_PTS":     10,           # min profit after delay
-    "STAGNANT_SEC":          20,           # close if still negative
+    "BE_BUFFER_PTS":         2,            # SL = entry +/- 2 pts once green
+    "SCALP_TARGET_PTS":      35,           # modest target past spread
+    "SCALP_TARGET_USD":      0.25,         # OR take profit in USD
+    "RUNNER_THRESHOLD_PTS":  80,           # activate trail above this
+    "TRAIL_DISTANCE_PTS":    25,           # trailing SL distance
+    "MAX_HOLD_SEC":          300,          # 5 minutes -> 5 bars in BT
+    "TIME_RULE_SEC":         240,          # 4 minutes -> 4 bars in BT
+    "TIME_RULE_MIN_PTS":     5,            # min profit after delay
+    "STAGNANT_SEC":          120,          # 2 minutes -> 2 bars in BT
 
     # Daily caps
     "MAX_DAILY_LOSS_USD":    3.00,
-    "MAX_TRADES_DAY":        40,
+    "MAX_TRADES_DAY":        30,
 
     # Polling
     "POLL_FAST_HZ":          10,
@@ -353,6 +357,26 @@ def set_cooldown():
     _cooldown_until = time.time() + secs
     log.info("COOLDOWN %d bars (%ds)", CFG["COOLDOWN_BARS"], secs)
 
+def ema_direction(p) -> Optional[str]:
+    """Return 'BUY' or 'SELL' based on EMA trend, or None if disabled/unclear."""
+    if not CFG.get("TREND_MODE"):
+        return None
+    period = CFG["EMA_PERIOD"]
+    r = mt5.copy_rates_from_pos(CFG["SYMBOL"], mt5.TIMEFRAME_M1, 0, period + 5)
+    if r is None or len(r) < period:
+        return None
+    closes = [bar["close"] for bar in r]
+    alpha = 2.0 / (period + 1)
+    ema = closes[0]
+    for c in closes[1:]:
+        ema = alpha * c + (1 - alpha) * ema
+    mid = (p["ask"] + p["bid"]) / 2.0
+    if mid > ema:
+        return "BUY"
+    elif mid < ema:
+        return "SELL"
+    return None
+
 # =====================================================================
 # ORDER PLACEMENT
 # =====================================================================
@@ -366,7 +390,8 @@ def _clamp(price, sl, tp, otype, p):
         if tp > 0 and price - tp < md: tp = round(price - md, d)
     return round(sl, d), round(tp, d)
 
-def place_straddle(p, off_pts, vol, dry=False):
+def place_straddle(p, off_pts, vol, dry=False, direction=None):
+    """Place pending stop orders.  direction='BUY'|'SELL' for trend-only."""
     pt, d = p["point"], p["digits"]
     ask, bid = p["ask"], p["bid"]
     fl = best_fill(p)
@@ -374,30 +399,33 @@ def place_straddle(p, off_pts, vol, dry=False):
     sld = CFG["SL_DISTANCE_PTS"] * pt
     tpd = CFG["TP_DISTANCE_PTS"] * pt
     tickets = []
+    orders = []
 
-    # Buy Stop
-    bp = round(ask + off, d)
-    bsl = round(bp - sld, d)
-    btp = round(bp + tpd, d) if tpd > 0 else 0.0
-    bsl, btp = _clamp(bp, bsl, btp, mt5.ORDER_TYPE_BUY_STOP, p)
-    breq = {"action": mt5.TRADE_ACTION_PENDING, "symbol": CFG["SYMBOL"],
-            "volume": vol, "type": mt5.ORDER_TYPE_BUY_STOP,
-            "price": bp, "sl": bsl, "tp": btp, "deviation": 20,
-            "magic": CFG["MAGIC"], "comment": "strd_buy",
-            "type_time": mt5.ORDER_TIME_GTC, "type_filling": fl}
+    if direction != "SELL":  # place BUY stop
+        bp = round(ask + off, d)
+        bsl = round(bp - sld, d)
+        btp = round(bp + tpd, d) if tpd > 0 else 0.0
+        bsl, btp = _clamp(bp, bsl, btp, mt5.ORDER_TYPE_BUY_STOP, p)
+        breq = {"action": mt5.TRADE_ACTION_PENDING, "symbol": CFG["SYMBOL"],
+                "volume": vol, "type": mt5.ORDER_TYPE_BUY_STOP,
+                "price": bp, "sl": bsl, "tp": btp, "deviation": 20,
+                "magic": CFG["MAGIC"], "comment": "strd_buy",
+                "type_time": mt5.ORDER_TIME_GTC, "type_filling": fl}
+        orders.append(("BUY_STOP", breq))
 
-    # Sell Stop
-    sp = round(bid - off, d)
-    ssl = round(sp + sld, d)
-    stp = round(sp - tpd, d) if tpd > 0 else 0.0
-    ssl, stp = _clamp(sp, ssl, stp, mt5.ORDER_TYPE_SELL_STOP, p)
-    sreq = {"action": mt5.TRADE_ACTION_PENDING, "symbol": CFG["SYMBOL"],
-            "volume": vol, "type": mt5.ORDER_TYPE_SELL_STOP,
-            "price": sp, "sl": ssl, "tp": stp, "deviation": 20,
-            "magic": CFG["MAGIC"], "comment": "strd_sell",
-            "type_time": mt5.ORDER_TIME_GTC, "type_filling": fl}
+    if direction != "BUY":  # place SELL stop
+        sp = round(bid - off, d)
+        ssl = round(sp + sld, d)
+        stp = round(sp - tpd, d) if tpd > 0 else 0.0
+        ssl, stp = _clamp(sp, ssl, stp, mt5.ORDER_TYPE_SELL_STOP, p)
+        sreq = {"action": mt5.TRADE_ACTION_PENDING, "symbol": CFG["SYMBOL"],
+                "volume": vol, "type": mt5.ORDER_TYPE_SELL_STOP,
+                "price": sp, "sl": ssl, "tp": stp, "deviation": 20,
+                "magic": CFG["MAGIC"], "comment": "strd_sell",
+                "type_time": mt5.ORDER_TIME_GTC, "type_filling": fl}
+        orders.append(("SELL_STOP", sreq))
 
-    for lbl, rq in [("BUY_STOP", breq), ("SELL_STOP", sreq)]:
+    for lbl, rq in orders:
         log.info("PLACE %s px=%.*f sl=%.*f vol=%.2f spd=%d",
                  lbl, d, rq["price"], d, rq["sl"], vol, p["spread"])
         if dry:
@@ -466,12 +494,12 @@ def mod_sl(pos, sl, dry=False):
 #
 # Tick-by-tick priority:
 #   1. Emergency $0.50 hard stop
-#   2. Negative after 20s -> close (cut losers, but give room)
-#   3. Any positive tick -> SL to break-even + 3pt
-#   4. Scalp target 50pts / $0.30 -> bank it
-#   5. Runner 100pts -> trailing stop 30pts
-#   6. Stagnant after 45s with <10pts -> close
-#   7. Max hold 180s -> force close
+#   2. Negative after 120s -> close (give breakout room)
+#   3. Any positive tick -> SL to break-even + 2pt
+#   4. Scalp target 35pts / $0.25 -> bank it
+#   5. Runner 80pts -> trailing stop 25pts
+#   6. Stagnant after 240s with <5pts -> close
+#   7. Max hold 300s -> force close
 # =====================================================================
 class ExitMgr:
     def __init__(self, pos):
@@ -594,12 +622,13 @@ def run_backtest():
     print(f"  {len(df)} bars  {df['time'].iloc[0]}  ->  {df['time'].iloc[-1]}")
 
     sp_price = CFG["BT_SPREAD_PTS"] * pt
+    sp_pts = CFG["BT_SPREAD_PTS"]
     off_price = CFG["ENTRY_OFFSET_PTS"] * pt
     sl_d = CFG["SL_DISTANCE_PTS"] * pt
     usd_pt = vol * 100 * pt  # USD per point for XAUUSD
 
     trades = []
-    i = 1
+    i = max(CFG["EMA_PERIOD"] + 1, CFG["CONSOLIDATION_BARS"] + 1)
     scalp_pts = CFG["SCALP_TARGET_PTS"]
     runner_pts = CFG["RUNNER_THRESHOLD_PTS"]
     trail_pts = CFG["TRAIL_DISTANCE_PTS"]
@@ -614,6 +643,22 @@ def run_backtest():
     consol_max = CFG["CONSOL_MAX_AVG_RNG"]
     lo_hr, hi_hr = CFG["ACTIVE_HOURS"]
     cooldown_left = 0  # bars to skip after a loss
+    trend_mode = CFG.get("TREND_MODE", False)
+    ema_period = CFG["EMA_PERIOD"]
+
+    # Pre-compute EMA(20) on closes for trend filter
+    closes = df["close"].values.astype(float)
+    ema_arr = np.empty_like(closes)
+    ema_arr[0] = closes[0]
+    alpha = 2.0 / (ema_period + 1)
+    for ei in range(1, len(closes)):
+        ema_arr[ei] = alpha * closes[ei] + (1 - alpha) * ema_arr[ei - 1]
+
+    print(f"  Filters: EMA({ema_period}) trend={trend_mode}  consol={consol_n}/"
+          f"{consol_max}  session={lo_hr}-{hi_hr}  cooldown={CFG['COOLDOWN_BARS']}")
+    print(f"  Params:  offset={CFG['ENTRY_OFFSET_PTS']}  spread={sp_pts}"
+          f"  scalp={scalp_pts}  stag={stag_bars}bar  time={time_bars}bar"
+          f"  max={max_bars}bar")
 
     while i < len(df) - max_bars - 2:
         # ── Cooldown after loss ──
@@ -624,9 +669,9 @@ def run_backtest():
         bar = df.iloc[i]
 
         # ── Session filter (UTC hour) ──
-        bar_hour = pd.Timestamp(bar["time"], unit="s", tz="UTC").hour \
-                   if not isinstance(bar["time"], pd.Timestamp) \
-                   else bar["time"].hour
+        bar_time = bar["time"]
+        bar_hour = bar_time.hour if isinstance(bar_time, pd.Timestamp) \
+                   else pd.Timestamp(bar_time, unit="s", tz="UTC").hour
         if not (lo_hr <= bar_hour < hi_hr):
             i += 1; continue
 
@@ -651,9 +696,22 @@ def run_backtest():
         buy_sl = round(buy_px - sl_d, d)
         sell_sl = round(sell_px + sl_d, d)
 
+        # ── EMA trend filter ──
+        ema_val = ema_arr[i]
+        if trend_mode:
+            trend_dir = "BUY" if mid > ema_val else "SELL"
+        else:
+            trend_dir = None  # both sides allowed
+
         nxt = df.iloc[i + 1]
         b_trig = nxt["high"] >= buy_px
         s_trig = nxt["low"] <= sell_px
+
+        # Block counter-trend triggers
+        if trend_dir == "BUY":
+            s_trig = False  # suppress sell
+        elif trend_dir == "SELL":
+            b_trig = False  # suppress buy
 
         if b_trig and s_trig:
             triggered = "BUY" if nxt["open"] >= mid else "SELL"
@@ -683,18 +741,21 @@ def run_backtest():
                 exit_c = bj["close"] + sp_price / 2
                 pc = (epx - exit_c) / pt
 
-            # Emergency
-            if worst * usd_pt <= -eloss:
+            # Emergency — SKIP trigger bar (held==0): the bar's low includes
+            # pre-trigger movement when the position didn't exist yet.
+            # Only enforce from bar 1 onward.
+            if held > 0 and worst * usd_pt <= -eloss:
                 t.ppts = -eloss / usd_pt; t.pusd = -eloss
                 t.reason = "emergency"; t.xtime = bj["time"]; break
 
-            # SL hit
-            if triggered == "BUY" and bj["low"] <= sl_px:
-                t.ppts = (sl_px - epx) / pt; t.pusd = t.ppts * usd_pt
-                t.reason = "sl_hit"; t.xtime = bj["time"]; break
-            if triggered == "SELL" and bj["high"] >= sl_px:
-                t.ppts = (epx - sl_px) / pt; t.pusd = t.ppts * usd_pt
-                t.reason = "sl_hit"; t.xtime = bj["time"]; break
+            # SL hit (also skip trigger bar for same reason)
+            if held > 0:
+                if triggered == "BUY" and bj["low"] <= sl_px:
+                    t.ppts = (sl_px - epx) / pt; t.pusd = t.ppts * usd_pt
+                    t.reason = "sl_hit"; t.xtime = bj["time"]; break
+                if triggered == "SELL" and bj["high"] >= sl_px:
+                    t.ppts = (epx - sl_px) / pt; t.pusd = t.ppts * usd_pt
+                    t.reason = "sl_hit"; t.xtime = bj["time"]; break
 
             # BE move: once price goes positive, lock in breakeven + buffer
             if not be_set and best > 0:
@@ -702,12 +763,14 @@ def run_backtest():
                 else: sl_px = epx - be_buf * pt
                 be_set = True
 
-            # Stagnant negative
-            if held >= stag_bars and pc <= 0:
+            # Stagnant negative — use spread-aware threshold:
+            # only bail if loss exceeds half the spread (price truly moving against us)
+            stag_threshold = -(sp_pts / 2)
+            if held >= stag_bars and pc <= stag_threshold:
                 t.ppts = pc; t.pusd = pc * usd_pt
                 t.reason = "stagnant"; t.xtime = bj["time"]; break
 
-            # Scalp
+            # Scalp — take profit
             if best >= scalp_pts and best < runner_pts:
                 t.ppts = scalp_pts; t.pusd = scalp_pts * usd_pt
                 t.reason = "scalp"; t.xtime = bj["time"]; break
@@ -857,7 +920,9 @@ def run_live(dry=False):
                             if ok:
                                 v = calc_vol(p)
                                 if v:
-                                    tix = place_straddle(p, off, v, dry)
+                                    trend = ema_direction(p)
+                                    tix = place_straddle(p, off, v, dry,
+                                                         direction=trend)
                                     last_bar = bt
 
             time.sleep(1.0 / (CFG["POLL_FAST_HZ"] if pos or iw
