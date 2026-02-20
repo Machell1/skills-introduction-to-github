@@ -410,6 +410,49 @@ def _get_filling_mode(symbol):
     return mt5.ORDER_FILLING_RETURN
 
 
+def _align_price(price, tick_size, digits):
+    """Round a price to the nearest valid tick and then to symbol digits."""
+    if tick_size > 0:
+        price = round(round(price / tick_size) * tick_size, digits)
+    else:
+        price = round(price, digits)
+    return price
+
+
+def _place_without_stops(request, sl, tp, symbol, direction, volume, digits):
+    """Fallback: place order without SL/TP, then set them via SLTP modify."""
+    print(f"    Fallback: placing order WITHOUT SL/TP, will set via modify ...")
+    request["sl"] = 0.0
+    request["tp"] = 0.0
+    result = mt5.order_send(request)
+    if result is None or result.retcode != mt5.TRADE_RETCODE_DONE:
+        err = result.comment if result else mt5.last_error()
+        print(f"  ERROR: Order send (no stops) failed: {err}")
+        return None
+    print(f"  ORDER FILLED: {'BUY' if direction == 1 else 'SELL'} {volume} {symbol} @ {result.price}")
+    print(f"    Ticket: {result.order}")
+    # Now set SL/TP via position modify
+    if sl > 0 or tp > 0:
+        mod_request = {
+            "action": mt5.TRADE_ACTION_SLTP,
+            "position": result.order,
+            "symbol": symbol,
+            "sl": sl if sl > 0 else 0.0,
+            "tp": tp if tp > 0 else 0.0,
+        }
+        mod_result = mt5.order_send(mod_request)
+        if mod_result and mod_result.retcode == mt5.TRADE_RETCODE_DONE:
+            print(f"    SL/TP set: SL={sl:.{digits}f} TP={tp:.{digits}f}")
+        else:
+            err = mod_result.comment if mod_result else mt5.last_error()
+            print(f"    WARNING: Could not set SL/TP: {err}")
+            print(f"    Position is OPEN without stops — monitor manually!")
+    return {
+        "ticket": result.order, "price": result.price,
+        "volume": result.volume, "symbol": symbol, "direction": direction,
+    }
+
+
 def mt5_place_order(symbol, direction, volume, sl=0.0, tp=0.0, comment="TradingBot", deviation=20):
     info = mt5.symbol_info(symbol)
     if info is None:
@@ -432,38 +475,45 @@ def mt5_place_order(symbol, direction, volume, sl=0.0, tp=0.0, comment="TradingB
         order_type = mt5.ORDER_TYPE_SELL
         price = tick.bid
 
-    # Normalize SL/TP to symbol's digits and enforce minimum stop distance
+    # Normalize prices using tick_size (more reliable than digits alone)
     digits = info.digits
+    tick_size = info.trade_tick_size if hasattr(info, 'trade_tick_size') and info.trade_tick_size > 0 else info.point
+
+    # Minimum stop distance: use stops_level, or spread + buffer if stops_level=0
+    stops_level = info.trade_stops_level
     point = info.point
-    stops_level = info.trade_stops_level  # minimum distance in points
-    min_distance = stops_level * point
-    if min_distance <= 0:
-        min_distance = 10 * point  # safe fallback if broker reports 0
+    spread = tick.ask - tick.bid
+    if stops_level > 0:
+        min_distance = stops_level * point
+    else:
+        # When stops_level=0, broker uses spread as dynamic minimum
+        min_distance = max(spread * 2, 100 * point)  # spread*2 or 100 points, whichever is larger
+
+    print(f"    Spread: {spread:.{digits}f} | StopsLevel: {stops_level} | "
+          f"MinDist: {min_distance:.{digits}f} | TickSize: {tick_size}")
 
     if sl > 0:
-        sl = round(sl, digits)
-        # Ensure SL is at least min_distance from current price
+        sl = _align_price(sl, tick_size, digits)
         if direction == 1 and price - sl < min_distance:
-            sl = round(price - min_distance, digits)
-            print(f"    SL adjusted to min distance: {sl}")
+            sl = _align_price(price - min_distance, tick_size, digits)
+            print(f"    SL pushed to min distance: {sl:.{digits}f}")
         elif direction == -1 and sl - price < min_distance:
-            sl = round(price + min_distance, digits)
-            print(f"    SL adjusted to min distance: {sl}")
+            sl = _align_price(price + min_distance, tick_size, digits)
+            print(f"    SL pushed to min distance: {sl:.{digits}f}")
 
     if tp > 0:
-        tp = round(tp, digits)
-        # Ensure TP is at least min_distance from current price
+        tp = _align_price(tp, tick_size, digits)
         if direction == 1 and tp - price < min_distance:
-            tp = round(price + min_distance, digits)
-            print(f"    TP adjusted to min distance: {tp}")
+            tp = _align_price(price + min_distance, tick_size, digits)
+            print(f"    TP pushed to min distance: {tp:.{digits}f}")
         elif direction == -1 and price - tp < min_distance:
-            tp = round(price - min_distance, digits)
-            print(f"    TP adjusted to min distance: {tp}")
+            tp = _align_price(price - min_distance, tick_size, digits)
+            print(f"    TP pushed to min distance: {tp:.{digits}f}")
 
     filling = _get_filling_mode(symbol)
     filling_names = {0: "FOK", 1: "IOC", 2: "RETURN"}
     print(f"    Filling: {filling_names.get(filling, filling)} | "
-          f"Digits: {digits} | StopsLevel: {stops_level} pts ({min_distance:.{digits}f})")
+          f"SL={sl:.{digits}f} TP={tp:.{digits}f} Price={price:.{digits}f}")
 
     request = {
         "action": mt5.TRADE_ACTION_DEAL, "symbol": symbol, "volume": volume,
@@ -472,70 +522,25 @@ def mt5_place_order(symbol, direction, volume, sl=0.0, tp=0.0, comment="TradingB
         "type_time": mt5.ORDER_TIME_GTC, "type_filling": filling,
     }
 
-    # Pre-check the order before sending
+    # Pre-check the order
     check = mt5.order_check(request)
-    if check is None:
-        print(f"  ERROR: order_check failed: {mt5.last_error()}")
-        return None
-    if check.retcode != 0:
-        print(f"  PRE-CHECK rejected: {check.comment} (code {check.retcode})")
-        # If filling mode was rejected, try RETURN as fallback
+    if check is not None and check.retcode != 0:
+        print(f"  PRE-CHECK: {check.comment} (code {check.retcode})")
         if check.retcode == 10030:
-            print(f"    Retrying with ORDER_FILLING_RETURN ...")
             request["type_filling"] = mt5.ORDER_FILLING_RETURN
-            check = mt5.order_check(request)
-            if check is None or check.retcode != 0:
-                err = check.comment if check else mt5.last_error()
-                print(f"    RETURN also rejected: {err}")
-                return None
-            print(f"    ORDER_FILLING_RETURN accepted")
-        # If stops are invalid, place order without SL/TP, then set via modify
+            print(f"    Switched to ORDER_FILLING_RETURN")
         elif check.retcode == 10016:
-            print(f"    Placing order WITHOUT SL/TP, will set them via modify ...")
-            saved_sl, saved_tp = request.pop("sl", 0), request.pop("tp", 0)
-            request["sl"] = 0.0
-            request["tp"] = 0.0
-            check2 = mt5.order_check(request)
-            if check2 is None or check2.retcode != 0:
-                err = check2.comment if check2 else mt5.last_error()
-                print(f"    Still rejected without stops: {err}")
-                return None
-            result = mt5.order_send(request)
-            if result is None or result.retcode != mt5.TRADE_RETCODE_DONE:
-                err = result.comment if result else mt5.last_error()
-                print(f"  ERROR: Order send failed: {err}")
-                return None
-            print(f"  ORDER FILLED: {'BUY' if direction == 1 else 'SELL'} {volume} {symbol} @ {result.price}")
-            print(f"    Ticket: {result.order}")
-            # Now set SL/TP via position modify
-            if saved_sl > 0 or saved_tp > 0:
-                mod_request = {
-                    "action": mt5.TRADE_ACTION_SLTP,
-                    "position": result.order,
-                    "symbol": symbol,
-                    "sl": saved_sl if saved_sl > 0 else 0.0,
-                    "tp": saved_tp if saved_tp > 0 else 0.0,
-                }
-                mod_result = mt5.order_send(mod_request)
-                if mod_result and mod_result.retcode == mt5.TRADE_RETCODE_DONE:
-                    print(f"    SL/TP set: SL={saved_sl:.{digits}f} TP={saved_tp:.{digits}f}")
-                else:
-                    err = mod_result.comment if mod_result else mt5.last_error()
-                    print(f"    WARNING: Could not set SL/TP: {err}")
-                    print(f"    Position is OPEN without stops — monitor manually!")
-            return {
-                "ticket": result.order, "price": result.price,
-                "volume": result.volume, "symbol": symbol, "direction": direction,
-            }
-        else:
-            return None
+            return _place_without_stops(request, sl, tp, symbol, direction, volume, digits)
 
     result = mt5.order_send(request)
     if result is None:
         print(f"  ERROR: Order send failed: {mt5.last_error()}")
         return None
     if result.retcode != mt5.TRADE_RETCODE_DONE:
-        print(f"  ERROR: Order rejected: {result.comment} (code {result.retcode})")
+        print(f"  ORDER SEND: {result.comment} (code {result.retcode})")
+        # If order_send itself rejects stops, use two-step fallback
+        if result.retcode == 10016:
+            return _place_without_stops(request, sl, tp, symbol, direction, volume, digits)
         return None
 
     print(f"  ORDER FILLED: {'BUY' if direction == 1 else 'SELL'} {volume} {symbol} @ {result.price}")
