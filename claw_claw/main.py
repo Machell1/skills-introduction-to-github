@@ -10,9 +10,15 @@ from pathlib import Path
 from typing import List, Optional
 
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+# Allow `python claw_claw/main.py` to import the `claw_claw` package reliably.
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+
 def _bootstrap_dependencies() -> None:
     """Install project dependencies once when launched directly in PyCharm."""
-    requirements_path = Path(__file__).resolve().parent.parent / "requirements.txt"
+    requirements_path = PROJECT_ROOT / "requirements.txt"
     if not requirements_path.exists():
         return
     print("Preparing environment (installing/updating dependencies)...")

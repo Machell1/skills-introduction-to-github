@@ -48,7 +48,7 @@ README.md
    - `claw_claw_full.py` (single-file option), or
    - `claw_claw/main.py` (modular package).
 
-`claw_claw/main.py` now auto-installs dependencies from `requirements.txt` when launched, so you can click Run in PyCharm without manually installing packages first.
+`claw_claw/main.py` now auto-installs dependencies from `requirements.txt` when launched, so you can click Run in PyCharm without manually installing packages first. It also auto-fixes the import path when run as a script (`python claw_claw/main.py`) to prevent `ModuleNotFoundError: No module named claw_claw`.
 
 **One-click setup + run (no PyCharm required):**
 1. Double-click `run_claw_claw_windows.bat`.
