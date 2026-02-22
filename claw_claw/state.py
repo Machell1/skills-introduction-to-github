@@ -1,8 +1,8 @@
 """Runtime state tracking for Claw Claw."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import date, datetime
 from typing import Optional
 
 
@@ -17,6 +17,8 @@ class TradeState:
     last_processed_candle_time: Optional[datetime] = None
     total_volume: float = 0.0
     realized_pnl: float = 0.0
+    pyramid_entries_today: int = 0
+    last_reset_date: date = date.today()
 
 
 @dataclass

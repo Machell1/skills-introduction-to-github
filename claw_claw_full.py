@@ -96,6 +96,8 @@ class TradeState:
     last_processed_candle_time: Optional[datetime] = None
     total_volume: float = 0.0
     realized_pnl: float = 0.0
+    pyramid_entries_today: int = 0
+    last_reset_day: str = ""
 
 
 @dataclass
@@ -433,6 +435,62 @@ class RiskManager:
         if volume <= 0:
             return None
         return self._normalize_volume(volume, info)
+
+    def pyramid_allowed(
+        self,
+        proposal: Proposal,
+        state: TradeState,
+        equity: float,
+    ) -> RiskDecision:
+        reasons: List[str] = []
+        if not self.config.get("pyramiding_enabled", False):
+            return RiskDecision(False, ["Pyramiding disabled."], 0.0)
+
+        positions = self._positions_for_symbol(proposal.symbol, self.config["magic"])
+        if not positions:
+            return RiskDecision(False, ["No base position to pyramid."], 0.0)
+        base = positions[0]
+        base_direction = "buy" if base.type == mt5.POSITION_TYPE_BUY else "sell"
+        if proposal.direction != base_direction:
+            return RiskDecision(False, ["Pyramid direction mismatch."], 0.0)
+
+        if state.pyramid_entries_today >= int(self.config.get("max_pyramid_entries", 1)):
+            return RiskDecision(False, ["Max pyramid entries reached."], 0.0)
+
+        if proposal.confidence < float(self.config.get("pyramid_confidence_min", 0.75)):
+            return RiskDecision(False, ["Pyramid confidence too low."], 0.0)
+
+        spread_points = self._current_spread_points(proposal.symbol)
+        if spread_points is None or spread_points > self.config["max_spread_points"]:
+            return RiskDecision(False, ["Spread too high or unavailable."], 0.0)
+
+        tick = mt5.symbol_info_tick(proposal.symbol)
+        symbol_info = mt5.symbol_info(proposal.symbol)
+        if tick is None or symbol_info is None or symbol_info.point <= 0:
+            return RiskDecision(False, ["Tick/symbol info unavailable."], 0.0)
+
+        entry_price = tick.ask if proposal.direction == "buy" else tick.bid
+        risk_per_unit = abs(base.price_open - base.sl)
+        if risk_per_unit <= 0:
+            return RiskDecision(False, ["Base position has invalid SL risk."], 0.0)
+
+        favorable_move = (entry_price - base.price_open) if proposal.direction == "buy" else (base.price_open - entry_price)
+        trigger = risk_per_unit * float(self.config.get("pyramid_r_multiple_trigger", 1.0))
+        if favorable_move < trigger:
+            return RiskDecision(False, ["Pyramid trigger not reached."], 0.0)
+
+        volume = self.compute_volume(proposal.symbol, equity, proposal.suggested_sl, entry_price)
+        if volume is None:
+            return RiskDecision(False, ["Volume computation failed."], 0.0)
+        volume = volume * float(self.config.get("pyramid_volume_multiplier", 0.5))
+        volume = self._normalize_volume(volume, symbol_info)
+        if volume is None or volume <= 0:
+            return RiskDecision(False, ["Pyramid volume invalid."], 0.0)
+
+        if state.total_volume + volume > self.config["max_total_volume"]:
+            return RiskDecision(False, ["Exposure cap reached."], 0.0)
+
+        return RiskDecision(True, reasons, volume)
 
     def evaluate(self, proposal: Proposal, state: TradeState, equity: float) -> RiskDecision:
         reasons: List[str] = []
@@ -1014,6 +1072,11 @@ def main() -> None:
         "mt5_terminal_path": "",
         "mt5_data_path": "",
         "mt5_portable": False,
+        "pyramiding_enabled": False,
+        "max_pyramid_entries": 1,
+        "pyramid_confidence_min": 0.75,
+        "pyramid_r_multiple_trigger": 1.0,
+        "pyramid_volume_multiplier": 0.5,
     }
     for key, value in defaults.items():
         config.setdefault(key, value)
@@ -1074,6 +1137,15 @@ def main() -> None:
     state = TradeState()
 
     while True:
+        today = datetime.now().strftime("%Y-%m-%d")
+        if state.last_reset_day != today:
+            state.trades_today = 0
+            state.pyramid_entries_today = 0
+            state.consecutive_losses = 0
+            state.day_start_equity = None
+            state.daily_drawdown_pct = 0.0
+            state.last_reset_day = today
+
         if kill_switch_triggered(project_root):
             trade_logger.info("Kill switch active: no new trades.")
             time.sleep(5)
@@ -1144,7 +1216,13 @@ def main() -> None:
             time.sleep(2)
             continue
 
-        decision = risk_manager.evaluate(selected, state, equity)
+        has_open_position = bool(risk_manager._positions_for_symbol(resolved, config["magic"]))
+        if has_open_position:
+            decision = risk_manager.pyramid_allowed(selected, state, equity)
+            decision_label = "pyramid"
+        else:
+            decision = risk_manager.evaluate(selected, state, equity)
+            decision_label = "entry"
         audit_db.log_decision(
             {
                 "timestamp": utc_now().isoformat(),
@@ -1153,7 +1231,7 @@ def main() -> None:
                 "direction": selected.direction,
                 "confidence": selected.confidence,
                 "rationale": selected.rationale,
-                "arbiter_decision": selected.bot_name,
+                "arbiter_decision": f"{selected.bot_name}:{decision_label}",
                 "risk_allowed": int(decision.allowed),
                 "risk_reasons": ";".join(decision.reasons),
             }
@@ -1179,6 +1257,8 @@ def main() -> None:
             state.last_trade_time = datetime.now()
             state.open_position_ticket = ticket
             state.total_volume += decision.volume
+            if has_open_position:
+                state.pyramid_entries_today += 1
             audit_db.log_order(
                 {
                     "timestamp": utc_now().isoformat(),

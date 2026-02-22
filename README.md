@@ -114,6 +114,13 @@ Two example bots are included:
 
 To add your own bot, subclass `BaseBot` and add it to the list in `main.py`.
 
+
+## Pyramiding (optional)
+
+You can enable controlled pyramiding by setting `pyramiding_enabled` to `true` in `config.json`. The bot will only add to an existing winning position when all configured checks pass (`max_pyramid_entries`, `pyramid_confidence_min`, `pyramid_r_multiple_trigger`, and `pyramid_volume_multiplier`).
+
+Default is `false` for safety.
+
 ## Safety Warnings
 
 - **Use demo first.** BTC is highly volatile and spreads can widen rapidly.

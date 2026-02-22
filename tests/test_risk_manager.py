@@ -25,6 +25,11 @@ class RiskManagerTests(unittest.TestCase):
             "risk_per_trade_pct": 1.0,
             "max_volume": 2.0,
             "max_total_volume": 2.0,
+            "pyramiding_enabled": True,
+            "max_pyramid_entries": 1,
+            "pyramid_confidence_min": 0.7,
+            "pyramid_r_multiple_trigger": 1.0,
+            "pyramid_volume_multiplier": 0.5,
         }
         self.state = TradeState()
         self.proposal = Proposal(
@@ -105,6 +110,33 @@ class RiskManagerTests(unittest.TestCase):
         # Raw volume is 0.53 and should round down to the nearest 0.1 step.
         volume = risk_manager.compute_volume("BTCUSD", 53.0, 99.0, 100.0)
         self.assertEqual(volume, 0.5)
+
+    @patch("claw_claw.risk_manager.mt5")
+    def test_pyramid_rejects_when_trigger_not_reached(self, mock_mt5):
+        info = MagicMock()
+        info.point = 1.0
+        info.trade_tick_value = 1.0
+        info.trade_tick_size = 1.0
+        info.volume_min = 0.1
+        info.volume_max = 10.0
+        info.volume_step = 0.1
+        mock_mt5.symbol_info.return_value = info
+        tick = MagicMock()
+        tick.ask = 100.2
+        tick.bid = 100.1
+        mock_mt5.symbol_info_tick.return_value = tick
+        base = MagicMock()
+        base.type = 0
+        base.price_open = 100.0
+        base.sl = 99.0
+        base.magic = 123
+        mock_mt5.positions_get.return_value = [base]
+        mock_mt5.POSITION_TYPE_BUY = 0
+
+        risk_manager = RiskManager(self.config)
+        decision = risk_manager.pyramid_allowed(self.proposal, self.state, equity=1000.0)
+        self.assertFalse(decision.allowed)
+        self.assertIn("Pyramid trigger not reached.", decision.reasons)
 
 
 if __name__ == "__main__":

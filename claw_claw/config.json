@@ -26,5 +26,10 @@
   "connection_delay_seconds": 2.0,
   "mt5_terminal_path": "",
   "mt5_data_path": "",
-  "mt5_portable": false
+  "mt5_portable": false,
+  "pyramiding_enabled": false,
+  "max_pyramid_entries": 1,
+  "pyramid_confidence_min": 0.75,
+  "pyramid_r_multiple_trigger": 1.0,
+  "pyramid_volume_multiplier": 0.5
 }

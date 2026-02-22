@@ -180,6 +180,14 @@ def main() -> None:
     state = TradeState()
 
     while True:
+        today = datetime.now().date()
+        if state.last_reset_date != today:
+            state.trades_today = 0
+            state.pyramid_entries_today = 0
+            state.consecutive_losses = 0
+            state.day_start_equity = None
+            state.daily_drawdown_pct = 0.0
+            state.last_reset_date = today
         if kill_switch_triggered(project_root):
             trade_logger.info("Kill switch active: no new trades.")
             time.sleep(5)
@@ -250,7 +258,14 @@ def main() -> None:
             time.sleep(2)
             continue
 
-        decision = risk_manager.evaluate(selected, state, equity)
+        has_open_position = bool(risk_manager._positions_for_symbol(resolved, config["magic"]))
+        if has_open_position:
+            decision = risk_manager.pyramid_allowed(selected, state, equity)
+            decision_label = "pyramid"
+        else:
+            decision = risk_manager.evaluate(selected, state, equity)
+            decision_label = "entry"
+
         audit_db.log_decision(
             {
                 "timestamp": utc_now().isoformat(),
@@ -259,7 +274,7 @@ def main() -> None:
                 "direction": selected.direction,
                 "confidence": selected.confidence,
                 "rationale": selected.rationale,
-                "arbiter_decision": selected.bot_name,
+                "arbiter_decision": f"{selected.bot_name}:{decision_label}",
                 "risk_allowed": int(decision.allowed),
                 "risk_reasons": ";".join(decision.reasons),
             }
@@ -285,6 +300,8 @@ def main() -> None:
             state.last_trade_time = datetime.now()
             state.open_position_ticket = ticket
             state.total_volume += decision.volume
+            if has_open_position:
+                state.pyramid_entries_today += 1
             audit_db.log_order(
                 {
                     "timestamp": utc_now().isoformat(),

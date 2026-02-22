@@ -90,6 +90,63 @@ class RiskManager:
 
         return self._normalize_volume(volume, info)
 
+
+    def pyramid_allowed(
+        self,
+        proposal: Proposal,
+        state: TradeState,
+        equity: float,
+    ) -> RiskDecision:
+        reasons: List[str] = []
+        if not self.config.get("pyramiding_enabled", False):
+            return RiskDecision(False, ["Pyramiding disabled."], 0.0)
+
+        positions = self._positions_for_symbol(proposal.symbol, self.config["magic"])
+        if not positions:
+            return RiskDecision(False, ["No base position to pyramid."], 0.0)
+        base = positions[0]
+        base_direction = "buy" if base.type == mt5.POSITION_TYPE_BUY else "sell"
+        if proposal.direction != base_direction:
+            return RiskDecision(False, ["Pyramid direction mismatch."], 0.0)
+
+        if state.pyramid_entries_today >= int(self.config.get("max_pyramid_entries", 1)):
+            return RiskDecision(False, ["Max pyramid entries reached."], 0.0)
+
+        if proposal.confidence < float(self.config.get("pyramid_confidence_min", 0.75)):
+            return RiskDecision(False, ["Pyramid confidence too low."], 0.0)
+
+        spread_points = self._current_spread_points(proposal.symbol)
+        if spread_points is None or spread_points > self.config["max_spread_points"]:
+            return RiskDecision(False, ["Spread too high or unavailable."], 0.0)
+
+        tick = mt5.symbol_info_tick(proposal.symbol)
+        symbol_info = mt5.symbol_info(proposal.symbol)
+        if tick is None or symbol_info is None or symbol_info.point <= 0:
+            return RiskDecision(False, ["Tick/symbol info unavailable."], 0.0)
+
+        entry_price = tick.ask if proposal.direction == "buy" else tick.bid
+        risk_per_unit = abs(base.price_open - base.sl)
+        if risk_per_unit <= 0:
+            return RiskDecision(False, ["Base position has invalid SL risk."], 0.0)
+
+        favorable_move = (entry_price - base.price_open) if proposal.direction == "buy" else (base.price_open - entry_price)
+        trigger = risk_per_unit * float(self.config.get("pyramid_r_multiple_trigger", 1.0))
+        if favorable_move < trigger:
+            return RiskDecision(False, ["Pyramid trigger not reached."], 0.0)
+
+        volume = self.compute_volume(proposal.symbol, equity, proposal.suggested_sl, entry_price)
+        if volume is None:
+            return RiskDecision(False, ["Volume computation failed."], 0.0)
+        volume = volume * float(self.config.get("pyramid_volume_multiplier", 0.5))
+        volume = self._normalize_volume(volume, symbol_info)
+        if volume is None or volume <= 0:
+            return RiskDecision(False, ["Pyramid volume invalid."], 0.0)
+
+        if state.total_volume + volume > self.config["max_total_volume"]:
+            return RiskDecision(False, ["Exposure cap reached."], 0.0)
+
+        return RiskDecision(True, reasons, volume)
+
     def evaluate(
         self,
         proposal: Proposal,
