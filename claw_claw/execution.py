@@ -14,6 +14,16 @@ class ExecutionEngine:
         self.config = config
         self.logger = logger
 
+    def _filling_mode(self, symbol: str) -> int:
+        info = mt5.symbol_info(symbol)
+        if info is None:
+            return mt5.ORDER_FILLING_IOC
+        if info.filling_mode == mt5.SYMBOL_FILLING_FOK:
+            return mt5.ORDER_FILLING_FOK
+        if info.filling_mode == mt5.SYMBOL_FILLING_RETURN:
+            return mt5.ORDER_FILLING_RETURN
+        return mt5.ORDER_FILLING_IOC
+
     def send_order(self, proposal: Proposal, volume: float) -> Optional[int]:
         tick = mt5.symbol_info_tick(proposal.symbol)
         if tick is None:
@@ -33,16 +43,29 @@ class ExecutionEngine:
             "magic": self.config["magic"],
             "comment": self.config["comment"],
             "type_time": mt5.ORDER_TIME_GTC,
-            "type_filling": mt5.ORDER_FILLING_FOK,
+            "type_filling": self._filling_mode(proposal.symbol),
         }
+
+        check = mt5.order_check(request)
+        if check is None:
+            self.logger.info("Order check failed: no result.")
+            return None
+        if check.retcode != mt5.TRADE_RETCODE_DONE:
+            self.logger.info("Order check failed retcode=%s", check.retcode)
+            return None
 
         result = mt5.order_send(request)
         if result is None:
             self.logger.info("Order send failed: no result.")
             return None
 
-        if result.retcode == mt5.TRADE_RETCODE_REQUOTE:
+        if result.retcode in (mt5.TRADE_RETCODE_REQUOTE, mt5.TRADE_RETCODE_PRICE_CHANGED):
             time.sleep(0.5)
+            tick = mt5.symbol_info_tick(proposal.symbol)
+            if tick is None:
+                self.logger.info("Retry aborted: tick unavailable.")
+                return None
+            request["price"] = tick.ask if proposal.direction == "buy" else tick.bid
             result = mt5.order_send(request)
 
         if result.retcode != mt5.TRADE_RETCODE_DONE:

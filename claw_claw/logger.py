@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -21,9 +22,15 @@ def setup_logger(log_dir: Path, name: str, filename: str) -> logging.Logger:
     if logger.handlers:
         return logger
 
-    handler = RotatingFileHandler(log_dir / filename, maxBytes=1_000_000, backupCount=5)
     formatter = RedactingFormatter("%(asctime)s %(levelname)s %(message)s")
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
+
+    file_handler = RotatingFileHandler(log_dir / filename, maxBytes=1_000_000, backupCount=5)
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+
     logger.propagate = False
     return logger

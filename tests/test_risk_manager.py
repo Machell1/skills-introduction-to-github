@@ -75,6 +75,21 @@ class RiskManagerTests(unittest.TestCase):
         self.assertFalse(decision.allowed)
         self.assertIn("Spread too high", ";".join(decision.reasons))
 
+    @patch("claw_claw.risk_manager.mt5")
+    def test_compute_volume_rejects_invalid_tick_size(self, mock_mt5):
+        info = MagicMock()
+        info.point = 0.01
+        info.trade_tick_value = 1.0
+        info.trade_tick_size = 0.0
+        info.volume_min = 0.01
+        info.volume_max = 10.0
+        info.volume_step = 0.01
+        mock_mt5.symbol_info.return_value = info
+
+        risk_manager = RiskManager(self.config)
+        volume = risk_manager.compute_volume("BTCUSD", 1000.0, 99.0, 100.0)
+        self.assertIsNone(volume)
+
 
 if __name__ == "__main__":
     unittest.main()

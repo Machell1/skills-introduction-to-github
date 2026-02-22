@@ -18,6 +18,16 @@ class TradeMonitor:
         self.logger = logger
         self.audit_db = audit_db
 
+    def _filling_mode(self, symbol: str) -> int:
+        info = mt5.symbol_info(symbol)
+        if info is None:
+            return mt5.ORDER_FILLING_IOC
+        if info.filling_mode == mt5.SYMBOL_FILLING_FOK:
+            return mt5.ORDER_FILLING_FOK
+        if info.filling_mode == mt5.SYMBOL_FILLING_RETURN:
+            return mt5.ORDER_FILLING_RETURN
+        return mt5.ORDER_FILLING_IOC
+
     def snapshot_position(self, symbol: str, magic: int) -> Optional[PositionSnapshot]:
         positions = mt5.positions_get(symbol=symbol)
         if positions is None:
@@ -39,10 +49,10 @@ class TradeMonitor:
             )
         return None
 
-    def _close_position(self, snapshot: PositionSnapshot) -> None:
+    def _close_position(self, snapshot: PositionSnapshot) -> bool:
         tick = mt5.symbol_info_tick(snapshot.symbol)
         if tick is None:
-            return
+            return False
         price = tick.bid if snapshot.direction == "buy" else tick.ask
         request = {
             "action": mt5.TRADE_ACTION_DEAL,
@@ -54,8 +64,18 @@ class TradeMonitor:
             "deviation": self.config["deviation_points"],
             "magic": self.config["magic"],
             "comment": f"{self.config['comment']}_exit",
+            "type_time": mt5.ORDER_TIME_GTC,
+            "type_filling": self._filling_mode(snapshot.symbol),
         }
-        mt5.order_send(request)
+        result = mt5.order_send(request)
+        if result is None:
+            self.logger.info("Exit order send failed: no result.")
+            return False
+        if result.retcode != mt5.TRADE_RETCODE_DONE:
+            self.logger.info("Exit order failed retcode=%s", result.retcode)
+            return False
+        self.logger.info("Exit order executed ticket=%s", result.order)
+        return True
 
     def monitor(self, state: TradeState, snapshot: PositionSnapshot) -> None:
         while True:
@@ -97,16 +117,19 @@ class TradeMonitor:
                             "sl": desired_sl,
                             "tp": position.tp,
                         }
-                        mt5.order_send(request)
+                        result = mt5.order_send(request)
+                        if result is not None and result.retcode == mt5.TRADE_RETCODE_DONE:
+                            self.logger.info("Break-even SL updated for position=%s", position.ticket)
             if snapshot.risk_amount > 0:
                 info = mt5.symbol_info(position.symbol)
-                if info is not None:
+                if info is not None and info.trade_tick_size > 0 and info.point > 0:
                     point_value = info.trade_tick_value / info.trade_tick_size
-                    loss_value = (loss_points / info.point) * point_value * position.volume
-                    if loss_value >= (snapshot.risk_amount * (self.config["stake_loss_cut_pct"] / 100)):
-                        self.logger.info("Loss exceeds stake threshold. Closing position.")
-                        self._close_position(position)
-                        break
+                    if point_value > 0:
+                        loss_value = (loss_points / info.point) * point_value * position.volume
+                        if loss_value >= (snapshot.risk_amount * (self.config["stake_loss_cut_pct"] / 100)):
+                            self.logger.info("Loss exceeds stake threshold. Closing position.")
+                            self._close_position(position)
+                            break
 
             time.sleep(1)
 

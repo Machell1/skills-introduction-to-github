@@ -62,7 +62,11 @@ class RiskManager:
         if sl_distance <= 0:
             return None
 
+        if info.trade_tick_size <= 0 or info.point <= 0:
+            return None
         point_value = info.trade_tick_value / info.trade_tick_size
+        if point_value <= 0:
+            return None
         risk_amount = equity * (self.config["risk_per_trade_pct"] / 100)
         volume = risk_amount / (sl_distance / info.point * point_value)
 
@@ -71,6 +75,8 @@ class RiskManager:
 
         volume = max(info.volume_min, min(volume, info.volume_max, self.config["max_volume"]))
         step = info.volume_step
+        if step <= 0:
+            return None
         volume = round(volume / step) * step
         return float(volume)
 
