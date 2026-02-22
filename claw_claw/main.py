@@ -2,10 +2,26 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional
+
+
+def _bootstrap_dependencies() -> None:
+    """Install project dependencies once when launched directly in PyCharm."""
+    requirements_path = Path(__file__).resolve().parent.parent / "requirements.txt"
+    if not requirements_path.exists():
+        return
+    print("Preparing environment (installing/updating dependencies)...")
+    subprocess.check_call(
+        [sys.executable, "-m", "pip", "install", "--disable-pip-version-check", "-r", str(requirements_path)]
+    )
+
+
+_bootstrap_dependencies()
 
 import MetaTrader5 as mt5
 
