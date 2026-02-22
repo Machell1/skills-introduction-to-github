@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+import math
 from typing import List, Optional, Tuple
 
 import MetaTrader5 as mt5
@@ -48,6 +49,20 @@ class RiskManager:
         cooldown = timedelta(minutes=self.config["cooldown_minutes"])
         return datetime.now() - state.last_trade_time < cooldown
 
+    def _normalize_volume(self, raw_volume: float, info) -> Optional[float]:
+        step = info.volume_step
+        if step <= 0:
+            return None
+        clamped = max(info.volume_min, min(raw_volume, info.volume_max, self.config["max_volume"]))
+        stepped = math.floor(clamped / step) * step
+        digits = max(0, len(str(step).split(".")[-1].rstrip("0"))) if "." in str(step) else 0
+        normalized = round(stepped, digits)
+        if normalized < info.volume_min:
+            normalized = info.volume_min
+        if normalized > self.config["max_volume"] or normalized > info.volume_max:
+            normalized = min(self.config["max_volume"], info.volume_max)
+        return float(normalized)
+
     def compute_volume(
         self,
         symbol: str,
@@ -73,12 +88,7 @@ class RiskManager:
         if volume <= 0:
             return None
 
-        volume = max(info.volume_min, min(volume, info.volume_max, self.config["max_volume"]))
-        step = info.volume_step
-        if step <= 0:
-            return None
-        volume = round(volume / step) * step
-        return float(volume)
+        return self._normalize_volume(volume, info)
 
     def evaluate(
         self,

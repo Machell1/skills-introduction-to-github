@@ -41,9 +41,9 @@ class RiskManagerTests(unittest.TestCase):
     @patch("claw_claw.risk_manager.mt5")
     def test_compute_volume(self, mock_mt5):
         info = MagicMock()
-        info.point = 0.01
+        info.point = 1.0
         info.trade_tick_value = 1.0
-        info.trade_tick_size = 0.01
+        info.trade_tick_size = 1.0
         info.volume_min = 0.01
         info.volume_max = 10.0
         info.volume_step = 0.01
@@ -89,6 +89,22 @@ class RiskManagerTests(unittest.TestCase):
         risk_manager = RiskManager(self.config)
         volume = risk_manager.compute_volume("BTCUSD", 1000.0, 99.0, 100.0)
         self.assertIsNone(volume)
+
+    @patch("claw_claw.risk_manager.mt5")
+    def test_compute_volume_rounds_down_to_step(self, mock_mt5):
+        info = MagicMock()
+        info.point = 1.0
+        info.trade_tick_value = 1.0
+        info.trade_tick_size = 1.0
+        info.volume_min = 0.1
+        info.volume_max = 10.0
+        info.volume_step = 0.1
+        mock_mt5.symbol_info.return_value = info
+
+        risk_manager = RiskManager(self.config)
+        # Raw volume is 0.53 and should round down to the nearest 0.1 step.
+        volume = risk_manager.compute_volume("BTCUSD", 53.0, 99.0, 100.0)
+        self.assertEqual(volume, 0.5)
 
 
 if __name__ == "__main__":

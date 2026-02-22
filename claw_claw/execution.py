@@ -24,6 +24,12 @@ class ExecutionEngine:
             return mt5.ORDER_FILLING_RETURN
         return mt5.ORDER_FILLING_IOC
 
+    def _normalize_price(self, symbol: str, price: float) -> float:
+        info = mt5.symbol_info(symbol)
+        if info is None:
+            return price
+        return round(price, int(info.digits))
+
     def send_order(self, proposal: Proposal, volume: float) -> Optional[int]:
         tick = mt5.symbol_info_tick(proposal.symbol)
         if tick is None:
@@ -36,9 +42,9 @@ class ExecutionEngine:
             "symbol": proposal.symbol,
             "volume": volume,
             "type": mt5.ORDER_TYPE_BUY if proposal.direction == "buy" else mt5.ORDER_TYPE_SELL,
-            "price": price,
-            "sl": proposal.suggested_sl,
-            "tp": proposal.suggested_tp,
+            "price": self._normalize_price(proposal.symbol, price),
+            "sl": self._normalize_price(proposal.symbol, proposal.suggested_sl),
+            "tp": self._normalize_price(proposal.symbol, proposal.suggested_tp),
             "deviation": self.config["deviation_points"],
             "magic": self.config["magic"],
             "comment": self.config["comment"],
@@ -65,7 +71,10 @@ class ExecutionEngine:
             if tick is None:
                 self.logger.info("Retry aborted: tick unavailable.")
                 return None
-            request["price"] = tick.ask if proposal.direction == "buy" else tick.bid
+            request["price"] = self._normalize_price(
+                proposal.symbol,
+                tick.ask if proposal.direction == "buy" else tick.bid,
+            )
             result = mt5.order_send(request)
 
         if result.retcode != mt5.TRADE_RETCODE_DONE:

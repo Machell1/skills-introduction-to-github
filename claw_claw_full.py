@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import sys
 import re
@@ -401,6 +402,20 @@ class RiskManager:
         cooldown = timedelta(minutes=self.config["cooldown_minutes"])
         return datetime.now() - state.last_trade_time < cooldown
 
+    def _normalize_volume(self, raw_volume: float, info) -> Optional[float]:
+        step = info.volume_step
+        if step <= 0:
+            return None
+        clamped = max(info.volume_min, min(raw_volume, info.volume_max, self.config["max_volume"]))
+        stepped = math.floor(clamped / step) * step
+        digits = max(0, len(str(step).split(".")[-1].rstrip("0"))) if "." in str(step) else 0
+        normalized = round(stepped, digits)
+        if normalized < info.volume_min:
+            normalized = info.volume_min
+        if normalized > self.config["max_volume"] or normalized > info.volume_max:
+            normalized = min(self.config["max_volume"], info.volume_max)
+        return float(normalized)
+
     def compute_volume(self, symbol: str, equity: float, sl_price: float, entry_price: float) -> Optional[float]:
         info = mt5.symbol_info(symbol)
         if info is None:
@@ -417,12 +432,7 @@ class RiskManager:
         volume = risk_amount / (sl_distance / info.point * point_value)
         if volume <= 0:
             return None
-        volume = max(info.volume_min, min(volume, info.volume_max, self.config["max_volume"]))
-        step = info.volume_step
-        if step <= 0:
-            return None
-        volume = round(volume / step) * step
-        return float(volume)
+        return self._normalize_volume(volume, info)
 
     def evaluate(self, proposal: Proposal, state: TradeState, equity: float) -> RiskDecision:
         reasons: List[str] = []
@@ -514,6 +524,12 @@ class ExecutionEngine:
             return mt5.ORDER_FILLING_RETURN
         return mt5.ORDER_FILLING_IOC
 
+    def _normalize_price(self, symbol: str, price: float) -> float:
+        info = mt5.symbol_info(symbol)
+        if info is None:
+            return price
+        return round(price, int(info.digits))
+
     def send_order(self, proposal: Proposal, volume: float) -> Optional[int]:
         tick = mt5.symbol_info_tick(proposal.symbol)
         if tick is None:
@@ -526,9 +542,9 @@ class ExecutionEngine:
             "symbol": proposal.symbol,
             "volume": volume,
             "type": mt5.ORDER_TYPE_BUY if proposal.direction == "buy" else mt5.ORDER_TYPE_SELL,
-            "price": price,
-            "sl": proposal.suggested_sl,
-            "tp": proposal.suggested_tp,
+            "price": self._normalize_price(proposal.symbol, price),
+            "sl": self._normalize_price(proposal.symbol, proposal.suggested_sl),
+            "tp": self._normalize_price(proposal.symbol, proposal.suggested_tp),
             "deviation": self.config["deviation_points"],
             "magic": self.config["magic"],
             "comment": self.config["comment"],
@@ -552,7 +568,10 @@ class ExecutionEngine:
             if tick is None:
                 self.logger.info("Retry aborted: tick unavailable.")
                 return None
-            request["price"] = tick.ask if proposal.direction == "buy" else tick.bid
+            request["price"] = self._normalize_price(
+                proposal.symbol,
+                tick.ask if proposal.direction == "buy" else tick.bid,
+            )
             result = mt5.order_send(request)
         if result.retcode != mt5.TRADE_RETCODE_DONE:
             self.logger.info("Order failed retcode=%s", result.retcode)
