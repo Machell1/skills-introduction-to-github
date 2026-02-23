@@ -1,0 +1,65 @@
+{
+  "mt5": {
+    "login": 0,
+    "password": "",
+    "server": "Deriv-Demo",
+    "path": "",
+    "symbol": "XAUUSD",
+    "magic_number": 20240101,
+    "deviation": 20,
+    "fill_type": "IOC"
+  },
+  "swing": {
+    "swing_length": 3
+  },
+  "displacement": {
+    "atr_period": 14,
+    "body_atr_multiplier": 1.0
+  },
+  "order_block": {
+    "entry_fraction": 0.50,
+    "entry_expiry_candles": 12
+  },
+  "stop": {
+    "atr_buffer_multiplier": 0.25
+  },
+  "target": {
+    "mode": "fixed_r",
+    "fixed_r_multiple": 1.8,
+    "liquidity_min_r": 1.2,
+    "liquidity_max_r": 4.0
+  },
+  "trade_mgmt": {
+    "max_hold_candles": 48,
+    "breakeven_enabled": true,
+    "breakeven_trigger_r": 1.0,
+    "breakeven_offset_r": 0.1
+  },
+  "risk": {
+    "risk_per_trade_pct": 0.35,
+    "max_positions": 1,
+    "daily_loss_limit_pct": 1.0,
+    "weekly_drawdown_brake_pct": 3.0,
+    "rolling_trade_window": 10,
+    "risk_reduction_factor": 0.5,
+    "max_total_open_risk_pct": 1.5
+  },
+  "bias_filter": {
+    "enabled": true,
+    "ema_period": 50,
+    "require_alignment": true
+  },
+  "continuation": {
+    "fixed_r_multiple": 2.0
+  },
+  "execution": {
+    "check_interval_seconds": 60,
+    "max_spread_points": 50.0,
+    "volatility_filter_enabled": true,
+    "volatility_filter_atr_percentile": 95.0,
+    "log_level": "INFO",
+    "log_file": "smc_bot.log",
+    "paper_trading": true
+  },
+  "active_templates": ["reversal", "continuation"]
+}

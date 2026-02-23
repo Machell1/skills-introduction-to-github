@@ -35,3 +35,29 @@
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Python #
+##########
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+.venv/
+venv/
+env/
+
+# IDE #
+#######
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Trading Bot #
+###############
+logs/
+smart_money_bot/settings_live.json
+*.log
