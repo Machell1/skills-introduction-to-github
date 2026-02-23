@@ -109,6 +109,12 @@ class TradeManager:
 
     def _place_paper_order(self, setup: TradeSetup) -> bool:
         """Simulate a limit order in paper mode."""
+        # Round prices to symbol precision (default 2 digits for XAUUSD)
+        digits = self.mt5.symbol_digits
+        setup.entry_price = round(setup.entry_price, digits)
+        setup.stop_price = round(setup.stop_price, digits)
+        setup.target_price = round(setup.target_price, digits)
+
         self._paper_ticket_counter += 1
         setup.ticket = self._paper_ticket_counter
         setup.state = SetupState.ENTRY_PENDING

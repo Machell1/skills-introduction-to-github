@@ -94,9 +94,9 @@ class RiskManager:
         # Position size in lots
         lots = risk_amount / (stop_distance * contract_size)
 
-        # Normalize to broker constraints
-        lots = max(volume_min, min(volume_max, lots))
+        # Normalize to broker constraints: round to step first, then clamp
         lots = round(lots / volume_step) * volume_step
+        lots = max(volume_min, min(volume_max, lots))
         lots = round(lots, 8)
 
         logger.info(
