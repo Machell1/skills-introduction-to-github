@@ -2,7 +2,7 @@
 """
 Smart Money Concepts (SMC) Trading Bot Launcher
 
-XAU/USD | 4H Timeframe | MT5 Platform | Deriv Broker
+XAU/USD | 1H Timeframe | MT5 Platform | Deriv Broker
 
 Usage:
     python run_bot.py                          # Run with default settings.json
@@ -92,7 +92,7 @@ def print_banner():
     ╔══════════════════════════════════════════════════════════════╗
     ║         SMART MONEY CONCEPTS (SMC) TRADING BOT             ║
     ║                                                            ║
-    ║  XAU/USD  |  4H Timeframe  |  MT5  |  Deriv Broker        ║
+    ║  XAU/USD  |  1H Timeframe  |  MT5  |  Deriv Broker        ║
     ║                                                            ║
     ║  Templates: Reversal (Sweep→MSS→OB) + Continuation (BOS)  ║
     ║  Risk: Fractional sizing, drawdown brakes, exposure caps   ║
@@ -122,7 +122,7 @@ def print_config_summary(config: BotConfig):
     else:
         print(f"  Target R Range:   {config.target.liquidity_min_r}-{config.target.liquidity_max_r}")
     print(f"  Break-even:       {'Enabled' if config.trade_mgmt.breakeven_enabled else 'Disabled'}")
-    print(f"  Max Hold:         {config.trade_mgmt.max_hold_candles} candles ({config.trade_mgmt.max_hold_candles * 4}h)")
+    print(f"  Max Hold:         {config.trade_mgmt.max_hold_candles} candles ({config.trade_mgmt.max_hold_candles}h)")
     print(f"  Bias Filter:      {'EMA' + str(config.bias_filter.ema_period) if config.bias_filter.enabled else 'Disabled'}")
     print(f"  Check Interval:   {config.execution.check_interval_seconds}s")
     print()

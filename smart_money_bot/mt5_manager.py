@@ -207,7 +207,7 @@ class MT5Manager:
 
     def get_candles(
         self,
-        timeframe: str = "H4",
+        timeframe: str = "H1",
         count: int = 500,
         from_date: Optional[datetime] = None,
     ) -> list[Candle]:
@@ -215,7 +215,7 @@ class MT5Manager:
         Retrieve OHLC candles from MT5.
 
         Args:
-            timeframe: MT5 timeframe string (e.g., "H4", "D1").
+            timeframe: MT5 timeframe string (e.g., "H1", "D1").
             count: Number of candles to retrieve.
             from_date: If provided, get candles from this date forward.
 

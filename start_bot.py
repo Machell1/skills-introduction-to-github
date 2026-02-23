@@ -31,7 +31,7 @@ BANNER = r"""
  ╔══════════════════════════════════════════════════════════════╗
  ║         SMART MONEY CONCEPTS (SMC) TRADING BOT              ║
  ║                                                             ║
- ║  XAU/USD  |  4H Timeframe  |  MT5  |  Deriv Broker         ║
+ ║  XAU/USD  |  1H Timeframe  |  MT5  |  Deriv Broker         ║
  ║                                                             ║
  ║  One-Click Installer & Launcher                             ║
  ╚══════════════════════════════════════════════════════════════╝

@@ -1,6 +1,6 @@
 """
 Smart Money Concepts (SMC) Trading Bot for XAU/USD
-MT5 Platform | Deriv Broker | 4H Timeframe
+MT5 Platform | Deriv Broker | 1H Timeframe
 
 Implements:
 - Liquidity sweeps (PDH/PDL and swing-based)

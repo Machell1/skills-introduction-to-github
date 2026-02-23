@@ -72,7 +72,7 @@ class SMCBot:
         """Start the bot: connect to MT5 and enter main loop."""
         logger.info("=" * 60)
         logger.info("SMC Trading Bot v1.0.0 Starting")
-        logger.info("Symbol: %s | Timeframe: H4", self.config.mt5.symbol)
+        logger.info("Symbol: %s | Timeframe: %s", self.config.mt5.symbol, self.config.mt5.timeframe)
         logger.info("Templates: %s", [t.value for t in self.config.active_templates])
         logger.info("Paper Mode: %s", self.config.execution.paper_trading)
         logger.info("=" * 60)
@@ -161,7 +161,7 @@ class SMCBot:
             candles = self._get_paper_candles()
             daily_candles = self._get_paper_daily_candles()
         else:
-            candles = self.mt5.get_candles(timeframe="H4", count=500)
+            candles = self.mt5.get_candles(timeframe=self.config.mt5.timeframe, count=500)
             daily_candles = self.mt5.get_daily_candles(count=100)
 
         if not candles or len(candles) < 50:
@@ -180,7 +180,7 @@ class SMCBot:
         self._candle_count += 1
 
         logger.info(
-            "── New 4H candle #%d | Time: %s | O: %.2f H: %.2f L: %.2f C: %.2f ──",
+            "── New 1H candle #%d | Time: %s | O: %.2f H: %.2f L: %.2f C: %.2f ──",
             self._candle_count, latest_candle.time,
             latest_candle.open, latest_candle.high, latest_candle.low, latest_candle.close,
         )
@@ -275,7 +275,7 @@ class SMCBot:
                 )
 
         # ── 8. Periodic status logging ────────────────────────────
-        if self._candle_count % 6 == 0:  # Every ~24 hours (6 × 4H)
+        if self._candle_count % 24 == 0:  # Every ~24 hours (24 × 1H)
             logger.info(self.risk.get_status_report())
 
     # ── Paper Trading Helpers ─────────────────────────────────────
@@ -284,7 +284,7 @@ class SMCBot:
         """In paper mode, try to get candles from MT5 if connected, else return empty."""
         try:
             if self.mt5.is_connected():
-                return self.mt5.get_candles(timeframe="H4", count=500)
+                return self.mt5.get_candles(timeframe=self.config.mt5.timeframe, count=500)
         except Exception:
             pass
         logger.warning("Paper mode: no candle data available (connect MT5 for live data)")

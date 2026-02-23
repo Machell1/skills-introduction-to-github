@@ -1,6 +1,6 @@
 # Smart Money Concepts (SMC) Trading Bot
 
-**XAU/USD | 4H Timeframe | MT5 Platform | Deriv Broker | Python 3.9+**
+**XAU/USD | 1H Timeframe | MT5 Platform | Deriv Broker | Python 3.9+**
 
 ## One-Click Start
 
@@ -33,7 +33,7 @@ Or install manually: `pip install -r requirements.txt`
 
 ```mermaid
 flowchart TD
-  A[4H candle closes] --> B{Liquidity event?}
+  A[1H candle closes] --> B{Liquidity event?}
   B -- Sweep of PDH/PDL or swing --> C{Confirm MSS/Displacement?}
   C -- Yes --> D[Mark OB/FVG zone]
   D --> E[Place limit entry in zone]
@@ -61,7 +61,7 @@ flowchart TD
 - **Daily loss limit:** stops trading after 1% daily loss
 - **Drawdown brake:** halves risk after rolling N-trade drawdown
 - **Break-even:** moves stop to entry + offset after +1R
-- **Time stop:** closes after 48 candles (192 hours)
+- **Time stop:** closes after 192 candles (192 hours)
 - **Spread filter:** skips trades when spread is too wide
 - **Volatility filter:** skips when ATR exceeds 95th percentile
 
@@ -99,5 +99,5 @@ Key parameters:
 | `entry_fraction` | 0.50 | 0.30-0.70 | Where in OB zone to enter |
 | `atr_buffer_multiplier` | 0.25 | 0.10-0.50 | Stop buffer beyond reference |
 | `fixed_r_multiple` | 1.8 | 1.3-3.0 | Take profit in R-multiples |
-| `max_hold_candles` | 48 | 18-72 | Time stop in 4H candles |
+| `max_hold_candles` | 192 | 72-288 | Time stop in 1H candles |
 | `daily_loss_limit_pct` | 1.0% | - | Stop trading after this daily loss |

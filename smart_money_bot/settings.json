@@ -18,7 +18,7 @@
   },
   "order_block": {
     "entry_fraction": 0.50,
-    "entry_expiry_candles": 12
+    "entry_expiry_candles": 48
   },
   "stop": {
     "atr_buffer_multiplier": 0.25
@@ -30,7 +30,7 @@
     "liquidity_max_r": 4.0
   },
   "trade_mgmt": {
-    "max_hold_candles": 48,
+    "max_hold_candles": 192,
     "breakeven_enabled": true,
     "breakeven_trigger_r": 1.0,
     "breakeven_offset_r": 0.1

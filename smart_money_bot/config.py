@@ -32,7 +32,7 @@ class MT5Config:
     server: str = "Deriv-Demo"
     path: str = ""  # Path to MT5 terminal executable
     symbol: str = "XAUUSD"
-    timeframe_h4: str = "H4"
+    timeframe: str = "H1"
     timeframe_daily: str = "D1"
     magic_number: int = 20240101
     deviation: int = 20  # Max slippage in points
@@ -56,7 +56,7 @@ class DisplacementConfig:
 class OrderBlockConfig:
     """Order block entry parameters."""
     entry_fraction: float = 0.50  # f: entry at OB_low + f*(OB_high - OB_low) (range: 0.30-0.70)
-    entry_expiry_candles: int = 12  # M: cancel if not filled within M candles (range: 6-24)
+    entry_expiry_candles: int = 48  # M: cancel if not filled within M candles (range: 24-96)
 
 
 @dataclass
@@ -77,7 +77,7 @@ class TargetConfig:
 @dataclass
 class TradeManagementConfig:
     """Trade management parameters."""
-    max_hold_candles: int = 48  # H: time stop in candles (range: 18-72)
+    max_hold_candles: int = 192  # H: time stop in candles (range: 72-288)
     breakeven_enabled: bool = True
     breakeven_trigger_r: float = 1.0  # Move to BE after +1R
     breakeven_offset_r: float = 0.1  # BE offset (entry + 0.1R)
