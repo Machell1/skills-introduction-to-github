@@ -1,59 +1,103 @@
-# Introduction to GitHub
+# Smart Money Concepts (SMC) Trading Bot
 
-<!-- ![](https://github.com/Machell1/skills-introduction-to-github/actions/workflows/0-start-exercise.yml/badge.svg) -->
-![](https://github.com/Machell1/skills-introduction-to-github/actions/workflows/1-create-a-branch.yml/badge.svg)
-![](https://github.com/Machell1/skills-introduction-to-github/actions/workflows/2-commit-a-file.yml/badge.svg)
-![](https://github.com/Machell1/skills-introduction-to-github/actions/workflows/3-open-a-pull-request.yml/badge.svg)
-![](https://github.com/Machell1/skills-introduction-to-github/actions/workflows/4-merge-your-pull-request.yml/badge.svg)
+**XAU/USD | 4H Timeframe | MT5 Platform | Deriv Broker | Python 3.9+**
 
-_Get started using GitHub in less than an hour._
+## One-Click Start
 
-## Welcome
+**Windows:** Double-click `START_BOT.bat`
 
-People use GitHub to build some of the most advanced technologies in the world. Whether you’re visualizing data or building a new game, there’s a whole community and set of tools on GitHub that can help you do it even better. GitHub Skills’ “Introduction to GitHub” exercise guides you through everything you need to start contributing in less than an hour.
+**Any terminal:**
+```
+python start_bot.py
+```
 
-- **Who is this for**: New developers, new GitHub users, and students.
-- **What you'll learn**: We'll introduce repositories, branches, commits, and pull requests.
-- **What you'll build**: We'll make a short Markdown file you can use as your [profile README](https://docs.github.com/account-and-profile/setting-up-and-managing-your-github-profile/customizing-your-profile/managing-your-profile-readme).
-- **Prerequisites**: None. This exercise is a great introduction for your first day on GitHub.
-- **How long**: This exercise takes less than one hour to complete.
+That’s it. It installs everything, asks for your credentials, and launches the bot.
 
-In this exercise, you will:
+## Requirements
 
-1. Create a branch
-2. Commit a file
-3. Open a pull request
-4. Merge your pull request
+- Python 3.9+ (tested on 3.9.13)
+- MetaTrader 5 terminal (Windows only for live trading)
+- Deriv MT5 account
 
-### How to start this exercise
+### Packages (auto-installed by `start_bot.py`)
 
-1. Right-click **Copy Exercise** and open the link in a new tab.
+```
+MetaTrader5>=5.0.45
+numpy>=1.24.0,<2.1.0
+pandas>=1.5.0,<2.3.0
+```
 
-   <a id="copy-exercise">
-      <img src="https://img.shields.io/badge/📠_Copy_Exercise-AAA" height="25pt"/>
-   </a>
+Or install manually: `pip install -r requirements.txt`
 
-2. In the new tab, most of the prompts will automatically fill in for you.
-   - For owner, choose your personal account or an organization to host the repository.
-   - We recommend creating a public repository, as private repositories will [use Actions minutes](https://docs.github.chttps://github.com/Machell1/skills-introduction-to-github/billing/managing-billing-for-github-actions/about-billing-for-github-actions).
-   - Scroll down and click the **Create repository** button at the bottom of the form.
+## How the Bot Works
 
-3. After your new repository is created, wait about 20 seconds for the exercise to be prepared and buttons updated. You will continue working from your copy of the exercise.
-   - The **Copy Exercise** button will deactivate, changing to gray.
-   - The **Start Exercise** button will activate, changing to green.
-   - You will likely need to refresh the page.
+```mermaid
+flowchart TD
+  A[4H candle closes] --> B{Liquidity event?}
+  B -- Sweep of PDH/PDL or swing --> C{Confirm MSS/Displacement?}
+  C -- Yes --> D[Mark OB/FVG zone]
+  D --> E[Place limit entry in zone]
+  E --> F{Filled within expiry?}
+  F -- No --> G[Cancel setup]
+  F -- Yes --> H[Set stop beyond sweep + ATR buffer]
+  H --> I[Set target: fixed R or opposing liquidity]
+  I --> J{Exit condition met?}
+  J -- Stop/TP/Time --> K[Record trade in R and costs]
+  B -- No sweep, but trend BOS --> L[Continuation module: BOS then OB retrace]
+  L --> E
+```
 
-4. Click **Start Exercise**. Follow the step-by-step instructions and feedback will be provided as you progress.
+### Two Trade Templates
 
-   <a id="start-exercise" href="https://github.com/Machell1/skills-introduction-to-github/issues/1">
-      <img src="https://img.shields.io/badge/🚀_Start_Exercise-008000" height="25pt"/>
-   </a>
+| Template | Trigger | Entry | Target |
+|---|---|---|---|
+| **Reversal** | Liquidity sweep + MSS/displacement | Limit order at OB zone | Opposing liquidity pool or fixed R |
+| **Continuation** | Break of Structure in trend direction | Limit order at OB retrace | Next liquidity pool or fixed R |
 
-> [!IMPORTANT]
-> The **Start Exercise** button will activate after copying the repository. You will probably need to refresh the page.
+### Risk Management
 
----
+- **Position sizing:** `lots = (equity * r%) / (stop_distance * contract_size)`
+- **Max 1 position** at a time (configurable)
+- **Daily loss limit:** stops trading after 1% daily loss
+- **Drawdown brake:** halves risk after rolling N-trade drawdown
+- **Break-even:** moves stop to entry + offset after +1R
+- **Time stop:** closes after 48 candles (192 hours)
+- **Spread filter:** skips trades when spread is too wide
+- **Volatility filter:** skips when ATR exceeds 95th percentile
 
-Get help: [Post in our discussion board](https://github.com/orgs/skills/discussions/categories/introduction-to-github) &bull; [Review the GitHub status page](https://www.githubstatus.com/)
+## Project Structure
 
-&copy; 2024 GitHub &bull; [Code of Conduct](https://www.contributor-covenant.org/version/2/1/code_of_conduct/code_of_conduct.md) &bull; [MIT License](https://gh.io/mit)
+```
+start_bot.py          # One-click installer + launcher
+START_BOT.bat         # Windows double-click launcher
+run_bot.py            # Bot launcher with CLI flags
+requirements.txt      # Python packages
+smart_money_bot/
+  __init__.py
+  config.py           # All tunable parameters (dataclasses)
+  models.py           # Data models (Candle, SwingPoint, OrderBlock, etc.)
+  smc_engine.py       # SMC analysis (ATR, swings, sweeps, MSS, OB, FVG)
+  signals.py          # Reversal + Continuation signal generators
+  risk_manager.py     # Position sizing, exposure limits, drawdown brakes
+  trade_manager.py    # Order placement, fill monitoring, paper trading
+  mt5_manager.py      # MT5 connection, data retrieval, order execution
+  bot.py              # Main orchestrator loop
+  settings.json       # Your config (credentials, parameters)
+```
+
+## Configuration
+
+Edit `smart_money_bot/settings.json` or let `start_bot.py` walk you through it.
+
+Key parameters:
+
+| Parameter | Default | Range | What it does |
+|---|---|---|---|
+| `risk_per_trade_pct` | 0.35% | 0.10-0.60% | Equity risked per trade |
+| `swing_length` | 3 | 2-6 | Bars left/right for fractal pivot |
+| `body_atr_multiplier` | 1.0 | 0.5-2.0 | Displacement threshold (k * ATR) |
+| `entry_fraction` | 0.50 | 0.30-0.70 | Where in OB zone to enter |
+| `atr_buffer_multiplier` | 0.25 | 0.10-0.50 | Stop buffer beyond reference |
+| `fixed_r_multiple` | 1.8 | 1.3-3.0 | Take profit in R-multiples |
+| `max_hold_candles` | 48 | 18-72 | Time stop in 4H candles |
+| `daily_loss_limit_pct` | 1.0% | - | Stop trading after this daily loss |
