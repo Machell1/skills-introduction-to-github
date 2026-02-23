@@ -243,7 +243,7 @@ class SMCEngine:
             s for s in swings
             if s.type == SwingType.HIGH and s.confirmation_index <= current_index
         ]
-        for sh in confirmed_highs[-5:]:  # Last 5 swing highs
+        for sh in confirmed_highs[-10:]:  # Last 10 swing highs
             levels.append(LiquidityLevel(
                 type=LiquidityType.BUY_SIDE,
                 price=sh.price,
@@ -256,7 +256,7 @@ class SMCEngine:
             s for s in swings
             if s.type == SwingType.LOW and s.confirmation_index <= current_index
         ]
-        for sl in confirmed_lows[-5:]:  # Last 5 swing lows
+        for sl in confirmed_lows[-10:]:  # Last 10 swing lows
             levels.append(LiquidityLevel(
                 type=LiquidityType.SELL_SIDE,
                 price=sl.price,
@@ -287,6 +287,13 @@ class SMCEngine:
                         source="equal_lows",
                         creation_time=confirmed_lows[j].candle_time,
                     ))
+
+        buy_side = [l for l in levels if l.type == LiquidityType.BUY_SIDE]
+        sell_side = [l for l in levels if l.type == LiquidityType.SELL_SIDE]
+        logger.info(
+            "Liquidity levels: %d buy-side, %d sell-side (swings: %d highs, %d lows)",
+            len(buy_side), len(sell_side), len(confirmed_highs), len(confirmed_lows),
+        )
 
         return levels
 
@@ -372,6 +379,7 @@ class SMCEngine:
         atr = atr_values[candle_index] if candle_index < len(atr_values) else 0.0
 
         if atr <= 0:
+            logger.info("MSS check skipped: ATR=0 at index %d", candle_index)
             return None
 
         body_size = candle.body_size
@@ -384,7 +392,8 @@ class SMCEngine:
             if last_swing_high and last_swing_high.price < break_level:
                 break_level = last_swing_high.price
 
-            if candle.close > break_level and candle.is_bullish and is_displacement:
+            close_above = candle.close > break_level
+            if close_above and is_displacement:
                 return MarketStructureShift(
                     direction="bullish",
                     break_level=break_level,
@@ -392,6 +401,11 @@ class SMCEngine:
                     break_candle_time=candle.time,
                     displacement=True,
                     displacement_body_size=body_size,
+                )
+            elif close_above and not is_displacement:
+                logger.info(
+                    "Bullish MSS near-miss: close above %.2f but body %.2f < %.2f (%.1f×ATR)",
+                    break_level, body_size, k * atr, k,
                 )
 
         elif sweep.direction == "short":
@@ -401,7 +415,8 @@ class SMCEngine:
             if last_swing_low and last_swing_low.price > break_level:
                 break_level = last_swing_low.price
 
-            if candle.close < break_level and candle.is_bearish and is_displacement:
+            close_below = candle.close < break_level
+            if close_below and is_displacement:
                 return MarketStructureShift(
                     direction="bearish",
                     break_level=break_level,
@@ -409,6 +424,11 @@ class SMCEngine:
                     break_candle_time=candle.time,
                     displacement=True,
                     displacement_body_size=body_size,
+                )
+            elif close_below and not is_displacement:
+                logger.info(
+                    "Bearish MSS near-miss: close below %.2f but body %.2f < %.2f (%.1f×ATR)",
+                    break_level, body_size, k * atr, k,
                 )
 
         return None
@@ -434,6 +454,7 @@ class SMCEngine:
         atr = atr_values[candle_index] if candle_index < len(atr_values) else 0.0
 
         if atr <= 0:
+            logger.info("BOS check skipped: ATR=0 at index %d", candle_index)
             return None
 
         body_size = candle.body_size
@@ -441,7 +462,7 @@ class SMCEngine:
 
         if bias == "bullish":
             last_high = self.get_last_swing_high(swings, candle_index)
-            if last_high and candle.close > last_high.price and candle.is_bullish and is_displacement:
+            if last_high and candle.close > last_high.price and is_displacement:
                 return MarketStructureShift(
                     direction="bullish",
                     break_level=last_high.price,
@@ -450,10 +471,15 @@ class SMCEngine:
                     displacement=is_displacement,
                     displacement_body_size=body_size,
                 )
+            elif last_high and candle.close > last_high.price and not is_displacement:
+                logger.info(
+                    "Bullish BOS near-miss: close above %.2f but body %.2f < %.2f (%.1f×ATR)",
+                    last_high.price, body_size, k * atr, k,
+                )
 
         elif bias == "bearish":
             last_low = self.get_last_swing_low(swings, candle_index)
-            if last_low and candle.close < last_low.price and candle.is_bearish and is_displacement:
+            if last_low and candle.close < last_low.price and is_displacement:
                 return MarketStructureShift(
                     direction="bearish",
                     break_level=last_low.price,
@@ -461,6 +487,11 @@ class SMCEngine:
                     break_candle_time=candle.time,
                     displacement=is_displacement,
                     displacement_body_size=body_size,
+                )
+            elif last_low and candle.close < last_low.price and not is_displacement:
+                logger.info(
+                    "Bearish BOS near-miss: close below %.2f but body %.2f < %.2f (%.1f×ATR)",
+                    last_low.price, body_size, k * atr, k,
                 )
 
         return None
@@ -482,13 +513,15 @@ class SMCEngine:
         The OB zone is defined by the candle's high-low range.
         """
         if displacement_candle_index < 1 or displacement_candle_index >= len(candles):
+            logger.info("OB search skipped: invalid displacement index %d", displacement_candle_index)
             return None
 
         f = self.config.order_block.entry_fraction
+        ob_lookback = 20  # Search up to 20 candles back for OB
 
         if direction == "bullish":
             # Search backwards for the last bearish candle before displacement
-            for i in range(displacement_candle_index - 1, max(0, displacement_candle_index - 10), -1):
+            for i in range(displacement_candle_index - 1, max(0, displacement_candle_index - ob_lookback), -1):
                 if candles[i].is_bearish:
                     ob = OrderBlock(
                         high=candles[i].high,
@@ -499,14 +532,18 @@ class SMCEngine:
                     )
                     ob.entry_price = ob.low + f * (ob.high - ob.low)
                     logger.info(
-                        "BULLISH OB found at index %d | Zone: %.2f-%.2f | Entry: %.2f",
-                        i, ob.low, ob.high, ob.entry_price,
+                        "BULLISH OB found at index %d (%d bars back) | Zone: %.2f-%.2f | Entry: %.2f",
+                        i, displacement_candle_index - i, ob.low, ob.high, ob.entry_price,
                     )
                     return ob
+            logger.info(
+                "No bullish OB found: searched %d candles back from index %d",
+                ob_lookback, displacement_candle_index,
+            )
 
         elif direction == "bearish":
             # Search backwards for the last bullish candle before displacement
-            for i in range(displacement_candle_index - 1, max(0, displacement_candle_index - 10), -1):
+            for i in range(displacement_candle_index - 1, max(0, displacement_candle_index - ob_lookback), -1):
                 if candles[i].is_bullish:
                     ob = OrderBlock(
                         high=candles[i].high,
@@ -517,10 +554,14 @@ class SMCEngine:
                     )
                     ob.entry_price = ob.high - f * (ob.high - ob.low)
                     logger.info(
-                        "BEARISH OB found at index %d | Zone: %.2f-%.2f | Entry: %.2f",
-                        i, ob.low, ob.high, ob.entry_price,
+                        "BEARISH OB found at index %d (%d bars back) | Zone: %.2f-%.2f | Entry: %.2f",
+                        i, displacement_candle_index - i, ob.low, ob.high, ob.entry_price,
                     )
                     return ob
+            logger.info(
+                "No bearish OB found: searched %d candles back from index %d",
+                ob_lookback, displacement_candle_index,
+            )
 
         return None
 

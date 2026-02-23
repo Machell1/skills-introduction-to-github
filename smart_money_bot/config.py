@@ -57,6 +57,7 @@ class OrderBlockConfig:
     """Order block entry parameters."""
     entry_fraction: float = 0.50  # f: entry at OB_low + f*(OB_high - OB_low) (range: 0.30-0.70)
     entry_expiry_candles: int = 48  # M: cancel if not filled within M candles (range: 24-96)
+    max_mss_candles: int = 10  # N: max candles after sweep to confirm MSS (range: 6-20)
 
 
 @dataclass

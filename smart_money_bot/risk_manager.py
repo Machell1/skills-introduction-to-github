@@ -280,6 +280,7 @@ class RiskManager:
 
     def reset_daily(self):
         """Reset daily counters (call at start of each trading day)."""
+        logger.info("Daily PnL reset (previous: $%.2f)", self._daily_pnl)
         self._daily_pnl = 0.0
         self._daily_date = datetime.utcnow()
 

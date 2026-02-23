@@ -59,7 +59,10 @@ class TradeManager:
         )
 
         if lot_size <= 0:
-            logger.error("Lot size is zero — cannot place order")
+            logger.error(
+                "Lot size is zero — cannot place order | equity=%.2f stop_dist=%.4f contract=%.1f",
+                equity, setup.risk_distance, self.mt5.symbol_contract_size,
+            )
             setup.state = SetupState.CANCELLED
             return False
 
@@ -251,6 +254,11 @@ class TradeManager:
             setup.exit_time = candle.time
             setup.result = TradeResult.TIME_STOP
             self._calculate_realized(setup)
+            held = current_index - setup.signal_candle_index
+            logger.info(
+                "[PAPER] TIME STOP | Ticket: %d | Held %d candles | Exit: %.2f | R: %.2f",
+                setup.ticket, held, setup.exit_price, setup.realized_r,
+            )
             return True
 
         # ── Stop and target check ────────────────────────────────
@@ -398,6 +406,10 @@ class TradeManager:
             setup.pnl = (setup.fill_price - setup.exit_price) * setup.lot_size * self.mt5.symbol_contract_size
 
         setup.state = SetupState.CLOSED
+        logger.info(
+            "P&L calculated | Ticket: %d | Entry: %.2f → Exit: %.2f | R: %+.2f | PnL: $%+.2f",
+            setup.ticket, setup.fill_price, setup.exit_price, setup.realized_r, setup.pnl,
+        )
 
     def _get_paper_equity(self) -> float:
         """Get simulated equity for paper trading."""

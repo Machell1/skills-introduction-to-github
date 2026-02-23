@@ -259,7 +259,11 @@ class SMCBot:
         for setup in new_setups:
             # Re-check capacity (may have changed with previous order)
             if self.trade_mgr.total_open_count >= self.config.risk.max_positions:
-                logger.info("Max positions reached — skipping setup")
+                logger.info(
+                    "Max positions reached (%d/%d) — skipping %s %s setup",
+                    self.trade_mgr.total_open_count, self.config.risk.max_positions,
+                    setup.template, setup.direction,
+                )
                 break
 
             # Validate minimum R
@@ -270,12 +274,13 @@ class SMCBot:
             success = self.trade_mgr.place_order(setup)
             if success:
                 logger.info(
-                    "New order placed: %s %s | Entry: %.2f | R: %.2f",
-                    setup.template, setup.direction, setup.entry_price, setup.r_multiple,
+                    "New order placed: %s %s | Entry: %.2f | SL: %.2f | TP: %.2f | R: %.2f | Lots: %.4f",
+                    setup.template, setup.direction, setup.entry_price,
+                    setup.stop_price, setup.target_price, setup.r_multiple, setup.lot_size,
                 )
 
         # ── 8. Periodic status logging ────────────────────────────
-        if self._candle_count % 24 == 0:  # Every ~24 hours (24 × 1H)
+        if self._candle_count % 8 == 0:  # Every ~8 hours (8 × 1H)
             logger.info(self.risk.get_status_report())
 
     # ── Paper Trading Helpers ─────────────────────────────────────

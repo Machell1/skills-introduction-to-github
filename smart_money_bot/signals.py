@@ -41,7 +41,7 @@ class ReversalSignalGenerator:
         self.engine = engine
         self.active_sweeps: list[LiquiditySweep] = []
         self.pending_setups: list[TradeSetup] = []
-        self.max_candles_for_mss: int = 10  # N: max candles after sweep to confirm MSS
+        self.max_candles_for_mss: int = config.order_block.max_mss_candles
 
     def reset(self):
         """Clear all tracked state."""
@@ -80,10 +80,10 @@ class ReversalSignalGenerator:
             # Optional: filter by bias alignment
             if self.config.bias_filter.require_alignment and bias:
                 if sweep.direction == "long" and bias != "bullish":
-                    logger.debug("Skipping long sweep — bias is %s", bias)
+                    logger.info("Skipping long sweep at %.2f — bias is %s", sweep.level.price, bias)
                     continue
                 if sweep.direction == "short" and bias != "bearish":
-                    logger.debug("Skipping short sweep — bias is %s", bias)
+                    logger.info("Skipping short sweep at %.2f — bias is %s", sweep.level.price, bias)
                     continue
 
             self.active_sweeps.append(sweep)
@@ -101,7 +101,10 @@ class ReversalSignalGenerator:
             candles_since_sweep = current_index - sweep.sweep_candle.index
             if candles_since_sweep > self.max_candles_for_mss:
                 expired_sweeps.append(sweep)
-                logger.debug("Sweep expired without MSS: %s at %.2f", sweep.direction, sweep.level.price)
+                logger.info(
+                    "Sweep EXPIRED without MSS after %d candles: %s at %.2f",
+                    candles_since_sweep, sweep.direction, sweep.level.price,
+                )
                 continue
 
             mss = self.engine.detect_mss(candle, current_index, sweep, swings, atr_values)
@@ -134,8 +137,9 @@ class ReversalSignalGenerator:
                     ready_setups.append(setup)
                     self.pending_setups.append(setup)
 
-        # Clean up expired sweeps
+        # Clean up expired sweeps — reset swept flag so level can be re-swept
         for s in expired_sweeps:
+            s.level.swept = False
             self.active_sweeps.remove(s)
 
         return ready_setups
@@ -154,6 +158,7 @@ class ReversalSignalGenerator:
         """Compute entry, stop, target and build a complete TradeSetup."""
         atr = atr_values[current_index] if current_index < len(atr_values) else 0.0
         if atr <= 0:
+            logger.info("Reversal setup rejected: ATR=0 at index %d", current_index)
             return None
 
         b = self.config.stop.atr_buffer_multiplier
@@ -180,7 +185,10 @@ class ReversalSignalGenerator:
             setup.risk_distance = setup.entry_price - setup.stop_price
 
             if setup.risk_distance <= 0:
-                logger.warning("Invalid risk distance for long setup")
+                logger.warning(
+                    "Invalid risk distance for long setup: entry=%.2f stop=%.2f dist=%.4f",
+                    setup.entry_price, setup.stop_price, setup.risk_distance,
+                )
                 return None
 
             # Target computation
@@ -200,7 +208,10 @@ class ReversalSignalGenerator:
                 if liq_target > setup.entry_price:
                     raw_r = (liq_target - setup.entry_price) / setup.risk_distance
                     if raw_r < target_cfg.liquidity_min_r:
-                        logger.debug("Liquidity target R too small: %.2f", raw_r)
+                        logger.info(
+                            "Long liquidity target R too small: %.2fR (min %.2fR) | target=%.2f entry=%.2f",
+                            raw_r, target_cfg.liquidity_min_r, liq_target, setup.entry_price,
+                        )
                         return None
                     capped_r = min(raw_r, target_cfg.liquidity_max_r)
                     setup.target_price = setup.entry_price + capped_r * setup.risk_distance
@@ -218,7 +229,10 @@ class ReversalSignalGenerator:
             setup.risk_distance = setup.stop_price - setup.entry_price
 
             if setup.risk_distance <= 0:
-                logger.warning("Invalid risk distance for short setup")
+                logger.warning(
+                    "Invalid risk distance for short setup: entry=%.2f stop=%.2f dist=%.4f",
+                    setup.entry_price, setup.stop_price, setup.risk_distance,
+                )
                 return None
 
             # Target computation
@@ -237,7 +251,10 @@ class ReversalSignalGenerator:
                 if liq_target < setup.entry_price:
                     raw_r = (setup.entry_price - liq_target) / setup.risk_distance
                     if raw_r < target_cfg.liquidity_min_r:
-                        logger.debug("Liquidity target R too small: %.2f", raw_r)
+                        logger.info(
+                            "Short liquidity target R too small: %.2fR (min %.2fR) | target=%.2f entry=%.2f",
+                            raw_r, target_cfg.liquidity_min_r, liq_target, setup.entry_price,
+                        )
                         return None
                     capped_r = min(raw_r, target_cfg.liquidity_max_r)
                     setup.target_price = setup.entry_price - capped_r * setup.risk_distance
@@ -293,7 +310,8 @@ class ContinuationSignalGenerator:
         candle = candles[current_index]
 
         if bias is None:
-            return ready_setups  # Continuation requires a bias
+            logger.info("Continuation skipped: no daily bias available")
+            return ready_setups
 
         # ── Detect BOS in trend direction ─────────────────────────
         bos = self.engine.detect_bos(candle, current_index, swings, atr_values, bias)
@@ -306,7 +324,7 @@ class ContinuationSignalGenerator:
             # Find the OB before the BOS candle
             ob = self.engine.find_order_block(candles, current_index, bos.direction)
             if ob is None:
-                logger.debug("No OB found for continuation BOS at index %d", current_index)
+                logger.info("No OB found for continuation BOS at index %d", current_index)
                 return ready_setups
 
             # Build setup
@@ -338,6 +356,7 @@ class ContinuationSignalGenerator:
         """Compute entry, stop, target for a continuation setup."""
         atr = atr_values[current_index] if current_index < len(atr_values) else 0.0
         if atr <= 0:
+            logger.info("Continuation setup rejected: ATR=0 at index %d", current_index)
             return None
 
         b = self.config.stop.atr_buffer_multiplier
@@ -361,6 +380,10 @@ class ContinuationSignalGenerator:
             setup.risk_distance = setup.entry_price - setup.stop_price
 
             if setup.risk_distance <= 0:
+                logger.warning(
+                    "Invalid risk distance for bullish continuation: entry=%.2f stop=%.2f",
+                    setup.entry_price, setup.stop_price,
+                )
                 return None
 
             # Continuation target: next liquidity pool or fixed R
@@ -390,6 +413,10 @@ class ContinuationSignalGenerator:
             setup.risk_distance = setup.stop_price - setup.entry_price
 
             if setup.risk_distance <= 0:
+                logger.warning(
+                    "Invalid risk distance for bearish continuation: entry=%.2f stop=%.2f",
+                    setup.entry_price, setup.stop_price,
+                )
                 return None
 
             next_target = None
