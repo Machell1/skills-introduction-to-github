@@ -13,6 +13,7 @@ from .config import BotConfig, TargetMode, TemplateType
 from .models import (
     Candle,
     DailyLevels,
+    LiquidityLevel,
     LiquiditySweep,
     MarketStructureShift,
     OrderBlock,
@@ -445,5 +446,269 @@ class ContinuationSignalGenerator:
             "Continuation SETUP | %s | Entry: %.2f | Stop: %.2f | Target: %.2f | R: %.2f",
             setup.direction.upper(), setup.entry_price, setup.stop_price,
             setup.target_price, setup.r_multiple,
+        )
+        return setup
+
+
+# ── Timeframe multipliers for scaling H1 parameters to lower TFs ────
+_TF_CANDLES_PER_H1 = {
+    "M1": 60, "M5": 12, "M15": 4, "M30": 2, "H1": 1, "H4": 0.25,
+}
+
+
+class LowerTFSignalGenerator:
+    """
+    Multi-timeframe entry scanner.
+
+    Uses H1 structure (swings, liquidity levels, daily bias) but scans
+    lower-timeframe candles (M15, M30) for:
+    - Sweeps invisible on H1 (intra-hour wick + recovery)
+    - Faster MSS confirmation (displacement shows up sooner)
+    - Tighter OB entries (smaller candle zones → better entry price)
+
+    Produces TradeSetup objects identical to the H1 generators so the
+    trade manager handles them the same way.
+    """
+
+    def __init__(self, config: BotConfig, engine: SMCEngine, timeframe: str):
+        self.config = config
+        self.engine = engine
+        self.timeframe = timeframe
+        self.active_sweeps: list[LiquiditySweep] = []
+
+        # Scale MSS window to lower TF: more candles for the same wall-clock time
+        tf_mult = _TF_CANDLES_PER_H1.get(timeframe, 1)
+        self.max_candles_for_mss: int = int(config.order_block.max_mss_candles * tf_mult)
+
+        # Last processed candle time to avoid re-processing
+        self._last_candle_time = None
+
+    def reset(self):
+        self.active_sweeps.clear()
+        self._last_candle_time = None
+
+    def process_candles(
+        self,
+        ltf_candles: list[Candle],
+        h1_swings: list[SwingPoint],
+        daily_levels: DailyLevels,
+        h1_atr: float,
+        bias: Optional[str],
+        h1_current_index: int = 0,
+    ) -> list[TradeSetup]:
+        """
+        Scan lower-TF candles for new setups.
+
+        Only processes candles newer than the last seen candle to avoid
+        duplicate signals.
+
+        Args:
+            ltf_candles: M15 or M30 candle array.
+            h1_swings: Swing points from H1 (structural context).
+            daily_levels: PDH/PDL from daily.
+            h1_atr: Current H1 ATR (used for stop buffer).
+            bias: Daily bias string or None.
+            h1_current_index: Current H1 candle index (for expiry/hold timing).
+        """
+        if not ltf_candles or len(ltf_candles) < 20:
+            return []
+
+        ready_setups = []
+        ltf_atr_values = self.engine.compute_atr(ltf_candles)
+        current_index = len(ltf_candles) - 1
+        candle = ltf_candles[current_index]
+
+        # Skip if we already processed this candle
+        if self._last_candle_time and candle.time <= self._last_candle_time:
+            return []
+        self._last_candle_time = candle.time
+
+        # ── Build liquidity levels from H1 structure ───────────────
+        liquidity_levels = self.engine.identify_liquidity_levels(
+            h1_swings, daily_levels, len(h1_swings),
+        )
+
+        # ── Detect sweeps on LTF candle ────────────────────────────
+        new_sweeps = self.engine.detect_sweep(candle, liquidity_levels)
+        for sweep in new_sweeps:
+            if self.config.bias_filter.require_alignment and bias:
+                if sweep.direction == "long" and bias != "bullish":
+                    logger.info("[%s] Skipping long sweep at %.2f — bias is %s", self.timeframe, sweep.level.price, bias)
+                    continue
+                if sweep.direction == "short" and bias != "bearish":
+                    logger.info("[%s] Skipping short sweep at %.2f — bias is %s", self.timeframe, sweep.level.price, bias)
+                    continue
+
+            self.active_sweeps.append(sweep)
+            logger.info(
+                "[%s] Sweep detected | Direction: %s | Level: %.2f (%s)",
+                self.timeframe, sweep.direction, sweep.level.price, sweep.level.source,
+            )
+
+        # ── Check active sweeps for MSS on LTF ────────────────────
+        ltf_swings = self.engine.detect_swings(ltf_candles)
+        expired_sweeps = []
+
+        for sweep in self.active_sweeps:
+            if sweep.mss_confirmed:
+                continue
+
+            candles_since_sweep = current_index - sweep.sweep_candle.index
+            if candles_since_sweep > self.max_candles_for_mss:
+                expired_sweeps.append(sweep)
+                logger.info(
+                    "[%s] Sweep EXPIRED without MSS after %d candles: %s at %.2f",
+                    self.timeframe, candles_since_sweep, sweep.direction, sweep.level.price,
+                )
+                continue
+
+            # Use LTF swings for MSS break-level, LTF ATR for displacement
+            mss = self.engine.detect_mss(candle, current_index, sweep, ltf_swings, ltf_atr_values)
+            if mss:
+                sweep.mss_confirmed = True
+                sweep.mss_candle_index = current_index
+                logger.info(
+                    "[%s] MSS CONFIRMED | Direction: %s | Break: %.2f | Body: %.2f",
+                    self.timeframe, mss.direction, mss.break_level, mss.displacement_body_size,
+                )
+
+                # Find OB on LTF candles (tighter zones)
+                ob = self.engine.find_order_block(ltf_candles, current_index, mss.direction)
+                if ob is None:
+                    logger.info("[%s] No OB found after MSS at index %d", self.timeframe, current_index)
+                    continue
+
+                # Build setup using H1 ATR for stop buffer, LTF OB for entry
+                setup = self._build_ltf_setup(
+                    sweep=sweep,
+                    mss=mss,
+                    ob=ob,
+                    ltf_candles=ltf_candles,
+                    current_index=current_index,
+                    h1_atr=h1_atr,
+                    daily_levels=daily_levels,
+                    h1_swings=h1_swings,
+                    h1_current_index=h1_current_index,
+                )
+                if setup:
+                    ready_setups.append(setup)
+
+        for s in expired_sweeps:
+            s.level.swept = False
+            self.active_sweeps.remove(s)
+
+        return ready_setups
+
+    def _build_ltf_setup(
+        self,
+        sweep: LiquiditySweep,
+        mss: MarketStructureShift,
+        ob: OrderBlock,
+        ltf_candles: list[Candle],
+        current_index: int,
+        h1_atr: float,
+        daily_levels: DailyLevels,
+        h1_swings: list[SwingPoint],
+        h1_current_index: int = 0,
+    ) -> Optional[TradeSetup]:
+        """Build a trade setup from lower-TF entry with H1 structure."""
+        if h1_atr <= 0:
+            logger.info("[%s] Setup rejected: H1 ATR=0", self.timeframe)
+            return None
+
+        b = self.config.stop.atr_buffer_multiplier
+        target_cfg = self.config.target
+
+        # Use H1 candle indices for expiry/hold since trade_manager monitors on H1
+        setup = TradeSetup(
+            template=f"reversal_{self.timeframe}",
+            direction=sweep.direction,
+            state=SetupState.ENTRY_PENDING,
+            sweep=sweep,
+            mss=mss,
+            order_block=ob,
+            signal_time=ltf_candles[current_index].time,
+            signal_candle_index=h1_current_index,
+            entry_expiry_index=h1_current_index + self.config.order_block.entry_expiry_candles,
+            max_hold_index=h1_current_index + self.config.trade_mgmt.max_hold_candles,
+        )
+
+        if sweep.direction == "long":
+            setup.entry_price = ob.entry_price
+            reference_low = min(sweep.sweep_low, ob.low)
+            # Use H1 ATR for stop buffer (structural level)
+            setup.stop_price = reference_low - b * h1_atr
+            setup.risk_distance = setup.entry_price - setup.stop_price
+
+            if setup.risk_distance <= 0:
+                logger.warning(
+                    "[%s] Invalid risk distance for long: entry=%.2f stop=%.2f",
+                    self.timeframe, setup.entry_price, setup.stop_price,
+                )
+                return None
+
+            if target_cfg.mode == TargetMode.FIXED_R:
+                setup.target_price = setup.entry_price + target_cfg.fixed_r_multiple * setup.risk_distance
+                setup.r_multiple = target_cfg.fixed_r_multiple
+            else:
+                liq_target = daily_levels.pdh
+                if liq_target <= setup.entry_price:
+                    for s in reversed(h1_swings):
+                        if s.type == SwingType.HIGH and s.price > setup.entry_price:
+                            liq_target = s.price
+                            break
+                if liq_target > setup.entry_price:
+                    raw_r = (liq_target - setup.entry_price) / setup.risk_distance
+                    if raw_r < target_cfg.liquidity_min_r:
+                        logger.info("[%s] Long liquidity R too small: %.2fR", self.timeframe, raw_r)
+                        return None
+                    capped_r = min(raw_r, target_cfg.liquidity_max_r)
+                    setup.target_price = setup.entry_price + capped_r * setup.risk_distance
+                    setup.r_multiple = capped_r
+                else:
+                    setup.target_price = setup.entry_price + target_cfg.fixed_r_multiple * setup.risk_distance
+                    setup.r_multiple = target_cfg.fixed_r_multiple
+
+        elif sweep.direction == "short":
+            setup.entry_price = ob.entry_price
+            reference_high = max(sweep.sweep_high, ob.high)
+            setup.stop_price = reference_high + b * h1_atr
+            setup.risk_distance = setup.stop_price - setup.entry_price
+
+            if setup.risk_distance <= 0:
+                logger.warning(
+                    "[%s] Invalid risk distance for short: entry=%.2f stop=%.2f",
+                    self.timeframe, setup.entry_price, setup.stop_price,
+                )
+                return None
+
+            if target_cfg.mode == TargetMode.FIXED_R:
+                setup.target_price = setup.entry_price - target_cfg.fixed_r_multiple * setup.risk_distance
+                setup.r_multiple = target_cfg.fixed_r_multiple
+            else:
+                liq_target = daily_levels.pdl
+                if liq_target >= setup.entry_price:
+                    for s in reversed(h1_swings):
+                        if s.type == SwingType.LOW and s.price < setup.entry_price:
+                            liq_target = s.price
+                            break
+                if liq_target < setup.entry_price:
+                    raw_r = (setup.entry_price - liq_target) / setup.risk_distance
+                    if raw_r < target_cfg.liquidity_min_r:
+                        logger.info("[%s] Short liquidity R too small: %.2fR", self.timeframe, raw_r)
+                        return None
+                    capped_r = min(raw_r, target_cfg.liquidity_max_r)
+                    setup.target_price = setup.entry_price - capped_r * setup.risk_distance
+                    setup.r_multiple = capped_r
+                else:
+                    setup.target_price = setup.entry_price - target_cfg.fixed_r_multiple * setup.risk_distance
+                    setup.r_multiple = target_cfg.fixed_r_multiple
+
+        setup.reward_distance = abs(setup.target_price - setup.entry_price)
+
+        logger.info(
+            "[%s] SETUP | %s | Entry: %.2f | Stop: %.2f | Target: %.2f | R: %.2f",
+            self.timeframe, setup.direction.upper(), setup.entry_price,
+            setup.stop_price, setup.target_price, setup.r_multiple,
         )
         return setup

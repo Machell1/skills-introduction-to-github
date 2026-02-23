@@ -34,6 +34,7 @@ class MT5Config:
     symbol: str = "XAUUSD"
     timeframe: str = "H1"
     timeframe_daily: str = "D1"
+    entry_timeframes: list = field(default_factory=lambda: ["M15", "M30"])  # Lower TFs for entry detection
     magic_number: int = 20240101
     deviation: int = 20  # Max slippage in points
     fill_type: str = "IOC"  # IOC for Deriv
@@ -88,7 +89,7 @@ class TradeManagementConfig:
 class RiskConfig:
     """Risk management and position sizing parameters."""
     risk_per_trade_pct: float = 0.35  # r: fraction of equity risked per trade (range: 0.10-0.60%)
-    max_positions: int = 2  # Allow one position per template
+    max_positions: int = 3  # Allow one position per signal source
     daily_loss_limit_pct: float = 1.0  # L%: stop trading after this daily loss
     weekly_drawdown_brake_pct: float = 3.0  # Reduce risk by half after this rolling drawdown
     rolling_trade_window: int = 10  # Number of trades for rolling drawdown check

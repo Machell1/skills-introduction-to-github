@@ -21,7 +21,7 @@ from .config import BotConfig, TemplateType
 from .models import Candle, DailyLevels
 from .mt5_manager import MT5Manager
 from .risk_manager import RiskManager
-from .signals import ContinuationSignalGenerator, ReversalSignalGenerator
+from .signals import ContinuationSignalGenerator, LowerTFSignalGenerator, ReversalSignalGenerator
 from .smc_engine import SMCEngine
 from .trade_manager import TradeManager
 
@@ -57,6 +57,11 @@ class SMCBot:
         self.reversal_gen = ReversalSignalGenerator(config, self.engine)
         self.continuation_gen = ContinuationSignalGenerator(config, self.engine)
 
+        # Lower-timeframe entry scanners
+        self.ltf_generators: list[LowerTFSignalGenerator] = []
+        for tf in config.mt5.entry_timeframes:
+            self.ltf_generators.append(LowerTFSignalGenerator(config, self.engine, tf))
+
         # State tracking
         self._last_candle_time: Optional[datetime] = None
         self._last_daily_levels: Optional[DailyLevels] = None
@@ -71,8 +76,10 @@ class SMCBot:
     def start(self):
         """Start the bot: connect to MT5 and enter main loop."""
         logger.info("=" * 60)
-        logger.info("SMC Trading Bot v1.0.0 Starting")
-        logger.info("Symbol: %s | Timeframe: %s", self.config.mt5.symbol, self.config.mt5.timeframe)
+        logger.info("SMC Trading Bot v1.1.0 Starting")
+        logger.info("Symbol: %s | Structure TF: %s | Entry TFs: %s",
+                     self.config.mt5.symbol, self.config.mt5.timeframe,
+                     self.config.mt5.entry_timeframes)
         logger.info("Templates: %s", [t.value for t in self.config.active_templates])
         logger.info("Paper Mode: %s", self.config.execution.paper_trading)
         logger.info("=" * 60)
@@ -240,7 +247,7 @@ class SMCBot:
             logger.info("Trade blocked: %s", reason)
             return
 
-        # ── 6. Generate signals ───────────────────────────────────
+        # ── 6. Generate signals (H1 templates) ──────────────────────
         new_setups = []
 
         if TemplateType.REVERSAL in self.config.active_templates:
@@ -254,6 +261,24 @@ class SMCBot:
                 candles, current_index, swings, daily_levels, atr_values, bias,
             )
             new_setups.extend(continuation_setups)
+
+        # ── 6b. Lower-timeframe entry scanning ─────────────────────
+        for ltf_gen in self.ltf_generators:
+            ltf_candles = self._get_ltf_candles(ltf_gen.timeframe)
+            if ltf_candles:
+                ltf_setups = ltf_gen.process_candles(
+                    ltf_candles=ltf_candles,
+                    h1_swings=swings,
+                    daily_levels=daily_levels,
+                    h1_atr=current_atr,
+                    bias=bias,
+                    h1_current_index=current_index,
+                )
+                new_setups.extend(ltf_setups)
+                if ltf_setups:
+                    logger.info(
+                        "[%s] Generated %d new setup(s)", ltf_gen.timeframe, len(ltf_setups),
+                    )
 
         # ── 7. Place orders for new setups ────────────────────────
         for setup in new_setups:
@@ -284,6 +309,18 @@ class SMCBot:
             logger.info(self.risk.get_status_report())
 
     # ── Paper Trading Helpers ─────────────────────────────────────
+
+    def _get_ltf_candles(self, timeframe: str) -> list[Candle]:
+        """Fetch lower-timeframe candles (M15 or M30)."""
+        if self.config.execution.paper_trading:
+            try:
+                if self.mt5.is_connected():
+                    return self.mt5.get_candles(timeframe=timeframe, count=500)
+            except Exception:
+                pass
+            return []
+        else:
+            return self.mt5.get_candles(timeframe=timeframe, count=500)
 
     def _get_paper_candles(self) -> list[Candle]:
         """In paper mode, try to get candles from MT5 if connected, else return empty."""
