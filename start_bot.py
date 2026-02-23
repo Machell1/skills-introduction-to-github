@@ -10,7 +10,7 @@ This script will:
 3. Prompt you for MT5 credentials (if not already configured)
 4. Launch the trading bot
 
-Works on any Windows machine with Python 3.10+ and MT5 installed.
+Works on any Windows machine with Python 3.9+ and MT5 installed.
 """
 
 import subprocess
@@ -25,7 +25,7 @@ SCRIPT_DIR = Path(__file__).parent.resolve()
 BOT_DIR = SCRIPT_DIR / "smart_money_bot"
 SETTINGS_FILE = BOT_DIR / "settings.json"
 REQUIREMENTS_FILE = SCRIPT_DIR / "requirements.txt"
-MIN_PYTHON = (3, 10)
+MIN_PYTHON = (3, 9)
 
 BANNER = r"""
  ╔══════════════════════════════════════════════════════════════╗

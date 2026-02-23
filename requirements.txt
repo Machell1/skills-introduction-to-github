@@ -1,3 +1,6 @@
+# SMC Trading Bot — Python 3.9.13 compatible
+# Install with: pip install -r requirements.txt
+
 MetaTrader5>=5.0.45
-numpy>=1.24.0
-pandas>=2.0.0
+numpy>=1.24.0,<2.1.0
+pandas>=1.5.0,<2.3.0

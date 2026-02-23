@@ -14,7 +14,7 @@ PyCharm Run Configuration:
     Script path:  run_bot.py
     Parameters:   --config smart_money_bot/settings.json
     Working dir:  <project root>
-    Python:       Python 3.10+ with MetaTrader5 package
+    Python:       Python 3.9+ with MetaTrader5 package
 
 Before running live:
     1. Install MT5 terminal and log in to your Deriv account
