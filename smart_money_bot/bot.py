@@ -263,7 +263,7 @@ class SMCBot:
                 break
 
             # Validate minimum R
-            if setup.r_multiple < 1.15:
+            if setup.r_multiple < 1.0:
                 logger.info("Setup R too low (%.2f) — skipping", setup.r_multiple)
                 continue
 

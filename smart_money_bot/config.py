@@ -49,7 +49,7 @@ class SwingConfig:
 class DisplacementConfig:
     """Displacement candle detection parameters."""
     atr_period: int = 14
-    body_atr_multiplier: float = 1.0  # k: body >= k * ATR (range: 0.5-2.0)
+    body_atr_multiplier: float = 0.7  # k: body >= k * ATR (range: 0.5-2.0)
 
 
 @dataclass
@@ -69,8 +69,8 @@ class StopConfig:
 class TargetConfig:
     """Take profit / target parameters."""
     mode: TargetMode = TargetMode.FIXED_R
-    fixed_r_multiple: float = 1.8  # R_target for fixed-R mode (range: 1.3-3.0)
-    liquidity_min_r: float = 1.2  # Minimum acceptable R for liquidity target (range: 1.0-1.8)
+    fixed_r_multiple: float = 1.5  # R_target for fixed-R mode (range: 1.3-3.0)
+    liquidity_min_r: float = 1.0  # Minimum acceptable R for liquidity target (range: 1.0-1.8)
     liquidity_max_r: float = 4.0  # Cap R for liquidity target (range: 3.0-6.0)
 
 
@@ -87,7 +87,7 @@ class TradeManagementConfig:
 class RiskConfig:
     """Risk management and position sizing parameters."""
     risk_per_trade_pct: float = 0.35  # r: fraction of equity risked per trade (range: 0.10-0.60%)
-    max_positions: int = 1  # Single-position rule per template
+    max_positions: int = 2  # Allow one position per template
     daily_loss_limit_pct: float = 1.0  # L%: stop trading after this daily loss
     weekly_drawdown_brake_pct: float = 3.0  # Reduce risk by half after this rolling drawdown
     rolling_trade_window: int = 10  # Number of trades for rolling drawdown check
@@ -100,7 +100,7 @@ class BiasFilterConfig:
     """Higher-timeframe bias filter."""
     enabled: bool = True
     ema_period: int = 50  # Daily EMA period for directional bias
-    require_alignment: bool = True  # Only trade in direction of daily bias
+    require_alignment: bool = False  # Allow counter-bias reversals at turning points
 
 
 @dataclass

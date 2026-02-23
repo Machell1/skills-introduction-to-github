@@ -41,7 +41,7 @@ class ReversalSignalGenerator:
         self.engine = engine
         self.active_sweeps: list[LiquiditySweep] = []
         self.pending_setups: list[TradeSetup] = []
-        self.max_candles_for_mss: int = 6  # N: max candles after sweep to confirm MSS
+        self.max_candles_for_mss: int = 10  # N: max candles after sweep to confirm MSS
 
     def reset(self):
         """Clear all tracked state."""
