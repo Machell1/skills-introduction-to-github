@@ -10,16 +10,16 @@
     "fill_type": "IOC"
   },
   "swing": {
-    "swing_length": 3
+    "swing_length": 2
   },
   "displacement": {
     "atr_period": 14,
-    "body_atr_multiplier": 0.5
+    "body_atr_multiplier": 0.3
   },
   "order_block": {
     "entry_fraction": 0.50,
-    "entry_expiry_candles": 48,
-    "max_mss_candles": 20
+    "entry_expiry_candles": 72,
+    "max_mss_candles": 30
   },
   "stop": {
     "atr_buffer_multiplier": 0.25
@@ -27,8 +27,8 @@
   "target": {
     "mode": "fixed_r",
     "fixed_r_multiple": 1.8,
-    "liquidity_min_r": 1.2,
-    "liquidity_max_r": 4.0
+    "liquidity_min_r": 1.0,
+    "liquidity_max_r": 5.0
   },
   "trade_mgmt": {
     "max_hold_candles": 192,
@@ -37,17 +37,17 @@
     "breakeven_offset_r": 0.1
   },
   "risk": {
-    "risk_per_trade_pct": 0.35,
-    "max_positions": 3,
-    "daily_loss_limit_pct": 1.0,
-    "weekly_drawdown_brake_pct": 3.0,
+    "risk_per_trade_pct": 0.50,
+    "max_positions": 5,
+    "daily_loss_limit_pct": 3.0,
+    "weekly_drawdown_brake_pct": 5.0,
     "rolling_trade_window": 10,
     "risk_reduction_factor": 0.5,
-    "max_total_open_risk_pct": 1.5
+    "max_total_open_risk_pct": 3.0
   },
   "bias_filter": {
     "enabled": true,
-    "ema_period": 50,
+    "ema_period": 20,
     "require_alignment": false
   },
   "continuation": {
@@ -55,7 +55,7 @@
   },
   "execution": {
     "check_interval_seconds": 60,
-    "max_spread_points": 50.0,
+    "max_spread_points": 100.0,
     "volatility_filter_enabled": false,
     "volatility_filter_atr_percentile": 95.0,
     "log_level": "INFO",
