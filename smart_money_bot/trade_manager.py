@@ -74,25 +74,50 @@ class TradeManager:
             return self._place_live_order(setup)
 
     def _place_live_order(self, setup: TradeSetup) -> bool:
-        """Place a live limit order via MT5."""
+        """Place a live order via MT5, choosing limit or market based on current price."""
         comment = f"SMC_{setup.template[:3].upper()}_{setup.direction[0].upper()}"
+        bid, ask = self.mt5.get_current_price()
 
         if setup.direction == "long":
-            ticket = self.mt5.place_buy_limit(
-                price=setup.entry_price,
-                volume=setup.lot_size,
-                sl=setup.stop_price,
-                tp=setup.target_price,
-                comment=comment,
-            )
+            if setup.entry_price >= ask:
+                # Price already at or below entry — enter at market
+                logger.info(
+                    "Buy entry %.2f >= ask %.2f — using market order", setup.entry_price, ask,
+                )
+                ticket = self.mt5.place_buy_market(
+                    volume=setup.lot_size,
+                    sl=setup.stop_price,
+                    tp=setup.target_price,
+                    comment=comment,
+                )
+            else:
+                ticket = self.mt5.place_buy_limit(
+                    price=setup.entry_price,
+                    volume=setup.lot_size,
+                    sl=setup.stop_price,
+                    tp=setup.target_price,
+                    comment=comment,
+                )
         else:
-            ticket = self.mt5.place_sell_limit(
-                price=setup.entry_price,
-                volume=setup.lot_size,
-                sl=setup.stop_price,
-                tp=setup.target_price,
-                comment=comment,
-            )
+            if setup.entry_price <= bid:
+                # Price already at or above entry — enter at market
+                logger.info(
+                    "Sell entry %.2f <= bid %.2f — using market order", setup.entry_price, bid,
+                )
+                ticket = self.mt5.place_sell_market(
+                    volume=setup.lot_size,
+                    sl=setup.stop_price,
+                    tp=setup.target_price,
+                    comment=comment,
+                )
+            else:
+                ticket = self.mt5.place_sell_limit(
+                    price=setup.entry_price,
+                    volume=setup.lot_size,
+                    sl=setup.stop_price,
+                    tp=setup.target_price,
+                    comment=comment,
+                )
 
         if ticket is None:
             logger.error("Failed to place limit order for setup")
