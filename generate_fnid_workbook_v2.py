@@ -1,23 +1,18 @@
 #!/usr/bin/env python3
 """
-FNID Area 3 Operational Workbook — Version 2.0 (Purpose-Driven Redesign)
+FNID Area 3 Operational Workbook v2.1
 
-Built from research on FNID's actual day-to-day operations:
-  - Intelligence-led interdiction of illegal firearms AND narcotics
-  - Port/cargo interdiction with Jamaica Customs Agency
-  - Roadway interceptions (Special Operations Team)
-  - Drugs-for-guns pipeline disruption (Jamaica→Haiti)
-  - Case file preparation for DPP submission to Gun Court
+Generates the Excel workbook used by FNID Area 3
+(Manchester, St. Elizabeth, Clarendon) to track the full
+operational lifecycle from intelligence through to conviction.
 
-Lifecycle:  INTELLIGENCE → OPERATION → SEIZURE → ARREST → FORENSICS → DPP → COURT
-
-Legal framework:
-  - Firearms (Prohibition, Restriction and Regulation) Act, 2022 (s.91 warrants)
+Applicable legislation:
+  - Firearms (Prohibition, Restriction and Regulation) Act, 2022
   - Dangerous Drugs Act (as amended 2015)
   - Gun Court Act, 1974
   - Proceeds of Crime Act (POCA), 2007
   - Bail Act, 2023
-  - 48-Hour Rule (Constabulary Force Act s.15)
+  - Constabulary Force Act s.15 (48-Hour Rule)
 """
 
 import openpyxl
@@ -28,9 +23,9 @@ from openpyxl.worksheet.table import Table, TableStyleInfo
 from openpyxl.worksheet.datavalidation import DataValidation
 from datetime import datetime
 
-# ═══════════════════════════════════════════════════════════════
+# =================================================================
 #  STYLE CONSTANTS
-# ═══════════════════════════════════════════════════════════════
+# =================================================================
 NAVY       = "1F3864"
 DARK_BLUE  = "002060"
 LIGHT_BLUE = "D6E4F0"
@@ -93,9 +88,9 @@ def data_rows(ws, num_cols, count=5):
             ws.cell(row=r, column=c).font = BODY_FONT
 
 
-# ═══════════════════════════════════════════════════════════════
-#  LOOKUPS — Jamaica-specific reference data
-# ═══════════════════════════════════════════════════════════════
+# =================================================================
+#  LOOKUPS - Jamaica-specific reference data
+# =================================================================
 def build_lookups(wb):
     ws = wb.create_sheet("Lookups")
     ws.sheet_properties.tabColor = MED_GRAY
@@ -108,76 +103,76 @@ def build_lookups(wb):
             "UK NCA", "US Marshals", "Anonymous"]),
         2: ("IntelPriority", ["Critical", "High", "Medium", "Low"]),
         3: ("TriageDecision", [
-            "Action — Mount Operation", "Action — Surveillance", "Action — Port Alert",
+            "Action - Mount Operation", "Action - Surveillance", "Action - Port Alert",
             "Refer to Divisional CIB", "Refer to MOCA", "Refer to SIB",
-            "Intel Filed — Monitor", "Closed — Insufficient Info"]),
+            "Intel Filed - Monitor", "Closed - Insufficient Info"]),
         4: ("OperationType", [
             "Search Warrant Execution", "Snap Raid", "Port/Cargo Interdiction",
             "Airport Interdiction", "Vehicle Interception", "Coastal/Beach Operation",
-            "Checkpoint", "Surveillance", "Joint Op — JCA", "Joint Op — JDF",
-            "Joint Op — MOCA", "Joint Op — DEA", "Fugitive Apprehension",
+            "Checkpoint", "Surveillance", "Joint Op - JCA", "Joint Op - JDF",
+            "Joint Op - MOCA", "Joint Op - DEA", "Fugitive Apprehension",
             "Follow-Up Secondary Op", "ZOSO Operation", "SOE Operation",
             "Courier/Parcel Investigation"]),
         5: ("WarrantBasis", [
-            "Section 91 — Firearms Act 2022", "Section 21 — Dangerous Drugs Act",
-            "Section 14 — POCA 2007", "ZOSO — Warrantless (s.5 ZOSO Act)",
-            "SOE — Warrantless", "Sergeant Written Directive (DDA s.21)"]),
+            "Section 91 - Firearms Act 2022", "Section 21 - Dangerous Drugs Act",
+            "Section 14 - POCA 2007", "ZOSO - Warrantless (s.5 ZOSO Act)",
+            "SOE - Warrantless", "Sergeant Written Directive (DDA s.21)"]),
         6: ("FirearmType", [
-            "Pistol — Semi-Auto", "Pistol — Revolver", "Rifle — Semi-Auto",
-            "Rifle — Bolt Action", "Rifle — Assault", "Shotgun", "Submachine Gun",
+            "Pistol - Semi-Auto", "Pistol - Revolver", "Rifle - Semi-Auto",
+            "Rifle - Bolt Action", "Rifle - Assault", "Shotgun", "Submachine Gun",
             "Machine Pistol", "Improvised/Homemade", "3D-Printed", "Imitation/Replica",
-            "Component — Frame/Receiver", "Component — Barrel", "Component — Slide",
+            "Component - Frame/Receiver", "Component - Barrel", "Component - Slide",
             "Magazine", "Silencer/Suppressor"]),
         7: ("FirearmCalibre", [
             "9mm", ".40 S&W", ".45 ACP", ".380 ACP", ".22 LR", ".25 ACP",
             ".38 Special", ".357 Magnum", "5.56mm/.223", "7.62x39mm",
             "7.62x51mm/.308", "12 Gauge", "20 Gauge", ".44 Magnum", "Other"]),
         8: ("DrugType", [
-            "Cannabis/Ganja — Compressed", "Cannabis/Ganja — Loose",
-            "Cannabis/Ganja — Oil/Edibles", "Cocaine — Powder",
-            "Cocaine — Crack", "Heroin", "MDMA/Ecstasy", "Methamphetamine",
+            "Cannabis/Ganja - Compressed", "Cannabis/Ganja - Loose",
+            "Cannabis/Ganja - Oil/Edibles", "Cocaine - Powder",
+            "Cocaine - Crack", "Heroin", "MDMA/Ecstasy", "Methamphetamine",
             "Synthetic Cannabinoids", "Prescription Opioids", "Other Controlled"]),
         9: ("DrugUnit", ["kg", "g", "lbs", "oz", "plants", "tablets", "ml", "litres"]),
         10: ("FirearmsActOffence", [
-            "s.5 — Possession of Prohibited Weapon (15-25yr)",
-            "s.6 — Stockpiling (3+ weapons / 50+ rounds)",
-            "s.7 — Trafficking in Prohibited Weapon (20yr min)",
-            "s.8 — Possession with Intent to Traffic",
-            "s.9 — Manufacture of Prohibited Weapon",
-            "s.10 — Dealing in Prohibited Weapon",
-            "s.12 — Diversion of Lawful Firearms",
-            "s.29 — Unmarked Firearm",
+            "s.5 - Possession of Prohibited Weapon (15-25yr)",
+            "s.6 - Stockpiling (3+ weapons / 50+ rounds)",
+            "s.7 - Trafficking in Prohibited Weapon (20yr min)",
+            "s.8 - Possession with Intent to Traffic",
+            "s.9 - Manufacture of Prohibited Weapon",
+            "s.10 - Dealing in Prohibited Weapon",
+            "s.12 - Diversion of Lawful Firearms",
+            "s.29 - Unmarked Firearm",
             "Shooting with Intent", "Illegal Possession of Ammunition",
             "Wounding with Intent (firearm)"]),
         11: ("DDAOffence", [
-            "Import/Export — Cannabis (DDA Part IIIA)",
-            "Import/Export — Cocaine (DDA Part IV)",
-            "Import/Export — Heroin (DDA Part IV)",
-            "Dealing/Trafficking — Cannabis",
-            "Dealing/Trafficking — Cocaine",
-            "Dealing/Trafficking — Heroin",
-            "Possession — Cannabis (>2oz)",
-            "Possession — Cocaine",
-            "Cultivation — Cannabis (>5 plants)",
-            "Cultivation — Coca/Opium",
-            "Deemed Dealing — School Premises",
-            "Deemed Dealing — Heroin >1/10oz"]),
+            "Import/Export - Cannabis (DDA Part IIIA)",
+            "Import/Export - Cocaine (DDA Part IV)",
+            "Import/Export - Heroin (DDA Part IV)",
+            "Dealing/Trafficking - Cannabis",
+            "Dealing/Trafficking - Cocaine",
+            "Dealing/Trafficking - Heroin",
+            "Possession - Cannabis (>2oz)",
+            "Possession - Cocaine",
+            "Cultivation - Cannabis (>5 plants)",
+            "Cultivation - Coca/Opium",
+            "Deemed Dealing - School Premises",
+            "Deemed Dealing - Heroin >1/10oz"]),
         12: ("CourtType", [
-            "Gun Court — High Court Division (judge alone, in camera)",
-            "Gun Court — Circuit Court Division (jury, murder/treason)",
-            "Gun Court — RM Division (preliminary exam)",
+            "Gun Court - High Court Division (judge alone, in camera)",
+            "Gun Court - Circuit Court Division (jury, murder/treason)",
+            "Gun Court - RM Division (preliminary exam)",
             "Parish Court (summary drug offence)",
             "Circuit Court (indictable drug offence)",
             "Supreme Court"]),
         13: ("BailStatus", [
             "Bail Granted", "Bail Denied", "Remanded in Custody",
-            "Released — No Charge", "Released — Insufficient Evidence",
+            "Released - No Charge", "Released - Insufficient Evidence",
             "Stop Order Issued", "Electronic Monitoring"]),
         14: ("DPPStatus", [
             "File Being Prepared", "File Submitted to DPP",
             "Awaiting Forensic Certificate", "Awaiting Ballistic Certificate",
-            "Crown Counsel Reviewing", "Ruling — Charge Approved",
-            "Ruling — No Charge (Insufficient Evidence)",
+            "Crown Counsel Reviewing", "Ruling - Charge Approved",
+            "Ruling - No Charge (Insufficient Evidence)",
             "Voluntary Bill of Indictment", "Preliminary Exam Ordered",
             "Returned for Further Investigation"]),
         15: ("ForensicStatus", [
@@ -190,10 +185,10 @@ def build_lookups(wb):
             "St. Elizabeth", "Manchester", "Clarendon", "St. Catherine"]),
         17: ("YesNo", ["Yes", "No"]),
         18: ("OpOutcome", [
-            "Successful — Seizure + Arrest", "Successful — Seizure Only",
-            "Successful — Arrest Only", "Partial — Intel Developed",
-            "Negative — No Finds", "Aborted — Compromised",
-            "Aborted — Safety Concern", "Ongoing"]),
+            "Successful - Seizure + Arrest", "Successful - Seizure Only",
+            "Successful - Arrest Only", "Partial - Intel Developed",
+            "Negative - No Finds", "Aborted - Compromised",
+            "Aborted - Safety Concern", "Ongoing"]),
         19: ("SeizureLocation", [
             "Port Bustamante", "Kingston Logistics Centre", "Newport West",
             "Norman Manley Airport", "Sangster International Airport",
@@ -201,39 +196,39 @@ def build_lookups(wb):
             "Commercial Premises", "Beach/Coastal", "Open Land/Bushes",
             "Courier/Postal Facility", "ZOSO Checkpoint", "Other"]),
         20: ("IBIS_Status", [
-            "Not Submitted", "Submitted — Pending", "No Match",
-            "Hit — Confirmed Match", "Hit — Unconfirmed", "Serial Obliterated"]),
+            "Not Submitted", "Submitted - Pending", "No Match",
+            "Hit - Confirmed Match", "Hit - Unconfirmed", "Serial Obliterated"]),
         21: ("eTrace_Status", [
-            "Not Submitted", "Submitted — Pending", "Traced — US Origin",
-            "Traced — Non-US Origin", "Untraceable — No Serial",
-            "Untraceable — Obliterated", "Trace Complete"]),
+            "Not Submitted", "Submitted - Pending", "Traced - US Origin",
+            "Traced - Non-US Origin", "Untraceable - No Serial",
+            "Untraceable - Obliterated", "Trace Complete"]),
         22: ("ExhibitDisposal", [
-            "Held — Active Case", "Held — Court Order",
-            "Destroyed — Authorized", "Returned to Owner",
-            "Forfeited — POCA", "Pending Disposal Authorization"]),
+            "Held - Active Case", "Held - Court Order",
+            "Destroyed - Authorized", "Returned to Owner",
+            "Forfeited - POCA", "Pending Disposal Authorization"]),
         23: ("POCAStatus", [
             "Not Applicable", "Referred to FID", "Restraint Order Applied",
             "Restraint Order Granted", "Civil Recovery Filed",
-            "Forfeiture Order — Post Conviction",
+            "Forfeiture Order - Post Conviction",
             "Consent Order", "Dismissed"]),
         24: ("CaseClassification", [
             "Firearms", "Narcotics", "Firearms + Narcotics",
-            "Trafficking — Firearms", "Trafficking — Narcotics",
-            "Trafficking — Multi-Commodity", "POCA / Financial",
+            "Trafficking - Firearms", "Trafficking - Narcotics",
+            "Trafficking - Multi-Commodity", "POCA / Financial",
             "Murder with Firearm", "Shooting with Intent"]),
         25: ("CaseStatus", [
-            "Open — Active Investigation", "Open — Pending Forensics",
-            "Open — Pending Witness Statements", "Open — Surveillance",
-            "Open — Pending DPP Submission", "Referred to DPP",
-            "Closed — Convicted", "Closed — Acquitted",
-            "Closed — No Charge (Insufficient Evidence)",
-            "Closed — Withdrawn", "Cold Case — Under Review",
-            "Cold Case — Dormant", "Merged — See Linked Case"]),
+            "Open - Active Investigation", "Open - Pending Forensics",
+            "Open - Pending Witness Statements", "Open - Surveillance",
+            "Open - Pending DPP Submission", "Referred to DPP",
+            "Closed - Convicted", "Closed - Acquitted",
+            "Closed - No Charge (Insufficient Evidence)",
+            "Closed - Withdrawn", "Cold Case - Under Review",
+            "Cold Case - Dormant", "Merged - See Linked Case"]),
         26: ("InvestigationType", [
             "Murder Investigation (Firearm)", "Illegal Possession of Firearm",
-            "Trafficking — Firearms", "Trafficking — Narcotics",
+            "Trafficking - Firearms", "Trafficking - Narcotics",
             "Shooting with Intent", "Drug Dealing / Distribution",
-            "Import/Export — Narcotics", "Import/Export — Firearms",
+            "Import/Export - Narcotics", "Import/Export - Firearms",
             "POCA / Financial Investigation", "Stockpiling (s.6)",
             "Manufacture / Assembly", "Courier / Parcel Intercept",
             "Guns-for-Drugs Pipeline", "Gang / Network Investigation"]),
@@ -248,10 +243,10 @@ def build_lookups(wb):
     return ws
 
 
-# ═══════════════════════════════════════════════════════════════
+# =================================================================
 #  TABLE 1: INTELLIGENCE LOG
-#  Where tips/intel come in — Crime Stop 311, NIB 811, DEA, informants, JCA
-# ═══════════════════════════════════════════════════════════════
+#  Where tips/intel come in - Crime Stop 311, NIB 811, DEA, informants, JCA
+# =================================================================
 def build_intel_log(wb):
     ws = wb.create_sheet("tbl_IntelLog")
     ws.sheet_properties.tabColor = INTEL_GOLD
@@ -283,10 +278,10 @@ def build_intel_log(wb):
     return ws
 
 
-# ═══════════════════════════════════════════════════════════════
+# =================================================================
 #  TABLE 2: OPERATION REGISTER
-#  Every planned operation — warrants, teams, outcomes
-# ═══════════════════════════════════════════════════════════════
+#  Every planned operation - warrants, teams, outcomes
+# =================================================================
 def build_operation_register(wb):
     ws = wb.create_sheet("tbl_Operations")
     ws.sheet_properties.tabColor = OPS_RED
@@ -330,10 +325,10 @@ def build_operation_register(wb):
     return ws
 
 
-# ═══════════════════════════════════════════════════════════════
+# =================================================================
 #  TABLE 3: FIREARM SEIZURE LOG
-#  Every firearm recovered — IBIS, eTrace, ballistic cert tracking
-# ═══════════════════════════════════════════════════════════════
+#  Every firearm recovered - IBIS, eTrace, ballistic cert tracking
+# =================================================================
 def build_firearm_seizures(wb):
     ws = wb.create_sheet("tbl_FirearmSeizures")
     ws.sheet_properties.tabColor = OPS_RED
@@ -387,10 +382,10 @@ def build_firearm_seizures(wb):
     return ws
 
 
-# ═══════════════════════════════════════════════════════════════
+# =================================================================
 #  TABLE 4: NARCOTICS SEIZURE LOG
-#  Every drug seizure — field test, IFSLM submission, forensic cert
-# ═══════════════════════════════════════════════════════════════
+#  Every drug seizure - field test, IFSLM submission, forensic cert
+# =================================================================
 def build_narcotics_seizures(wb):
     ws = wb.create_sheet("tbl_NarcoticSeizures")
     ws.sheet_properties.tabColor = NARCO_TEAL
@@ -437,9 +432,9 @@ def build_narcotics_seizures(wb):
     return ws
 
 
-# ═══════════════════════════════════════════════════════════════
+# =================================================================
 #  TABLE 5: AMMUNITION & OTHER SEIZURES
-# ═══════════════════════════════════════════════════════════════
+# =================================================================
 def build_other_seizures(wb):
     ws = wb.create_sheet("tbl_OtherSeizures")
     ws.sheet_properties.tabColor = OPS_RED
@@ -463,10 +458,10 @@ def build_other_seizures(wb):
     return ws
 
 
-# ═══════════════════════════════════════════════════════════════
+# =================================================================
 #  TABLE 6: ARREST REGISTER
 #  48hr rule, charge, caution, bail, Gun Court / Parish Court routing
-# ═══════════════════════════════════════════════════════════════
+# =================================================================
 def build_arrest_register(wb):
     ws = wb.create_sheet("tbl_Arrests")
     ws.sheet_properties.tabColor = OPS_RED
@@ -517,9 +512,9 @@ def build_arrest_register(wb):
     return ws
 
 
-# ═══════════════════════════════════════════════════════════════
+# =================================================================
 #  TABLE 7: EXHIBIT CHAIN OF CUSTODY
-# ═══════════════════════════════════════════════════════════════
+# =================================================================
 def build_chain_of_custody(wb):
     ws = wb.create_sheet("tbl_ChainOfCustody")
     ws.sheet_properties.tabColor = EVIDENCE_GREEN
@@ -546,11 +541,11 @@ def build_chain_of_custody(wb):
     return ws
 
 
-# ═══════════════════════════════════════════════════════════════
+# =================================================================
 #  TABLE 8: CASE FILE REGISTRY & INVESTIGATIONS
-#  Master register of every FNID case — from opening through
+#  Master register of every FNID case - from opening through
 #  full investigation lifecycle to resolution/closure
-# ═══════════════════════════════════════════════════════════════
+# =================================================================
 REGISTRY_BLUE = "2E75B6"
 
 def build_case_registry(wb):
@@ -627,7 +622,7 @@ def build_case_registry(wb):
 
     add_table(ws, "tbl_CaseRegistry", f"A1:{get_column_letter(len(headers))}6")
 
-    # Data validations — dropdowns
+    # Data validations - dropdowns
     dv_list(ws, "D2:D1000", "=Lookups!$X$2:$X$10")    # CaseClassification
     dv_list(ws, "E2:E1000", "=Lookups!$B$2:$B$5")      # Priority (reuse IntelPriority)
     dv_list(ws, "F2:F1000", "=Lookups!$Y$2:$Y$14")     # CaseStatus
@@ -638,19 +633,19 @@ def build_case_registry(wb):
         dv_list(ws, f"{col_letter}2:{col_letter}1000", "=Lookups!$Q$2:$Q$3")
     dv_list(ws, "AL2:AL1000", "=Lookups!$Q$2:$Q$3")    # Escalated
 
-    # Conditional formatting — Case Status
+    # Conditional formatting - Case Status
     ws.conditional_formatting.add("F2:F1000",
         CellIsRule(operator="beginsWith", formula=['"Open"'], fill=AMBER_FILL))
     ws.conditional_formatting.add("F2:F1000",
         CellIsRule(operator="beginsWith", formula=['"Cold Case"'], fill=RED_FILL))
     ws.conditional_formatting.add("F2:F1000",
-        CellIsRule(operator="beginsWith", formula=['"Closed — Convicted"'], fill=GREEN_FILL))
-    # Priority — Critical/High highlights
+        CellIsRule(operator="beginsWith", formula=['"Closed - Convicted"'], fill=GREEN_FILL))
+    # Priority - Critical/High highlights
     ws.conditional_formatting.add("E2:E1000",
         CellIsRule(operator="equal", formula=['"Critical"'], fill=RED_FILL))
     ws.conditional_formatting.add("E2:E1000",
         CellIsRule(operator="equal", formula=['"High"'], fill=AMBER_FILL))
-    # Investigation Progress — low progress warning
+    # Investigation Progress - low progress warning
     prog_range = f"{get_column_letter(headers.index('InvestigationProgress')+1)}2:" \
                  f"{get_column_letter(headers.index('InvestigationProgress')+1)}1000"
     ws.conditional_formatting.add(prog_range,
@@ -669,10 +664,10 @@ def build_case_registry(wb):
     return ws
 
 
-# ═══════════════════════════════════════════════════════════════
+# =================================================================
 #  TABLE 9: CASE FILE TRACKER (DPP Pipeline)
 #  From investigation through DPP ruling to court listing
-# ═══════════════════════════════════════════════════════════════
+# =================================================================
 def build_case_file_tracker(wb):
     ws = wb.create_sheet("tbl_CaseFiles")
     ws.sheet_properties.tabColor = COURT_PURPLE
@@ -726,9 +721,9 @@ def build_case_file_tracker(wb):
     return ws
 
 
-# ═══════════════════════════════════════════════════════════════
+# =================================================================
 #  TABLE 9: WITNESS / STATEMENT REGISTER
-# ═══════════════════════════════════════════════════════════════
+# =================================================================
 def build_witness_register(wb):
     ws = wb.create_sheet("tbl_Witnesses")
     ws.sheet_properties.tabColor = COURT_PURPLE
@@ -757,9 +752,9 @@ def build_witness_register(wb):
     return ws
 
 
-# ═══════════════════════════════════════════════════════════════
+# =================================================================
 #  TABLE 10: INFORMANT REGISTER (Restricted)
-# ═══════════════════════════════════════════════════════════════
+# =================================================================
 def build_informant_register(wb):
     ws = wb.create_sheet("tbl_Informants")
     ws.sheet_properties.tabColor = INTEL_GOLD
@@ -784,9 +779,9 @@ def build_informant_register(wb):
     return ws
 
 
-# ═══════════════════════════════════════════════════════════════
+# =================================================================
 #  TABLE 11: PERSONNEL REGISTER
-# ═══════════════════════════════════════════════════════════════
+# =================================================================
 def build_personnel(wb):
     ws = wb.create_sheet("tbl_Personnel")
     ws.sheet_properties.tabColor = MED_GRAY
@@ -806,9 +801,9 @@ def build_personnel(wb):
     return ws
 
 
-# ═══════════════════════════════════════════════════════════════
+# =================================================================
 #  TABLE 12: VEHICLE / FLEET LOG
-# ═══════════════════════════════════════════════════════════════
+# =================================================================
 def build_vehicles(wb):
     ws = wb.create_sheet("tbl_Vehicles")
     ws.sheet_properties.tabColor = MED_GRAY
@@ -830,24 +825,24 @@ def build_vehicles(wb):
     return ws
 
 
-# ═══════════════════════════════════════════════════════════════
+# =================================================================
 #  DASHBOARD: COMMAND DASHBOARD
 #  What the Area Commander needs every morning
-# ═══════════════════════════════════════════════════════════════
+# =================================================================
 def build_command_dashboard(wb):
     ws = wb.create_sheet("DASH_Command")
     ws.sheet_properties.tabColor = NAVY
 
     # Banner
     ws.merge_cells("A1:L1")
-    c = ws.cell(row=1, column=1, value="FNID AREA 3 — DAILY COMMAND DASHBOARD")
+    c = ws.cell(row=1, column=1, value="FNID AREA 3 - DAILY COMMAND DASHBOARD")
     c.font = Font(name="Calibri", bold=True, size=18, color=WHITE)
     c.fill = PatternFill("solid", fgColor=NAVY)
     c.alignment = CENTER
     ws.row_dimensions[1].height = 42
     ws.merge_cells("A2:L2")
     ws.cell(row=2, column=1,
-        value="Intelligence → Operations → Seizures → Arrests → Forensics → DPP → Court").font = Font(
+        value="Intelligence > Operations > Seizures > Arrests > Forensics > DPP > Court").font = Font(
         name="Calibri", bold=True, size=11, color=DARK_BLUE)
     ws.cell(row=2, column=1).alignment = CENTER
 
@@ -884,8 +879,8 @@ def build_command_dashboard(wb):
         ("Firearms-Related", '=COUNTIF(tbl_IntelLog[FirearmsRelated],"Yes")'),
         ("Narcotics-Related", '=COUNTIF(tbl_IntelLog[NarcoticsRelated],"Yes")'),
         ("Trafficking Intel", '=COUNTIF(tbl_IntelLog[TraffickingRelated],"Yes")'),
-        ("→ Converted to Op", '=COUNTIF(tbl_IntelLog[TriageDecision],"Action*")'),
-        ("Conversion Rate", '=IFERROR(COUNTIF(tbl_IntelLog[TriageDecision],"Action*")/(COUNTA(tbl_IntelLog[IntelID])-COUNTBLANK(tbl_IntelLog[IntelID])),"—")'),
+        ("Converted to Op", '=COUNTIF(tbl_IntelLog[TriageDecision],"Action*")'),
+        ("Conversion Rate", '=IFERROR(COUNTIF(tbl_IntelLog[TriageDecision],"Action*")/(COUNTA(tbl_IntelLog[IntelID])-COUNTBLANK(tbl_IntelLog[IntelID])),"-")'),
     ], INTEL_GOLD)
 
     r = section(r, "OPERATIONS", OPS_RED)
@@ -895,9 +890,9 @@ def build_command_dashboard(wb):
         ("Port/Cargo", '=COUNTIF(tbl_Operations[OpsType],"Port*")+COUNTIF(tbl_Operations[OpsType],"Airport*")'),
         ("Vehicle Intercepts", '=COUNTIF(tbl_Operations[OpsType],"Vehicle*")'),
         ("Joint Ops", '=COUNTIF(tbl_Operations[OpsType],"Joint*")'),
-        ("Success Rate", '=IFERROR(COUNTIF(tbl_Operations[Outcome],"Successful*")/(COUNTA(tbl_Operations[OpsID])-COUNTBLANK(tbl_Operations[OpsID])),"—")'),
-        ("Inspector Present %", '=IFERROR(COUNTIF(tbl_Operations[InspectorPresent],"Yes")/COUNTA(tbl_Operations[InspectorPresent]),"—")'),
-        ("Body Cam Active %", '=IFERROR(COUNTIF(tbl_Operations[BodyCamActivated],"Yes")/COUNTA(tbl_Operations[BodyCamActivated]),"—")'),
+        ("Success Rate", '=IFERROR(COUNTIF(tbl_Operations[Outcome],"Successful*")/(COUNTA(tbl_Operations[OpsID])-COUNTBLANK(tbl_Operations[OpsID])),"-")'),
+        ("Inspector Present %", '=IFERROR(COUNTIF(tbl_Operations[InspectorPresent],"Yes")/COUNTA(tbl_Operations[InspectorPresent]),"-")'),
+        ("Body Cam Active %", '=IFERROR(COUNTIF(tbl_Operations[BodyCamActivated],"Yes")/COUNTA(tbl_Operations[BodyCamActivated]),"-")'),
     ], OPS_RED)
 
     r = section(r, "FIREARMS SEIZURES", OPS_RED)
@@ -931,7 +926,7 @@ def build_command_dashboard(wb):
         ("Drug Charges", '=COUNTIF(tbl_Arrests[ActSection],"*DDA*")+COUNTIF(tbl_Arrests[ActSection],"*Dangerous*")'),
         ("48hr Met", '=COUNTIF(tbl_Arrests[48hr_Met],"Yes")'),
         ("48hr BREACH", '=COUNTIF(tbl_Arrests[48hr_Met],"BREACH")'),
-        ("48hr Rate", '=IFERROR(COUNTIF(tbl_Arrests[48hr_Met],"Yes")/COUNTA(tbl_Arrests[48hr_Met]),"—")'),
+        ("48hr Rate", '=IFERROR(COUNTIF(tbl_Arrests[48hr_Met],"Yes")/COUNTA(tbl_Arrests[48hr_Met]),"-")'),
         ("Bail Granted", '=COUNTIF(tbl_Arrests[BailStatus],"Bail Granted")'),
         ("Remanded", '=COUNTIF(tbl_Arrests[BailStatus],"Remanded*")'),
     ], OPS_RED)
@@ -939,13 +934,13 @@ def build_command_dashboard(wb):
     r = section(r, "CASE REGISTRY & INVESTIGATIONS", REGISTRY_BLUE)
     r = metrics(r, [
         ("Total Cases", '=COUNTA(tbl_CaseRegistry[CaseRegID])-COUNTBLANK(tbl_CaseRegistry[CaseRegID])'),
-        ("Open — Active", '=COUNTIF(tbl_CaseRegistry[CaseStatus],"Open — Active*")'),
-        ("Open — Pending", '=COUNTIF(tbl_CaseRegistry[CaseStatus],"Open — Pending*")'),
+        ("Open - Active", '=COUNTIF(tbl_CaseRegistry[CaseStatus],"Open - Active*")'),
+        ("Open - Pending", '=COUNTIF(tbl_CaseRegistry[CaseStatus],"Open - Pending*")'),
         ("Firearms Cases", '=COUNTIF(tbl_CaseRegistry[CaseClassification],"Firearms")+COUNTIF(tbl_CaseRegistry[CaseClassification],"Firearms*Narcotics")'),
         ("Narcotics Cases", '=COUNTIF(tbl_CaseRegistry[CaseClassification],"Narcotics")+COUNTIF(tbl_CaseRegistry[CaseClassification],"Firearms*Narcotics")'),
         ("Escalated", '=COUNTIF(tbl_CaseRegistry[Escalated],"Yes")'),
         ("Cold Cases", '=COUNTIF(tbl_CaseRegistry[CaseStatus],"Cold Case*")'),
-        ("Avg Progress", '=IFERROR(AVERAGE(tbl_CaseRegistry[InvestigationProgress]),"—")'),
+        ("Avg Progress", '=IFERROR(AVERAGE(tbl_CaseRegistry[InvestigationProgress]),"-")'),
     ], REGISTRY_BLUE)
 
     r = section(r, "DPP CASE PIPELINE", COURT_PURPLE)
@@ -956,8 +951,8 @@ def build_command_dashboard(wb):
         ("Awaiting Forensic", '=COUNTIF(tbl_CaseFiles[DPPStatus],"Awaiting Forensic*")'),
         ("Awaiting Ballistic", '=COUNTIF(tbl_CaseFiles[DPPStatus],"Awaiting Ballistic*")'),
         ("Charge Approved", '=COUNTIF(tbl_CaseFiles[DPPStatus],"Ruling*Charge*")'),
-        ("Avg File Score", '=IFERROR(AVERAGE(tbl_CaseFiles[FileCompletenessScore]),"—")'),
-        ("Avg Days Pipeline", '=IFERROR(AVERAGE(tbl_CaseFiles[DaysInPipeline]),"—")'),
+        ("Avg File Score", '=IFERROR(AVERAGE(tbl_CaseFiles[FileCompletenessScore]),"-")'),
+        ("Avg Days Pipeline", '=IFERROR(AVERAGE(tbl_CaseFiles[DaysInPipeline]),"-")'),
     ], COURT_PURPLE)
 
     r = section(r, "FORENSIC BOTTLENECK (IFSLM)", EVIDENCE_GREEN)
@@ -975,16 +970,16 @@ def build_command_dashboard(wb):
     return ws
 
 
-# ═══════════════════════════════════════════════════════════════
-#  HOME SHEET — Navigation Hub
-# ═══════════════════════════════════════════════════════════════
+# =================================================================
+#  HOME SHEET - Navigation Hub
+# =================================================================
 def build_home(wb):
     ws = wb.create_sheet("HOME")
     ws.sheet_properties.tabColor = NAVY
 
     ws.merge_cells("A1:H1")
     c = ws.cell(row=1, column=1,
-        value="JAMAICA CONSTABULARY FORCE — FIREARM AND NARCOTICS INVESTIGATION DIVISION")
+        value="JAMAICA CONSTABULARY FORCE - FIREARM AND NARCOTICS INVESTIGATION DIVISION")
     c.font = Font(name="Calibri", bold=True, size=16, color=WHITE)
     c.fill = PatternFill("solid", fgColor=NAVY)
     c.alignment = CENTER
@@ -992,7 +987,7 @@ def build_home(wb):
 
     ws.merge_cells("A2:H2")
     ws.cell(row=2, column=1,
-        value="AREA 3 (Manchester | St. Elizabeth | Clarendon) — OPERATIONAL WORKBOOK v2.0").font = Font(
+        value="AREA 3 (Manchester | St. Elizabeth | Clarendon) - OPERATIONAL WORKBOOK v2.1").font = Font(
         name="Calibri", bold=True, size=12, color=DARK_BLUE)
     ws.cell(row=2, column=1).alignment = CENTER
 
@@ -1004,7 +999,7 @@ def build_home(wb):
 
     ws.merge_cells("A4:H4")
     ws.cell(row=4, column=1,
-        value="INTELLIGENCE → OPERATION → SEIZURE → ARREST → FORENSICS → DPP → COURT → CONVICTION").font = Font(
+        value="INTELLIGENCE > OPERATION > SEIZURE > ARREST > FORENSICS > DPP > COURT > CONVICTION").font = Font(
         name="Calibri", bold=True, size=11, color=OPS_RED)
     ws.cell(row=4, column=1).alignment = CENTER
 
@@ -1013,37 +1008,37 @@ def build_home(wb):
 
     sections = [
         ("DAILY COMMAND", NAVY, [
-            ("DASH_Command", "Daily Command Dashboard — all key metrics at a glance"),
+            ("DASH_Command", "Daily Command Dashboard - all key metrics at a glance"),
         ]),
         ("STAGE 1: INTELLIGENCE", INTEL_GOLD, [
-            ("tbl_IntelLog", "Intelligence Log — Crime Stop, NIB, DEA, JCA, informant tips"),
-            ("tbl_Informants", "Informant Register — RESTRICTED ACCESS (code names only)"),
+            ("tbl_IntelLog", "Intelligence Log - Crime Stop, NIB, DEA, JCA, informant tips"),
+            ("tbl_Informants", "Informant Register - RESTRICTED ACCESS (code names only)"),
         ]),
         ("STAGE 2: OPERATIONS", OPS_RED, [
-            ("tbl_Operations", "Operation Register — warrants, teams, execution, outcomes"),
+            ("tbl_Operations", "Operation Register - warrants, teams, execution, outcomes"),
         ]),
         ("STAGE 3: SEIZURES", OPS_RED, [
-            ("tbl_FirearmSeizures", "Firearm Seizure Log — IBIS, eTrace, ballistic cert tracking"),
-            ("tbl_NarcoticSeizures", "Narcotics Seizure Log — field test, IFSLM, forensic cert, disposal"),
-            ("tbl_OtherSeizures", "Ammunition, Cash, Electronics, Vehicles — other exhibits"),
+            ("tbl_FirearmSeizures", "Firearm Seizure Log - IBIS, eTrace, ballistic cert tracking"),
+            ("tbl_NarcoticSeizures", "Narcotics Seizure Log - field test, IFSLM, forensic cert, disposal"),
+            ("tbl_OtherSeizures", "Ammunition, Cash, Electronics, Vehicles - other exhibits"),
         ]),
         ("STAGE 4: ARRESTS", OPS_RED, [
-            ("tbl_Arrests", "Arrest Register — 48hr rule, charge, caution, bail, court routing"),
+            ("tbl_Arrests", "Arrest Register - 48hr rule, charge, caution, bail, court routing"),
         ]),
         ("STAGE 5: CASE REGISTRY & INVESTIGATIONS", REGISTRY_BLUE, [
-            ("tbl_CaseRegistry", "Master Case File Registry — every case, investigation milestones, progress tracking"),
+            ("tbl_CaseRegistry", "Master Case File Registry - every case, investigation milestones, progress tracking"),
         ]),
         ("STAGE 6: EVIDENCE & FORENSICS", EVIDENCE_GREEN, [
-            ("tbl_ChainOfCustody", "Exhibit Chain of Custody — every handover logged"),
+            ("tbl_ChainOfCustody", "Exhibit Chain of Custody - every handover logged"),
         ]),
         ("STAGE 7: DPP & COURT", COURT_PURPLE, [
-            ("tbl_CaseFiles", "Case File Tracker — DPP submission pipeline, completeness scoring"),
-            ("tbl_Witnesses", "Witness & Statement Register — testimony, protection, summons"),
+            ("tbl_CaseFiles", "Case File Tracker - DPP submission pipeline, completeness scoring"),
+            ("tbl_Witnesses", "Witness & Statement Register - testimony, protection, summons"),
         ]),
         ("SUPPORT", MED_GRAY, [
-            ("tbl_Personnel", "Personnel Register — staff, qualifications, polygraph"),
-            ("tbl_Vehicles", "Vehicle/Fleet Log — status, service, fitness"),
-            ("Lookups", "Reference Data — Jamaica-specific lookups"),
+            ("tbl_Personnel", "Personnel Register - staff, qualifications, polygraph"),
+            ("tbl_Vehicles", "Vehicle/Fleet Log - status, service, fitness"),
+            ("Lookups", "Reference Data - Jamaica-specific lookups"),
         ]),
     ]
 
@@ -1056,7 +1051,7 @@ def build_home(wb):
         ws.row_dimensions[r].height = 26
         r += 1
         for sheet_name, desc in items:
-            ws.cell(row=r, column=1, value=f"  >> {sheet_name}").font = Font(
+            ws.cell(row=r, column=1, value=f"  > {sheet_name}").font = Font(
                 name="Calibri", bold=True, size=10, color=DARK_BLUE)
             ws.merge_cells(start_row=r, start_column=2, end_row=r, end_column=8)
             ws.cell(row=r, column=2, value=desc).font = BODY_FONT
@@ -1077,63 +1072,63 @@ def build_home(wb):
     r += 1
     ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=8)
     ws.cell(row=r, column=1,
-        value="CONFIDENTIAL — FOR OFFICIAL USE ONLY | FNID Area 3 | "
+        value="CONFIDENTIAL - FOR OFFICIAL USE ONLY | FNID Area 3 | "
               "Search warrants under Section 91, Firearms Act 2022").font = Font(
         name="Calibri", bold=True, size=9, color=OPS_RED)
     return ws
 
 
-# ═══════════════════════════════════════════════════════════════
+# =================================================================
 #  MAIN BUILD
-# ═══════════════════════════════════════════════════════════════
+# =================================================================
 def main():
     wb = openpyxl.Workbook()
     # Remove default sheet
     wb.remove(wb.active)
 
-    print("Building FNID v2.1 — Purpose-Driven Operational Workbook...")
+    print("Building FNID Area 3 Operational Workbook v2.1...")
     print("=" * 60)
 
-    print("[1/14] HOME — Navigation hub")
+    print("[1/14] HOME - Navigation hub")
     build_home(wb)
 
-    print("[2/14] DASH_Command — Daily command dashboard")
+    print("[2/14] DASH_Command - Daily command dashboard")
     build_command_dashboard(wb)
 
-    print("[3/14] Lookups — Jamaica-specific reference data")
+    print("[3/14] Lookups - Jamaica-specific reference data")
     build_lookups(wb)
 
-    print("[4/14] tbl_IntelLog — Intelligence pipeline")
+    print("[4/14] tbl_IntelLog - Intelligence pipeline")
     build_intel_log(wb)
 
-    print("[5/14] tbl_Operations — Operation register")
+    print("[5/14] tbl_Operations - Operation register")
     build_operation_register(wb)
 
-    print("[6/14] tbl_FirearmSeizures — Firearm seizure log")
+    print("[6/14] tbl_FirearmSeizures - Firearm seizure log")
     build_firearm_seizures(wb)
 
-    print("[7/14] tbl_NarcoticSeizures — Narcotics seizure log")
+    print("[7/14] tbl_NarcoticSeizures - Narcotics seizure log")
     build_narcotics_seizures(wb)
 
-    print("[8/14] tbl_OtherSeizures — Ammunition, cash, electronics")
+    print("[8/14] tbl_OtherSeizures - Ammunition, cash, electronics")
     build_other_seizures(wb)
 
-    print("[9/14] tbl_Arrests — Arrest register (48hr compliance)")
+    print("[9/14] tbl_Arrests - Arrest register (48hr compliance)")
     build_arrest_register(wb)
 
-    print("[10/14] tbl_CaseRegistry — Case file registry & investigations")
+    print("[10/14] tbl_CaseRegistry - Case file registry & investigations")
     build_case_registry(wb)
 
-    print("[11/14] tbl_ChainOfCustody — Exhibit custody chain")
+    print("[11/14] tbl_ChainOfCustody - Exhibit custody chain")
     build_chain_of_custody(wb)
 
-    print("[12/14] tbl_CaseFiles — DPP case file pipeline")
+    print("[12/14] tbl_CaseFiles - DPP case file pipeline")
     build_case_file_tracker(wb)
 
-    print("[13/14] tbl_Witnesses — Witness & statement register")
+    print("[13/14] tbl_Witnesses - Witness & statement register")
     build_witness_register(wb)
 
-    print("[14/14] Support tables — Informants, Personnel, Vehicles")
+    print("[14/14] Support tables - Informants, Personnel, Vehicles")
     build_informant_register(wb)
     build_personnel(wb)
     build_vehicles(wb)
@@ -1147,7 +1142,7 @@ def main():
     import os
     size = os.path.getsize(fname)
     print(f"\n{'=' * 60}")
-    print(f"FNID v2.0 COMPLETE: {fname}")
+    print(f"FNID v2.1 COMPLETE: {fname}")
     print(f"  Sheets: {len(wb.sheetnames)}")
     print(f"  Size:   {size/1024:.0f} KB")
     print(f"\n  Operational Tables:")
@@ -1158,7 +1153,7 @@ def main():
     for name in wb.sheetnames:
         if name.startswith("DASH_"):
             print(f"    - {name}")
-    print(f"\n  Lifecycle: INTELLIGENCE → OPERATION → SEIZURE → ARREST → FORENSICS → DPP → COURT")
+    print(f"\n  Lifecycle: INTELLIGENCE > OPERATION > SEIZURE > ARREST > FORENSICS > DPP > COURT")
 
 
 if __name__ == "__main__":
