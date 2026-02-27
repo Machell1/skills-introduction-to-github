@@ -66,7 +66,6 @@ def write_headers(ws, headers, widths=None):
         cell.border = THIN_BORDER
         if widths and c <= len(widths):
             ws.column_dimensions[get_column_letter(c)].width = widths[c-1]
-    ws.auto_filter.ref = f"A1:{get_column_letter(len(headers))}1"
     ws.freeze_panes = "A2"
 
 def add_table(ws, name, ref):
