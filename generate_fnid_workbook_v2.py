@@ -216,6 +216,27 @@ def build_lookups(wb):
             "Restraint Order Granted", "Civil Recovery Filed",
             "Forfeiture Order — Post Conviction",
             "Consent Order", "Dismissed"]),
+        24: ("CaseClassification", [
+            "Firearms", "Narcotics", "Firearms + Narcotics",
+            "Trafficking — Firearms", "Trafficking — Narcotics",
+            "Trafficking — Multi-Commodity", "POCA / Financial",
+            "Murder with Firearm", "Shooting with Intent"]),
+        25: ("CaseStatus", [
+            "Open — Active Investigation", "Open — Pending Forensics",
+            "Open — Pending Witness Statements", "Open — Surveillance",
+            "Open — Pending DPP Submission", "Referred to DPP",
+            "Closed — Convicted", "Closed — Acquitted",
+            "Closed — No Charge (Insufficient Evidence)",
+            "Closed — Withdrawn", "Cold Case — Under Review",
+            "Cold Case — Dormant", "Merged — See Linked Case"]),
+        26: ("InvestigationType", [
+            "Murder Investigation (Firearm)", "Illegal Possession of Firearm",
+            "Trafficking — Firearms", "Trafficking — Narcotics",
+            "Shooting with Intent", "Drug Dealing / Distribution",
+            "Import/Export — Narcotics", "Import/Export — Firearms",
+            "POCA / Financial Investigation", "Stockpiling (s.6)",
+            "Manufacture / Assembly", "Courier / Parcel Intercept",
+            "Guns-for-Drugs Pipeline", "Gang / Network Investigation"]),
     }
 
     for col, (name, values) in lists.items():
@@ -526,7 +547,130 @@ def build_chain_of_custody(wb):
 
 
 # ═══════════════════════════════════════════════════════════════
-#  TABLE 8: CASE FILE TRACKER (DPP Pipeline)
+#  TABLE 8: CASE FILE REGISTRY & INVESTIGATIONS
+#  Master register of every FNID case — from opening through
+#  full investigation lifecycle to resolution/closure
+# ═══════════════════════════════════════════════════════════════
+REGISTRY_BLUE = "2E75B6"
+
+def build_case_registry(wb):
+    ws = wb.create_sheet("tbl_CaseRegistry")
+    ws.sheet_properties.tabColor = REGISTRY_BLUE
+    headers = [
+        # Registration
+        "CaseRegID", "CaseFileNumber", "DateOpened", "CaseClassification",
+        "CasePriority", "CaseStatus",
+        # Investigation Type & Offence
+        "InvestigationType", "PrimaryOffence", "ActSection",
+        # Linked Records
+        "LinkedIntelIDs", "LinkedOpsIDs", "LinkedArrestIDs",
+        "LinkedFirearmSeizureIDs", "LinkedNarcoticSeizureIDs",
+        "LinkedDPPCaseFileID",
+        # Assignment
+        "InvestigatingOfficer", "InvestigatingOfficerRank",
+        "Supervisor", "DateAssigned",
+        # Location / Target
+        "Parish", "Division", "TargetPerson",
+        "TargetOrganisation", "GangAffiliation",
+        # Investigation Milestones (Yes/No checkboxes)
+        "SceneExamComplete", "WitnessStatementsTaken",
+        "ForensicEvidenceSubmitted", "ForensicResultsReceived",
+        "SurveillanceConducted", "PhoneRecordsObtained",
+        "FinancialRecordsObtained", "CCTVFootageObtained",
+        "DigitalForensicsComplete",
+        # Progress Tracking
+        "InvestigationProgress", "LastActivityDate",
+        "NextActionRequired", "NextActionDeadline",
+        # Supervisor Review
+        "LastReviewDate", "ReviewedBy", "ReviewNotes",
+        # Escalation
+        "Escalated", "EscalatedTo", "EscalationReason",
+        # Cold Case
+        "ColdCaseReviewDate", "ColdCaseReviewedBy",
+        # Resolution
+        "ResolutionDate", "ResolutionSummary",
+        # Tracking
+        "DaysOpen", "Notes", "CreatedBy", "CreatedDate"
+    ]
+    widths = [
+        12, 16, 12, 22,       # Registration
+        10, 28,                # Priority, Status
+        28, 30, 28,            # Investigation Type & Offence
+        14, 14, 14, 14, 14, 14,  # Linked Records
+        18, 14, 18, 12,        # Assignment
+        14, 16, 22, 22, 18,    # Location / Target
+        10, 10, 10, 10, 10, 10, 10, 10, 10,  # Milestones
+        12, 12, 28, 14,        # Progress Tracking
+        12, 16, 28,            # Supervisor Review
+        10, 18, 24,            # Escalation
+        12, 16,                # Cold Case
+        12, 30,                # Resolution
+        10, 28, 14, 12         # Tracking
+    ]
+    write_headers(ws, headers, widths)
+    data_rows(ws, len(headers))
+
+    for r in range(2, 7):
+        # Auto-generate CaseRegID
+        ws.cell(row=r, column=1, value=f'=IF(C{r}="","","CR-"&TEXT(ROW()-1,"0000"))')
+        # Auto-calc DaysOpen
+        ws.cell(row=r, column=headers.index("DaysOpen")+1,
+                value=f'=IF(C{r}="","",IF(ISBLANK(AR{r}),TODAY()-C{r},AR{r}-C{r}))')
+        # Auto-calc InvestigationProgress (9 milestone checkboxes)
+        prog_col = headers.index("InvestigationProgress") + 1
+        ws.cell(row=r, column=prog_col, value=(
+            f'=IF(C{r}="","",('
+            f'(Z{r}="Yes")+(AA{r}="Yes")+(AB{r}="Yes")+(AC{r}="Yes")+'
+            f'(AD{r}="Yes")+(AE{r}="Yes")+(AF{r}="Yes")+(AG{r}="Yes")+'
+            f'(AH{r}="Yes"))/9)'))
+        ws.cell(row=r, column=prog_col).number_format = '0%'
+
+    add_table(ws, "tbl_CaseRegistry", f"A1:{get_column_letter(len(headers))}6")
+
+    # Data validations — dropdowns
+    dv_list(ws, "D2:D1000", "=Lookups!$X$2:$X$10")    # CaseClassification
+    dv_list(ws, "E2:E1000", "=Lookups!$B$2:$B$5")      # Priority (reuse IntelPriority)
+    dv_list(ws, "F2:F1000", "=Lookups!$Y$2:$Y$14")     # CaseStatus
+    dv_list(ws, "G2:G1000", "=Lookups!$Z$2:$Z$15")     # InvestigationType
+    dv_list(ws, "T2:T1000", "=Lookups!$P$2:$P$15")     # Parish
+    # Milestone Yes/No validations
+    for col_letter in ["Z", "AA", "AB", "AC", "AD", "AE", "AF", "AG", "AH"]:
+        dv_list(ws, f"{col_letter}2:{col_letter}1000", "=Lookups!$Q$2:$Q$3")
+    dv_list(ws, "AL2:AL1000", "=Lookups!$Q$2:$Q$3")    # Escalated
+
+    # Conditional formatting — Case Status
+    ws.conditional_formatting.add("F2:F1000",
+        CellIsRule(operator="beginsWith", formula=['"Open"'], fill=AMBER_FILL))
+    ws.conditional_formatting.add("F2:F1000",
+        CellIsRule(operator="beginsWith", formula=['"Cold Case"'], fill=RED_FILL))
+    ws.conditional_formatting.add("F2:F1000",
+        CellIsRule(operator="beginsWith", formula=['"Closed — Convicted"'], fill=GREEN_FILL))
+    # Priority — Critical/High highlights
+    ws.conditional_formatting.add("E2:E1000",
+        CellIsRule(operator="equal", formula=['"Critical"'], fill=RED_FILL))
+    ws.conditional_formatting.add("E2:E1000",
+        CellIsRule(operator="equal", formula=['"High"'], fill=AMBER_FILL))
+    # Investigation Progress — low progress warning
+    prog_range = f"{get_column_letter(headers.index('InvestigationProgress')+1)}2:" \
+                 f"{get_column_letter(headers.index('InvestigationProgress')+1)}1000"
+    ws.conditional_formatting.add(prog_range,
+        CellIsRule(operator="lessThan", formula=['0.33'], fill=RED_FILL))
+    ws.conditional_formatting.add(prog_range,
+        CellIsRule(operator="between", formula=['0.33', '0.66'], fill=AMBER_FILL))
+    ws.conditional_formatting.add(prog_range,
+        CellIsRule(operator="greaterThanOrEqual", formula=['0.66'], fill=GREEN_FILL))
+    # Escalation flag
+    ws.conditional_formatting.add("AL2:AL1000",
+        CellIsRule(operator="equal", formula=['"Yes"'], fill=RED_FILL))
+    # Overdue next action
+    ws.conditional_formatting.add("AK2:AK1000",
+        FormulaRule(formula=['=AND(AK2<>"",AK2<TODAY())'], fill=RED_FILL))
+
+    return ws
+
+
+# ═══════════════════════════════════════════════════════════════
+#  TABLE 9: CASE FILE TRACKER (DPP Pipeline)
 #  From investigation through DPP ruling to court listing
 # ═══════════════════════════════════════════════════════════════
 def build_case_file_tracker(wb):
@@ -792,6 +936,18 @@ def build_command_dashboard(wb):
         ("Remanded", '=COUNTIF(tbl_Arrests[BailStatus],"Remanded*")'),
     ], OPS_RED)
 
+    r = section(r, "CASE REGISTRY & INVESTIGATIONS", REGISTRY_BLUE)
+    r = metrics(r, [
+        ("Total Cases", '=COUNTA(tbl_CaseRegistry[CaseRegID])-COUNTBLANK(tbl_CaseRegistry[CaseRegID])'),
+        ("Open — Active", '=COUNTIF(tbl_CaseRegistry[CaseStatus],"Open — Active*")'),
+        ("Open — Pending", '=COUNTIF(tbl_CaseRegistry[CaseStatus],"Open — Pending*")'),
+        ("Firearms Cases", '=COUNTIF(tbl_CaseRegistry[CaseClassification],"Firearms")+COUNTIF(tbl_CaseRegistry[CaseClassification],"Firearms*Narcotics")'),
+        ("Narcotics Cases", '=COUNTIF(tbl_CaseRegistry[CaseClassification],"Narcotics")+COUNTIF(tbl_CaseRegistry[CaseClassification],"Firearms*Narcotics")'),
+        ("Escalated", '=COUNTIF(tbl_CaseRegistry[Escalated],"Yes")'),
+        ("Cold Cases", '=COUNTIF(tbl_CaseRegistry[CaseStatus],"Cold Case*")'),
+        ("Avg Progress", '=IFERROR(AVERAGE(tbl_CaseRegistry[InvestigationProgress]),"—")'),
+    ], REGISTRY_BLUE)
+
     r = section(r, "DPP CASE PIPELINE", COURT_PURPLE)
     r = metrics(r, [
         ("Total Case Files", '=COUNTA(tbl_CaseFiles[CaseFileID])-COUNTBLANK(tbl_CaseFiles[CaseFileID])'),
@@ -874,10 +1030,13 @@ def build_home(wb):
         ("STAGE 4: ARRESTS", OPS_RED, [
             ("tbl_Arrests", "Arrest Register — 48hr rule, charge, caution, bail, court routing"),
         ]),
-        ("STAGE 5: EVIDENCE & FORENSICS", EVIDENCE_GREEN, [
+        ("STAGE 5: CASE REGISTRY & INVESTIGATIONS", REGISTRY_BLUE, [
+            ("tbl_CaseRegistry", "Master Case File Registry — every case, investigation milestones, progress tracking"),
+        ]),
+        ("STAGE 6: EVIDENCE & FORENSICS", EVIDENCE_GREEN, [
             ("tbl_ChainOfCustody", "Exhibit Chain of Custody — every handover logged"),
         ]),
-        ("STAGE 6: DPP & COURT", COURT_PURPLE, [
+        ("STAGE 7: DPP & COURT", COURT_PURPLE, [
             ("tbl_CaseFiles", "Case File Tracker — DPP submission pipeline, completeness scoring"),
             ("tbl_Witnesses", "Witness & Statement Register — testimony, protection, summons"),
         ]),
@@ -932,46 +1091,49 @@ def main():
     # Remove default sheet
     wb.remove(wb.active)
 
-    print("Building FNID v2.0 — Purpose-Driven Operational Workbook...")
+    print("Building FNID v2.1 — Purpose-Driven Operational Workbook...")
     print("=" * 60)
 
-    print("[1/13] HOME — Navigation hub")
+    print("[1/14] HOME — Navigation hub")
     build_home(wb)
 
-    print("[2/13] DASH_Command — Daily command dashboard")
+    print("[2/14] DASH_Command — Daily command dashboard")
     build_command_dashboard(wb)
 
-    print("[3/13] Lookups — Jamaica-specific reference data")
+    print("[3/14] Lookups — Jamaica-specific reference data")
     build_lookups(wb)
 
-    print("[4/13] tbl_IntelLog — Intelligence pipeline")
+    print("[4/14] tbl_IntelLog — Intelligence pipeline")
     build_intel_log(wb)
 
-    print("[5/13] tbl_Operations — Operation register")
+    print("[5/14] tbl_Operations — Operation register")
     build_operation_register(wb)
 
-    print("[6/13] tbl_FirearmSeizures — Firearm seizure log")
+    print("[6/14] tbl_FirearmSeizures — Firearm seizure log")
     build_firearm_seizures(wb)
 
-    print("[7/13] tbl_NarcoticSeizures — Narcotics seizure log")
+    print("[7/14] tbl_NarcoticSeizures — Narcotics seizure log")
     build_narcotics_seizures(wb)
 
-    print("[8/13] tbl_OtherSeizures — Ammunition, cash, electronics")
+    print("[8/14] tbl_OtherSeizures — Ammunition, cash, electronics")
     build_other_seizures(wb)
 
-    print("[9/13] tbl_Arrests — Arrest register (48hr compliance)")
+    print("[9/14] tbl_Arrests — Arrest register (48hr compliance)")
     build_arrest_register(wb)
 
-    print("[10/13] tbl_ChainOfCustody — Exhibit custody chain")
+    print("[10/14] tbl_CaseRegistry — Case file registry & investigations")
+    build_case_registry(wb)
+
+    print("[11/14] tbl_ChainOfCustody — Exhibit custody chain")
     build_chain_of_custody(wb)
 
-    print("[11/13] tbl_CaseFiles — DPP case file pipeline")
+    print("[12/14] tbl_CaseFiles — DPP case file pipeline")
     build_case_file_tracker(wb)
 
-    print("[12/13] tbl_Witnesses — Witness & statement register")
+    print("[13/14] tbl_Witnesses — Witness & statement register")
     build_witness_register(wb)
 
-    print("[13/13] Support tables — Informants, Personnel, Vehicles")
+    print("[14/14] Support tables — Informants, Personnel, Vehicles")
     build_informant_register(wb)
     build_personnel(wb)
     build_vehicles(wb)
