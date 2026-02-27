@@ -1,0 +1,257 @@
+{% extends "base.html" %}
+{% block title %}Case Registry & SOP Compliance{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h4>
+            <i class="bi bi-journal-check me-2" style="color: {{ portal.color }};"></i>
+            Case Registry & SOP Compliance
+        </h4>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0">
+                <li class="breadcrumb-item"><a href="{{ url_for('home') }}">Portal</a></li>
+                <li class="breadcrumb-item active">Registry</li>
+            </ol>
+        </nav>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('new_record', unit='registry', subtype='cases') }}" class="btn btn-primary btn-sm">
+            <i class="bi bi-plus-circle me-1"></i> Register New Case
+        </a>
+        <a href="{{ url_for('unit_dashboard', unit='registry') }}" class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-graph-up me-1"></i> Dashboard
+        </a>
+        <a href="{{ url_for('export_unit', unit='registry') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-download me-1"></i> Export
+        </a>
+    </div>
+</div>
+
+<!-- KPI Cards -->
+<div class="row g-3 mb-4">
+    <div class="col-lg-3 col-md-6">
+        <div class="kpi-card">
+            <div class="kpi-value">{{ data.cases|length if data.cases else 0 }}</div>
+            <div class="kpi-label">Total Cases</div>
+        </div>
+    </div>
+    <div class="col-lg-3 col-md-6">
+        <div class="kpi-card kpi-success">
+            <div class="kpi-value">
+                {{ data.cases|selectattr('sop_compliance', 'search', 'Fully|Substantially')|list|length if data.cases else 0 }}
+            </div>
+            <div class="kpi-label">SOP Compliant</div>
+        </div>
+    </div>
+    <div class="col-lg-3 col-md-6">
+        <div class="kpi-card kpi-info">
+            <div class="kpi-value">
+                {{ data.cases|selectattr('case_status', 'search', 'Referred to DPP')|list|length if data.cases else 0 }}
+            </div>
+            <div class="kpi-label">At DPP</div>
+        </div>
+    </div>
+    <div class="col-lg-3 col-md-6">
+        <div class="kpi-card kpi-danger">
+            <div class="kpi-value">
+                {{ data.cases|selectattr('sop_compliance', 'search', 'Non-Compliant')|list|length if data.cases else 0 }}
+            </div>
+            <div class="kpi-label">Non-Compliant</div>
+        </div>
+    </div>
+</div>
+
+<!-- Tabs for different registry views -->
+<ul class="nav nav-tabs" role="tablist">
+    <li class="nav-item">
+        <a class="nav-link active" data-bs-toggle="tab" href="#cases-tab">
+            <i class="bi bi-folder2-open me-1"></i> Case Files
+            <span class="badge bg-secondary ms-1">{{ data.cases|length if data.cases else 0 }}</span>
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#dpp-tab">
+            <i class="bi bi-file-earmark-text me-1"></i> DPP Pipeline
+            <span class="badge bg-secondary ms-1">{{ data.dpp|length if data.dpp else 0 }}</span>
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#sop-tab">
+            <i class="bi bi-check2-square me-1"></i> SOP Checklists
+            <span class="badge bg-secondary ms-1">{{ data.sop|length if data.sop else 0 }}</span>
+        </a>
+    </li>
+</ul>
+
+<div class="tab-content mt-3">
+    <!-- Cases Tab -->
+    <div class="tab-pane fade show active" id="cases-tab">
+        <div class="card">
+            <div class="card-body">
+                <table class="table table-hover fnid-table">
+                    <thead>
+                        <tr>
+                            <th>Case ID</th>
+                            <th>Date</th>
+                            <th>Classification</th>
+                            <th>OIC</th>
+                            <th>Suspect</th>
+                            <th>Parish</th>
+                            <th>Status</th>
+                            <th>SOP</th>
+                            <th>DPP</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for c in data.cases %}
+                        <tr>
+                            <td><strong>{{ c.case_id }}</strong></td>
+                            <td>{{ c.registration_date }}</td>
+                            <td>{{ c.classification }}</td>
+                            <td>{{ c.oic_name }}</td>
+                            <td>{{ c.suspect_name or '-' }}</td>
+                            <td>{{ c.parish }}</td>
+                            <td>
+                                {% if 'Open' in (c.case_status or '') %}
+                                <span class="badge bg-primary">{{ c.case_status }}</span>
+                                {% elif 'Closed' in (c.case_status or '') %}
+                                <span class="badge bg-secondary">{{ c.case_status }}</span>
+                                {% elif 'Referred' in (c.case_status or '') %}
+                                <span class="badge bg-info">{{ c.case_status }}</span>
+                                {% else %}
+                                <span class="badge bg-light text-dark">{{ c.case_status }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if 'Fully' in (c.sop_compliance or '') %}
+                                <span class="badge badge-compliant">Compliant</span>
+                                {% elif 'Non-Compliant' in (c.sop_compliance or '') %}
+                                <span class="badge badge-non-compliant">Non-Compliant</span>
+                                {% else %}
+                                <span class="badge badge-under-review">{{ c.sop_compliance or 'Pending' }}</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ c.dpp_status or '-' }}</td>
+                            <td>
+                                <a href="{{ url_for('edit_record', unit='registry', record_id=c.id, subtype='cases') }}"
+                                   class="btn btn-sm btn-outline-primary" title="Edit">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- DPP Pipeline Tab -->
+    <div class="tab-pane fade" id="dpp-tab">
+        <div class="d-flex justify-content-between mb-3">
+            <h6 class="text-muted">DPP File Submission Pipeline (per Prosecution Protocol 2012)</h6>
+            <a href="{{ url_for('new_record', unit='registry', subtype='dpp') }}" class="btn btn-primary btn-sm">
+                <i class="bi bi-plus-circle me-1"></i> New DPP Entry
+            </a>
+        </div>
+        <div class="card">
+            <div class="card-body">
+                <table class="table table-hover fnid-table">
+                    <thead>
+                        <tr>
+                            <th>Case ID</th>
+                            <th>Classification</th>
+                            <th>OIC</th>
+                            <th>Suspect</th>
+                            <th>DPP Status</th>
+                            <th>Evidential Test</th>
+                            <th>Public Interest</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for d in data.dpp %}
+                        <tr>
+                            <td><strong>{{ d.linked_case_id }}</strong></td>
+                            <td>{{ d.classification }}</td>
+                            <td>{{ d.oic_name }}</td>
+                            <td>{{ d.suspect_name or '-' }}</td>
+                            <td>{{ d.dpp_status }}</td>
+                            <td>
+                                {% if d.evidential_sufficiency == 'Yes' %}
+                                <span class="badge bg-success">Met</span>
+                                {% else %}
+                                <span class="badge bg-warning text-dark">Pending</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if d.public_interest_met == 'Yes' %}
+                                <span class="badge bg-success">Met</span>
+                                {% else %}
+                                <span class="badge bg-warning text-dark">Pending</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <a href="{{ url_for('edit_record', unit='registry', record_id=d.id, subtype='dpp') }}"
+                                   class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- SOP Checklists Tab -->
+    <div class="tab-pane fade" id="sop-tab">
+        <div class="d-flex justify-content-between mb-3">
+            <h6 class="text-muted">SOP Compliance Checklists (per JCF Book of Rules & DPP Protocols)</h6>
+            <a href="{{ url_for('new_record', unit='registry', subtype='sop') }}" class="btn btn-primary btn-sm">
+                <i class="bi bi-plus-circle me-1"></i> New SOP Checklist
+            </a>
+        </div>
+        <div class="card">
+            <div class="card-body">
+                <table class="table table-hover fnid-table">
+                    <thead>
+                        <tr>
+                            <th>Case ID</th>
+                            <th>OIC</th>
+                            <th>Date</th>
+                            <th>Overall Compliance</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for s in data.sop %}
+                        <tr>
+                            <td><strong>{{ s.linked_case_id }}</strong></td>
+                            <td>{{ s.oic_name }}</td>
+                            <td>{{ s.checklist_date }}</td>
+                            <td>
+                                {% if 'Fully' in (s.overall_compliance or '') %}
+                                <span class="badge badge-compliant">{{ s.overall_compliance }}</span>
+                                {% elif 'Non-Compliant' in (s.overall_compliance or '') %}
+                                <span class="badge badge-non-compliant">{{ s.overall_compliance }}</span>
+                                {% else %}
+                                <span class="badge badge-under-review">{{ s.overall_compliance }}</span>
+                                {% endif %}
+                            </td>
+                            <td><span class="badge" data-status="{{ s.record_status }}">{{ s.record_status }}</span></td>
+                            <td>
+                                <a href="{{ url_for('edit_record', unit='registry', record_id=s.id, subtype='sop') }}"
+                                   class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
