@@ -1,0 +1,6 @@
+# Runtime data (regenerated on app startup)
+data/fnid.db
+data/uploads/
+data/exports/
+__pycache__/
+*.pyc
