@@ -59,6 +59,8 @@ class OrderBlockConfig:
     entry_fraction: float = 0.50  # f: entry at OB_low + f*(OB_high - OB_low) (range: 0.30-0.70)
     entry_expiry_candles: int = 72  # M: cancel if not filled within M candles (range: 24-96)
     max_mss_candles: int = 30  # N: max candles after sweep to confirm MSS (range: 6-40)
+    ob_lookback: int = 20  # How many candles back to search for the OB (range: 10-50)
+    equal_level_atr_fraction: float = 0.1  # Equal highs/lows tolerance as fraction of ATR
 
 
 @dataclass
@@ -83,6 +85,9 @@ class TradeManagementConfig:
     breakeven_enabled: bool = True
     breakeven_trigger_r: float = 1.0  # Move to BE after +1R
     breakeven_offset_r: float = 0.1  # BE offset (entry + 0.1R)
+    trailing_stop_levels: list = field(default_factory=lambda: [
+        [1.0, 0.1], [1.5, 0.5], [2.0, 1.0],  # [trigger_r, stop_r]
+    ])
 
 
 @dataclass
@@ -109,6 +114,8 @@ class BiasFilterConfig:
 class ContinuationConfig:
     """Continuation template specific parameters."""
     fixed_r_multiple: float = 2.0  # Typically 1.8-3.0 for continuation
+    min_r_multiple: float = 1.2  # Minimum R for liquidity-based targets
+    max_r_multiple: float = 4.0  # Cap R for liquidity-based targets
 
 
 @dataclass
@@ -116,12 +123,19 @@ class ExecutionConfig:
     """Execution and monitoring parameters."""
     check_interval_seconds: int = 60  # How often to check for signals
     max_spread_points: float = 100.0  # Max acceptable spread in points
+    paper_spread_points: float = 30.0  # Simulated spread for paper mode
     volatility_filter_enabled: bool = False
     volatility_filter_atr_percentile: float = 95.0  # Skip trades when ATR > 95th percentile
     no_trade_minutes_before_news: int = 30
     log_level: str = "INFO"
     log_file: str = "smc_bot.log"
     paper_trading: bool = True  # Start in paper mode for safety
+    close_positions_on_shutdown: bool = False  # Close all positions on bot stop
+    trade_journal_path: str = "trade_journal.csv"  # CSV journal export path
+    reconnect_attempts: int = 3  # Number of reconnect attempts before exit
+    session_filter_enabled: bool = False
+    session_start_utc: int = 7  # Trading session start hour UTC (London open)
+    session_end_utc: int = 20  # Trading session end hour UTC (NY close)
 
 
 @dataclass
@@ -170,4 +184,39 @@ class BotConfig:
                         setattr(section_obj, k, v)
         if "active_templates" in d:
             cfg.active_templates = [TemplateType(t) for t in d["active_templates"]]
+        cfg.validate()
         return cfg
+
+    def validate(self):
+        """Validate config values are within sane bounds. Logs warnings and fixes critical issues."""
+        import logging
+        _log = logging.getLogger(__name__)
+        warnings = []
+
+        # Critical bounds — clamp to safe values
+        if self.displacement.atr_period < 1:
+            self.displacement.atr_period = 14
+            warnings.append("atr_period was < 1, reset to 14")
+        if self.risk.risk_per_trade_pct <= 0:
+            self.risk.risk_per_trade_pct = 0.35
+            warnings.append("risk_per_trade_pct was <= 0, reset to 0.35")
+        if self.risk.risk_per_trade_pct > 5.0:
+            self.risk.risk_per_trade_pct = 5.0
+            warnings.append("risk_per_trade_pct was > 5%, clamped to 5%")
+        if self.risk.max_positions < 1:
+            self.risk.max_positions = 1
+            warnings.append("max_positions was < 1, reset to 1")
+        if self.swing.swing_length < 1:
+            self.swing.swing_length = 2
+            warnings.append("swing_length was < 1, reset to 2")
+
+        # Advisory warnings
+        if self.displacement.body_atr_multiplier < 0.1:
+            warnings.append(f"body_atr_multiplier={self.displacement.body_atr_multiplier} is very low, may produce false signals")
+        if self.risk.daily_loss_limit_pct > 10.0:
+            warnings.append(f"daily_loss_limit_pct={self.risk.daily_loss_limit_pct}% is very high")
+        if self.target.fixed_r_multiple < 1.0:
+            warnings.append(f"fixed_r_multiple={self.target.fixed_r_multiple} is < 1R (negative expectancy)")
+
+        for w in warnings:
+            _log.warning("Config validation: %s", w)

@@ -213,6 +213,7 @@ class SMCEngine:
         swings: list[SwingPoint],
         daily_levels: DailyLevels,
         current_index: int,
+        current_atr: float = 0.0,
     ) -> list[LiquidityLevel]:
         """
         Build a list of liquidity levels from:
@@ -265,9 +266,11 @@ class SMCEngine:
             ))
 
         # Detect equal highs (buy-side liquidity)
+        # Tolerance scales with ATR (configurable), falls back to $1 for gold
+        eq_tol = current_atr * self.config.order_block.equal_level_atr_fraction if current_atr > 0 else 1.0
         for i in range(len(confirmed_highs)):
             for j in range(i + 1, len(confirmed_highs)):
-                if abs(confirmed_highs[i].price - confirmed_highs[j].price) < 1.0:  # ~$1 tolerance for gold
+                if abs(confirmed_highs[i].price - confirmed_highs[j].price) < eq_tol:
                     avg_price = (confirmed_highs[i].price + confirmed_highs[j].price) / 2.0
                     levels.append(LiquidityLevel(
                         type=LiquidityType.BUY_SIDE,
@@ -279,7 +282,7 @@ class SMCEngine:
         # Detect equal lows (sell-side liquidity)
         for i in range(len(confirmed_lows)):
             for j in range(i + 1, len(confirmed_lows)):
-                if abs(confirmed_lows[i].price - confirmed_lows[j].price) < 1.0:
+                if abs(confirmed_lows[i].price - confirmed_lows[j].price) < eq_tol:
                     avg_price = (confirmed_lows[i].price + confirmed_lows[j].price) / 2.0
                     levels.append(LiquidityLevel(
                         type=LiquidityType.SELL_SIDE,
@@ -386,10 +389,11 @@ class SMCEngine:
         is_displacement = body_size >= k * atr
 
         if sweep.direction == "long":
-            # Bullish MSS: close above sweep candle high or internal swing high
+            # Bullish MSS: close above the nearest structural high
+            # Use the higher of sweep candle high and last swing high
             break_level = sweep.sweep_candle.high
             last_swing_high = self.get_last_swing_high(swings, candle_index)
-            if last_swing_high and last_swing_high.price < break_level:
+            if last_swing_high and last_swing_high.price > break_level:
                 break_level = last_swing_high.price
 
             close_above = candle.close > break_level
@@ -409,10 +413,11 @@ class SMCEngine:
                 )
 
         elif sweep.direction == "short":
-            # Bearish MSS: close below sweep candle low or internal swing low
+            # Bearish MSS: close below the nearest structural low
+            # Use the lower of sweep candle low and last swing low
             break_level = sweep.sweep_candle.low
             last_swing_low = self.get_last_swing_low(swings, candle_index)
-            if last_swing_low and last_swing_low.price > break_level:
+            if last_swing_low and last_swing_low.price < break_level:
                 break_level = last_swing_low.price
 
             close_below = candle.close < break_level
@@ -517,7 +522,7 @@ class SMCEngine:
             return None
 
         f = self.config.order_block.entry_fraction
-        ob_lookback = 20  # Search up to 20 candles back for OB
+        ob_lookback = self.config.order_block.ob_lookback
 
         if direction == "bullish":
             # Search backwards for the last bearish candle before displacement

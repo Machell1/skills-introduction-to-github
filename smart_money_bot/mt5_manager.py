@@ -521,6 +521,13 @@ class MT5Manager:
         positions = mt5.positions_get(ticket=ticket)
         return positions is not None and len(positions) > 0
 
+    def get_position_open_price(self, ticket: int) -> Optional[float]:
+        """Get the actual fill/open price for a position."""
+        positions = mt5.positions_get(ticket=ticket)
+        if positions and len(positions) > 0:
+            return positions[0].price_open
+        return None
+
     def is_order_pending(self, ticket: int) -> bool:
         """Check if a specific pending order is still active."""
         orders = mt5.orders_get(ticket=ticket)

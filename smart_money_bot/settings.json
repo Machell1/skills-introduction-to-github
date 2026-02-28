@@ -19,7 +19,9 @@
   "order_block": {
     "entry_fraction": 0.50,
     "entry_expiry_candles": 72,
-    "max_mss_candles": 30
+    "max_mss_candles": 30,
+    "ob_lookback": 20,
+    "equal_level_atr_fraction": 0.1
   },
   "stop": {
     "atr_buffer_multiplier": 0.25
@@ -34,7 +36,8 @@
     "max_hold_candles": 192,
     "breakeven_enabled": true,
     "breakeven_trigger_r": 1.0,
-    "breakeven_offset_r": 0.1
+    "breakeven_offset_r": 0.1,
+    "trailing_stop_levels": [[1.0, 0.1], [1.5, 0.5], [2.0, 1.0]]
   },
   "risk": {
     "risk_per_trade_pct": 0.50,
@@ -51,16 +54,25 @@
     "require_alignment": false
   },
   "continuation": {
-    "fixed_r_multiple": 2.0
+    "fixed_r_multiple": 2.0,
+    "min_r_multiple": 1.2,
+    "max_r_multiple": 4.0
   },
   "execution": {
     "check_interval_seconds": 60,
     "max_spread_points": 100.0,
+    "paper_spread_points": 30.0,
     "volatility_filter_enabled": false,
     "volatility_filter_atr_percentile": 95.0,
     "log_level": "INFO",
     "log_file": "smc_bot.log",
-    "paper_trading": true
+    "paper_trading": true,
+    "close_positions_on_shutdown": false,
+    "trade_journal_path": "trade_journal.csv",
+    "reconnect_attempts": 3,
+    "session_filter_enabled": false,
+    "session_start_utc": 7,
+    "session_end_utc": 20
   },
   "active_templates": ["reversal", "continuation"]
 }

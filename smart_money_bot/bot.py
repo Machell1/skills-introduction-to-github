@@ -120,8 +120,16 @@ class SMCBot:
         logger.info("Stopping bot...")
         self._running = False
 
+        # Optionally close active positions
+        if self.config.execution.close_positions_on_shutdown:
+            logger.info("Closing all active positions on shutdown...")
+            self.trade_mgr.close_all_positions()
+
         # Cancel pending orders
         self.trade_mgr.cancel_all_pending()
+
+        # Export trade journal
+        self._export_journal()
 
         # Log final status
         logger.info(self.risk.get_status_report())
@@ -153,9 +161,19 @@ class SMCBot:
                 logger.exception("Error in main loop: %s", e)
                 # Continue running unless it's a connection error
                 if not self.config.execution.paper_trading and not self.mt5.is_connected():
-                    logger.error("MT5 connection lost. Attempting reconnect...")
-                    if not self.mt5.connect():
-                        logger.error("Reconnect failed. Stopping bot.")
+                    logger.error("MT5 connection lost. Attempting reconnect with backoff...")
+                    reconnected = False
+                    max_attempts = self.config.execution.reconnect_attempts
+                    for attempt in range(1, max_attempts + 1):
+                        delay = 5 * (3 ** (attempt - 1))  # 5s, 15s, 45s
+                        logger.info("Reconnect attempt %d/%d in %ds...", attempt, max_attempts, delay)
+                        time.sleep(delay)
+                        if self.mt5.connect():
+                            logger.info("Reconnected on attempt %d", attempt)
+                            reconnected = True
+                            break
+                    if not reconnected:
+                        logger.error("All reconnect attempts failed. Stopping bot.")
                         self.stop()
                         return
 
@@ -230,7 +248,24 @@ class SMCBot:
         # ── 4. Update existing trades ─────────────────────────────
         self.trade_mgr.update(candles, current_index)
 
+        # Periodic position reconciliation (every 8 candles)
+        if self._candle_count % 8 == 0 and not self.config.execution.paper_trading:
+            self.trade_mgr.reconcile_positions()
+
         # ── 5. Run risk pre-checks ────────────────────────────────
+        # Session/kill zone filter
+        if self.config.execution.session_filter_enabled:
+            current_hour = datetime.utcnow().hour
+            start = self.config.execution.session_start_utc
+            end = self.config.execution.session_end_utc
+            if start <= end:
+                in_session = start <= current_hour < end
+            else:  # Wraps midnight
+                in_session = current_hour >= start or current_hour < end
+            if not in_session:
+                logger.info("Outside trading session (%02d:00-%02d:00 UTC) — skipping signals", start, end)
+                return
+
         open_count = self.trade_mgr.total_open_count
         spread = self.mt5.current_spread_points if not self.config.execution.paper_trading else 0.0
         atr_history = [v for v in atr_values if v > 0]
@@ -280,8 +315,22 @@ class SMCBot:
                         "[%s] Generated %d new setup(s)", ltf_gen.timeframe, len(ltf_setups),
                     )
 
-        # ── 7. Place orders for new setups ────────────────────────
+        # ── 7. Deduplicate and place orders for new setups ────────
         for setup in new_setups:
+            # Dedup: skip if existing pending/active trade has entry within 1 ATR
+            is_dup = False
+            for existing in self.trade_mgr.pending_setups + list(self.trade_mgr.active_trades):
+                if (existing.direction == setup.direction
+                        and abs(existing.entry_price - setup.entry_price) < current_atr):
+                    is_dup = True
+                    logger.info(
+                        "Duplicate setup skipped: %s %s @ %.2f (existing @ %.2f within 1 ATR)",
+                        setup.template, setup.direction, setup.entry_price, existing.entry_price,
+                    )
+                    break
+            if is_dup:
+                continue
+
             # Re-check capacity (may have changed with previous order)
             if self.trade_mgr.total_open_count >= self.config.risk.max_positions:
                 logger.info(
@@ -371,6 +420,37 @@ class SMCBot:
             current_day_low=min(c.low for c in curr_candles),
             date=datetime.combine(curr_date, datetime.min.time()),
         )
+
+    # ── Journal Export ────────────────────────────────────────────
+
+    def _export_journal(self):
+        """Export closed trades to CSV."""
+        import csv
+        closed = self.trade_mgr.closed_trades
+        if not closed:
+            return
+
+        path = self.config.execution.trade_journal_path
+        try:
+            with open(path, "w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                    "ticket", "template", "direction", "entry_price", "fill_price",
+                    "exit_price", "stop_price", "target_price", "lot_size",
+                    "r_multiple", "realized_r", "pnl", "result",
+                    "signal_time", "fill_time", "exit_time",
+                ])
+                for t in closed:
+                    writer.writerow([
+                        t.ticket, t.template, t.direction, t.entry_price, t.fill_price,
+                        t.exit_price, t.stop_price, t.target_price, t.lot_size,
+                        f"{t.r_multiple:.2f}", f"{t.realized_r:.2f}", f"{t.pnl:.2f}",
+                        t.result.value if t.result else "unknown",
+                        t.signal_time, t.fill_time, t.exit_time,
+                    ])
+            logger.info("Trade journal exported to %s (%d trades)", path, len(closed))
+        except Exception as e:
+            logger.error("Failed to export trade journal: %s", e)
 
     # ── Reporting ─────────────────────────────────────────────────
 

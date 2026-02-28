@@ -10,6 +10,7 @@ Handles:
 """
 
 import logging
+from collections import deque
 from datetime import datetime
 from typing import Optional
 
@@ -32,7 +33,7 @@ class TradeManager:
         # Active tracking
         self.pending_setups: list[TradeSetup] = []  # Waiting for limit fill
         self.active_trades: list[TradeSetup] = []   # Open positions
-        self.closed_trades: list[TradeSetup] = []   # Completed trades
+        self.closed_trades: deque[TradeSetup] = deque(maxlen=1000)  # Completed trades (capped)
 
         # Paper trading state
         self._paper_mode = config.execution.paper_trading
@@ -183,13 +184,15 @@ class TradeManager:
 
             if self._paper_mode:
                 # Paper mode: check if candle range touched the limit price
+                # Apply simulated spread slippage for realistic fills
+                half_spread = self.mt5.symbol_point * self.config.execution.paper_spread_points / 2.0
                 if setup.direction == "long" and candle.low <= setup.entry_price:
-                    setup.fill_price = setup.entry_price
+                    setup.fill_price = setup.entry_price + half_spread  # Filled at ask (entry + spread)
                     setup.fill_time = candle.time
                     setup.state = SetupState.ACTIVE
                     filled.append(setup)
                 elif setup.direction == "short" and candle.high >= setup.entry_price:
-                    setup.fill_price = setup.entry_price
+                    setup.fill_price = setup.entry_price - half_spread  # Filled at bid (entry - spread)
                     setup.fill_time = candle.time
                     setup.state = SetupState.ACTIVE
                     filled.append(setup)
@@ -198,7 +201,9 @@ class TradeManager:
                 if not self.mt5.is_order_pending(setup.ticket):
                     # Order is gone — check if it became a position (filled)
                     if self.mt5.is_position_open(setup.ticket):
-                        setup.fill_price = setup.entry_price  # Approximate
+                        # Get actual fill price from MT5 position
+                        actual_price = self.mt5.get_position_open_price(setup.ticket)
+                        setup.fill_price = actual_price if actual_price else setup.entry_price
                         setup.fill_time = candle.time
                         setup.state = SetupState.ACTIVE
                         filled.append(setup)
@@ -253,25 +258,31 @@ class TradeManager:
     def _check_paper_exit(self, setup: TradeSetup, candle: Candle, current_index: int) -> bool:
         """Check exit conditions in paper mode using OHLC candle data."""
 
-        # ── Break-even logic ──────────────────────────────────────
-        if self.config.trade_mgmt.breakeven_enabled and not setup.breakeven_moved:
-            be_trigger = self.config.trade_mgmt.breakeven_trigger_r
-            be_offset = self.config.trade_mgmt.breakeven_offset_r
+        # ── Trailing stop logic (progressive R levels) ─────────────
+        if self.config.trade_mgmt.breakeven_enabled and setup.risk_distance > 0:
+            trailing_levels = self.config.trade_mgmt.trailing_stop_levels
 
             if setup.direction == "long":
                 unrealized_r = (candle.high - setup.fill_price) / setup.risk_distance
-                if unrealized_r >= be_trigger:
-                    new_sl = setup.fill_price + be_offset * setup.risk_distance
-                    setup.stop_price = new_sl
-                    setup.breakeven_moved = True
-                    logger.info("[PAPER] Break-even moved for ticket %d: SL → %.2f", setup.ticket, new_sl)
+                # Check each trailing level from highest to lowest trigger
+                for trigger_r, stop_r in sorted(trailing_levels, key=lambda x: x[0], reverse=True):
+                    if unrealized_r >= trigger_r:
+                        new_sl = setup.fill_price + stop_r * setup.risk_distance
+                        if new_sl > setup.stop_price:
+                            setup.stop_price = new_sl
+                            setup.breakeven_moved = True
+                            logger.info("[PAPER] Trailing stop moved for ticket %d at %.1fR: SL → %.2f", setup.ticket, trigger_r, new_sl)
+                        break
             else:
                 unrealized_r = (setup.fill_price - candle.low) / setup.risk_distance
-                if unrealized_r >= be_trigger:
-                    new_sl = setup.fill_price - be_offset * setup.risk_distance
-                    setup.stop_price = new_sl
-                    setup.breakeven_moved = True
-                    logger.info("[PAPER] Break-even moved for ticket %d: SL → %.2f", setup.ticket, new_sl)
+                for trigger_r, stop_r in sorted(trailing_levels, key=lambda x: x[0], reverse=True):
+                    if unrealized_r >= trigger_r:
+                        new_sl = setup.fill_price - stop_r * setup.risk_distance
+                        if new_sl < setup.stop_price:
+                            setup.stop_price = new_sl
+                            setup.breakeven_moved = True
+                            logger.info("[PAPER] Trailing stop moved for ticket %d at %.1fR: SL → %.2f", setup.ticket, trigger_r, new_sl)
+                        break
 
         # ── Time stop ────────────────────────────────────────────
         if current_index >= setup.max_hold_index:
@@ -349,28 +360,40 @@ class TradeManager:
     def _check_live_exit(self, setup: TradeSetup, candle: Candle, current_index: int) -> bool:
         """Check exit conditions for live positions."""
 
-        # Break-even logic (live)
-        if self.config.trade_mgmt.breakeven_enabled and not setup.breakeven_moved:
-            be_trigger = self.config.trade_mgmt.breakeven_trigger_r
-            be_offset = self.config.trade_mgmt.breakeven_offset_r
-
+        # Trailing stop logic (live)
+        if self.config.trade_mgmt.breakeven_enabled and setup.risk_distance > 0:
+            trailing_levels = self.config.trade_mgmt.trailing_stop_levels
             bid, ask = self.mt5.get_current_price()
+
             if setup.direction == "long":
-                unrealized_r = (bid - setup.fill_price) / setup.risk_distance if setup.risk_distance > 0 else 0
-                if unrealized_r >= be_trigger:
-                    new_sl = setup.fill_price + be_offset * setup.risk_distance
-                    if self.mt5.modify_position_sl(setup.ticket, new_sl):
-                        setup.stop_price = new_sl
-                        setup.breakeven_moved = True
-                        logger.info("Break-even moved for ticket %d: SL → %.2f", setup.ticket, new_sl)
+                unrealized_r = (bid - setup.fill_price) / setup.risk_distance
+                for trigger_r, stop_r in sorted(trailing_levels, key=lambda x: x[0], reverse=True):
+                    if unrealized_r >= trigger_r:
+                        new_sl = setup.fill_price + stop_r * setup.risk_distance
+                        if new_sl > setup.stop_price:
+                            # Cooldown: only attempt SL modify every 5 ticks
+                            last_attempt = getattr(setup, '_last_sl_tick', 0)
+                            if current_index - last_attempt >= 5 or last_attempt == 0:
+                                if self.mt5.modify_position_sl(setup.ticket, new_sl):
+                                    setup.stop_price = new_sl
+                                    setup.breakeven_moved = True
+                                    logger.info("Trailing stop moved for ticket %d at %.1fR: SL → %.2f", setup.ticket, trigger_r, new_sl)
+                                setup._last_sl_tick = current_index
+                        break
             else:
-                unrealized_r = (setup.fill_price - ask) / setup.risk_distance if setup.risk_distance > 0 else 0
-                if unrealized_r >= be_trigger:
-                    new_sl = setup.fill_price - be_offset * setup.risk_distance
-                    if self.mt5.modify_position_sl(setup.ticket, new_sl):
-                        setup.stop_price = new_sl
-                        setup.breakeven_moved = True
-                        logger.info("Break-even moved for ticket %d: SL → %.2f", setup.ticket, new_sl)
+                unrealized_r = (setup.fill_price - ask) / setup.risk_distance
+                for trigger_r, stop_r in sorted(trailing_levels, key=lambda x: x[0], reverse=True):
+                    if unrealized_r >= trigger_r:
+                        new_sl = setup.fill_price - stop_r * setup.risk_distance
+                        if new_sl < setup.stop_price:
+                            last_attempt = getattr(setup, '_last_sl_tick', 0)
+                            if current_index - last_attempt >= 5 or last_attempt == 0:
+                                if self.mt5.modify_position_sl(setup.ticket, new_sl):
+                                    setup.stop_price = new_sl
+                                    setup.breakeven_moved = True
+                                    logger.info("Trailing stop moved for ticket %d at %.1fR: SL → %.2f", setup.ticket, trigger_r, new_sl)
+                                setup._last_sl_tick = current_index
+                        break
 
         # Time stop (live)
         if current_index >= setup.max_hold_index:
@@ -436,11 +459,23 @@ class TradeManager:
             setup.ticket, setup.fill_price, setup.exit_price, setup.realized_r, setup.pnl,
         )
 
-    def _get_paper_equity(self) -> float:
-        """Get simulated equity for paper trading."""
+    def _get_paper_equity(self, current_candle: Optional[Candle] = None) -> float:
+        """Get simulated equity for paper trading, including floating PnL."""
         base_equity = 10000.0  # Default paper equity
-        total_pnl = sum(t.pnl for t in self.closed_trades)
-        return base_equity + total_pnl
+        closed_pnl = sum(t.pnl for t in self.closed_trades)
+
+        # Include unrealized PnL from active positions
+        floating_pnl = 0.0
+        if current_candle:
+            for t in self.active_trades:
+                if t.fill_price and t.lot_size:
+                    contract = self.mt5.symbol_contract_size
+                    if t.direction == "long":
+                        floating_pnl += (current_candle.close - t.fill_price) * t.lot_size * contract
+                    else:
+                        floating_pnl += (t.fill_price - current_candle.close) * t.lot_size * contract
+
+        return base_equity + closed_pnl + floating_pnl
 
     # ── Cleanup ───────────────────────────────────────────────────
 
@@ -462,6 +497,26 @@ class TradeManager:
             setup.result = TradeResult.TIME_STOP
             logger.info("Force-closed position: ticket=%d", setup.ticket)
         self.active_trades.clear()
+
+    def reconcile_positions(self):
+        """Reconcile internal state with actual MT5 positions (live mode only)."""
+        if self._paper_mode:
+            return
+
+        orphaned = []
+        for setup in self.active_trades:
+            if not self.mt5.is_position_open(setup.ticket):
+                orphaned.append(setup)
+                logger.warning(
+                    "RECONCILE: Position ticket %d no longer open in MT5 — removing from tracking",
+                    setup.ticket,
+                )
+
+        for setup in orphaned:
+            self.active_trades.remove(setup)
+            setup.state = SetupState.CLOSED
+            setup.result = TradeResult.TIME_STOP  # Best-effort classification
+            self.closed_trades.append(setup)
 
     @property
     def has_open_position(self) -> bool:
