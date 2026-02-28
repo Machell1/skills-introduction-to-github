@@ -50,17 +50,19 @@ class SwingConfig:
 class DisplacementConfig:
     """Displacement candle detection parameters."""
     atr_period: int = 14
-    body_atr_multiplier: float = 0.3  # k: body >= k * ATR (range: 0.3-2.0)
+    body_atr_multiplier: float = 0.5  # k: body >= k * ATR (range: 0.3-2.0)
 
 
 @dataclass
 class OrderBlockConfig:
     """Order block entry parameters."""
     entry_fraction: float = 0.50  # f: entry at OB_low + f*(OB_high - OB_low) (range: 0.30-0.70)
-    entry_expiry_candles: int = 72  # M: cancel if not filled within M candles (range: 24-96)
-    max_mss_candles: int = 30  # N: max candles after sweep to confirm MSS (range: 6-40)
+    entry_expiry_candles: int = 36  # M: cancel if not filled within M candles (range: 24-96)
+    max_mss_candles: int = 15  # N: max candles after sweep to confirm MSS (range: 6-40)
     ob_lookback: int = 20  # How many candles back to search for the OB (range: 10-50)
     equal_level_atr_fraction: float = 0.1  # Equal highs/lows tolerance as fraction of ATR
+    require_fvg_confluence: bool = True  # Require FVG overlap with OB for valid setup
+    min_ob_body_range_ratio: float = 0.3  # Min body/range ratio for OB candle quality
 
 
 @dataclass
@@ -72,34 +74,41 @@ class StopConfig:
 @dataclass
 class TargetConfig:
     """Take profit / target parameters."""
-    mode: TargetMode = TargetMode.FIXED_R
-    fixed_r_multiple: float = 1.8  # R_target for fixed-R mode (range: 1.3-3.0)
-    liquidity_min_r: float = 1.0  # Minimum acceptable R for liquidity target (range: 0.8-1.8)
+    mode: TargetMode = TargetMode.LIQUIDITY
+    fixed_r_multiple: float = 2.5  # R_target for fixed-R mode / fallback (range: 1.3-3.0)
+    liquidity_min_r: float = 1.5  # Minimum acceptable R for liquidity target (range: 0.8-1.8)
     liquidity_max_r: float = 5.0  # Cap R for liquidity target (range: 3.0-6.0)
 
 
 @dataclass
 class TradeManagementConfig:
     """Trade management parameters."""
-    max_hold_candles: int = 192  # H: time stop in candles (range: 72-288)
+    max_hold_candles: int = 72  # H: time stop in candles (range: 48-288)
     breakeven_enabled: bool = True
     breakeven_trigger_r: float = 1.0  # Move to BE after +1R
     breakeven_offset_r: float = 0.1  # BE offset (entry + 0.1R)
     trailing_stop_levels: list = field(default_factory=lambda: [
-        [1.0, 0.1], [1.5, 0.5], [2.0, 1.0],  # [trigger_r, stop_r]
+        [1.0, 0.1], [1.5, 0.5], [2.0, 1.0],
+        [2.5, 1.5], [3.0, 2.0], [4.0, 3.0],  # Extended levels for runners
     ])
+    partial_close_enabled: bool = True  # Close fraction at first target
+    partial_close_fraction: float = 0.5  # Close this fraction at trigger
+    partial_close_r_trigger: float = 1.5  # Trigger partial close at this R
+    urgency_candles: int = 48  # Close trade if < 0.5R profit after this many candles
 
 
 @dataclass
 class RiskConfig:
     """Risk management and position sizing parameters."""
-    risk_per_trade_pct: float = 0.50  # r: fraction of equity risked per trade (range: 0.10-1.0%)
-    max_positions: int = 5  # Max concurrent positions
-    daily_loss_limit_pct: float = 3.0  # L%: stop trading after this daily loss
-    weekly_drawdown_brake_pct: float = 5.0  # Reduce risk by half after this rolling drawdown
+    risk_per_trade_pct: float = 0.35  # r: fraction of equity risked per trade (range: 0.10-1.0%)
+    max_positions: int = 3  # Max concurrent positions
+    daily_loss_limit_pct: float = 1.5  # L%: stop trading after this daily loss
+    weekly_drawdown_brake_pct: float = 3.0  # Reduce risk by half after this rolling drawdown
     rolling_trade_window: int = 10  # Number of trades for rolling drawdown check
     risk_reduction_factor: float = 0.5  # Multiply risk by this when drawdown brake triggers
-    max_total_open_risk_pct: float = 3.0  # Cap on total open risk across all positions
+    max_total_open_risk_pct: float = 1.5  # Cap on total open risk across all positions
+    max_drawdown_halt_pct: float = 4.5  # HARD HALT: stop all trading at this drawdown from peak
+    hard_drawdown_resume_pct: float = 3.0  # Resume trading when drawdown recovers to this level
 
 
 @dataclass
@@ -107,7 +116,7 @@ class BiasFilterConfig:
     """Higher-timeframe bias filter."""
     enabled: bool = True
     ema_period: int = 20  # Daily EMA period for directional bias
-    require_alignment: bool = False  # Allow counter-bias reversals at turning points
+    require_alignment: bool = True  # Require bias alignment for reversals (higher win rate)
 
 
 @dataclass
@@ -122,10 +131,10 @@ class ContinuationConfig:
 class ExecutionConfig:
     """Execution and monitoring parameters."""
     check_interval_seconds: int = 60  # How often to check for signals
-    max_spread_points: float = 100.0  # Max acceptable spread in points
+    max_spread_points: float = 50.0  # Max acceptable spread in points
     paper_spread_points: float = 30.0  # Simulated spread for paper mode
-    volatility_filter_enabled: bool = False
-    volatility_filter_atr_percentile: float = 95.0  # Skip trades when ATR > 95th percentile
+    volatility_filter_enabled: bool = True
+    volatility_filter_atr_percentile: float = 90.0  # Skip trades when ATR > 90th percentile
     no_trade_minutes_before_news: int = 30
     log_level: str = "INFO"
     log_file: str = "smc_bot.log"
@@ -133,7 +142,7 @@ class ExecutionConfig:
     close_positions_on_shutdown: bool = False  # Close all positions on bot stop
     trade_journal_path: str = "trade_journal.csv"  # CSV journal export path
     reconnect_attempts: int = 3  # Number of reconnect attempts before exit
-    session_filter_enabled: bool = False
+    session_filter_enabled: bool = True
     session_start_utc: int = 7  # Trading session start hour UTC (London open)
     session_end_utc: int = 20  # Trading session end hour UTC (NY close)
 

@@ -221,6 +221,9 @@ class TradeSetup:
 
     # Management
     breakeven_moved: bool = False
+    partial_closed: bool = False  # True after partial close at first target
+    partial_close_price: float = 0.0  # Price at which partial close executed
+    original_lot_size: float = 0.0  # Lot size before partial close
 
     # Result
     exit_price: float = 0.0

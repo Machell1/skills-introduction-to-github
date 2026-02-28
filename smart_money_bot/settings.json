@@ -14,63 +14,71 @@
   },
   "displacement": {
     "atr_period": 14,
-    "body_atr_multiplier": 0.3
+    "body_atr_multiplier": 0.5
   },
   "order_block": {
     "entry_fraction": 0.50,
-    "entry_expiry_candles": 72,
-    "max_mss_candles": 30,
+    "entry_expiry_candles": 36,
+    "max_mss_candles": 15,
     "ob_lookback": 20,
-    "equal_level_atr_fraction": 0.1
+    "equal_level_atr_fraction": 0.1,
+    "require_fvg_confluence": true,
+    "min_ob_body_range_ratio": 0.3
   },
   "stop": {
     "atr_buffer_multiplier": 0.25
   },
   "target": {
-    "mode": "fixed_r",
-    "fixed_r_multiple": 1.8,
-    "liquidity_min_r": 1.0,
+    "mode": "liquidity",
+    "fixed_r_multiple": 2.5,
+    "liquidity_min_r": 1.5,
     "liquidity_max_r": 5.0
   },
   "trade_mgmt": {
-    "max_hold_candles": 192,
+    "max_hold_candles": 72,
     "breakeven_enabled": true,
     "breakeven_trigger_r": 1.0,
     "breakeven_offset_r": 0.1,
-    "trailing_stop_levels": [[1.0, 0.1], [1.5, 0.5], [2.0, 1.0]]
+    "trailing_stop_levels": [[1.0, 0.1], [1.5, 0.5], [2.0, 1.0], [2.5, 1.5], [3.0, 2.0], [4.0, 3.0]],
+    "partial_close_enabled": true,
+    "partial_close_fraction": 0.5,
+    "partial_close_r_trigger": 1.5,
+    "urgency_candles": 48
   },
   "risk": {
-    "risk_per_trade_pct": 0.50,
-    "max_positions": 5,
-    "daily_loss_limit_pct": 3.0,
-    "weekly_drawdown_brake_pct": 5.0,
+    "risk_per_trade_pct": 0.35,
+    "max_positions": 3,
+    "daily_loss_limit_pct": 1.5,
+    "weekly_drawdown_brake_pct": 3.0,
     "rolling_trade_window": 10,
     "risk_reduction_factor": 0.5,
-    "max_total_open_risk_pct": 3.0
+    "max_total_open_risk_pct": 1.5,
+    "max_drawdown_halt_pct": 4.5,
+    "hard_drawdown_resume_pct": 3.0
   },
   "bias_filter": {
     "enabled": true,
     "ema_period": 20,
-    "require_alignment": false
+    "require_alignment": true
   },
   "continuation": {
-    "fixed_r_multiple": 2.0,
+    "fixed_r_multiple": 2.5,
     "min_r_multiple": 1.2,
     "max_r_multiple": 4.0
   },
   "execution": {
     "check_interval_seconds": 60,
-    "max_spread_points": 100.0,
+    "max_spread_points": 50.0,
     "paper_spread_points": 30.0,
-    "volatility_filter_enabled": false,
-    "volatility_filter_atr_percentile": 95.0,
+    "volatility_filter_enabled": true,
+    "volatility_filter_atr_percentile": 90.0,
     "log_level": "INFO",
     "log_file": "smc_bot.log",
     "paper_trading": true,
     "close_positions_on_shutdown": false,
     "trade_journal_path": "trade_journal.csv",
     "reconnect_attempts": 3,
-    "session_filter_enabled": false,
+    "session_filter_enabled": true,
     "session_start_utc": 7,
     "session_end_utc": 20
   },

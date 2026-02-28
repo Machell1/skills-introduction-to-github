@@ -151,6 +151,12 @@ class ReversalSignalGenerator:
                         "FVG CONFLUENCE | %s FVG [%.2f-%.2f] overlaps OB [%.2f-%.2f]",
                         fvg.direction, fvg.low, fvg.high, ob.low, ob.high,
                     )
+                elif self.config.order_block.require_fvg_confluence:
+                    logger.info(
+                        "Setup REJECTED: No FVG confluence for OB [%.2f-%.2f] at index %d",
+                        ob.low, ob.high, ob.candle_index,
+                    )
+                    continue
 
                 # ── Step 5: Build TradeSetup ──────────────────────
                 setup = self._build_setup(
@@ -624,6 +630,21 @@ class LowerTFSignalGenerator:
                 ob = self.engine.find_order_block(ltf_candles, current_index, mss.direction)
                 if ob is None:
                     logger.info("[%s] No OB found after MSS at index %d", self.timeframe, current_index)
+                    continue
+
+                # Check FVG confluence on LTF candles
+                ltf_fvgs = self.engine.detect_fvg(ltf_candles, max(0, ob.candle_index - 3))
+                ltf_fvg = self.engine.find_nearest_fvg(ltf_fvgs, mss.direction, ob.candle_index, ob.midpoint)
+                if ltf_fvg:
+                    logger.info(
+                        "[%s] FVG CONFLUENCE | %s FVG [%.2f-%.2f] overlaps OB [%.2f-%.2f]",
+                        self.timeframe, ltf_fvg.direction, ltf_fvg.low, ltf_fvg.high, ob.low, ob.high,
+                    )
+                elif self.config.order_block.require_fvg_confluence:
+                    logger.info(
+                        "[%s] Setup REJECTED: No FVG confluence for OB [%.2f-%.2f] at index %d",
+                        self.timeframe, ob.low, ob.high, ob.candle_index,
+                    )
                     continue
 
                 # Build setup using H1 ATR for stop buffer, LTF OB for entry

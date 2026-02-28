@@ -524,10 +524,15 @@ class SMCEngine:
         f = self.config.order_block.entry_fraction
         ob_lookback = self.config.order_block.ob_lookback
 
+        min_body_ratio = self.config.order_block.min_ob_body_range_ratio
+
         if direction == "bullish":
             # Search backwards for the last bearish candle before displacement
             for i in range(displacement_candle_index - 1, max(0, displacement_candle_index - ob_lookback), -1):
                 if candles[i].is_bearish:
+                    # OB quality filter: skip doji/spinning top candles
+                    if candles[i].range_size > 0 and candles[i].body_size / candles[i].range_size < min_body_ratio:
+                        continue
                     ob = OrderBlock(
                         high=candles[i].high,
                         low=candles[i].low,
@@ -550,6 +555,9 @@ class SMCEngine:
             # Search backwards for the last bullish candle before displacement
             for i in range(displacement_candle_index - 1, max(0, displacement_candle_index - ob_lookback), -1):
                 if candles[i].is_bullish:
+                    # OB quality filter: skip doji/spinning top candles
+                    if candles[i].range_size > 0 and candles[i].body_size / candles[i].range_size < min_body_ratio:
+                        continue
                     ob = OrderBlock(
                         high=candles[i].high,
                         low=candles[i].low,

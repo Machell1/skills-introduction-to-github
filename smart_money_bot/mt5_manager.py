@@ -624,6 +624,46 @@ class MT5Manager:
         logger.info("Pending order cancelled: ticket=%d", ticket)
         return True
 
+    def partial_close_position(self, ticket: int, close_fraction: float = 0.5) -> bool:
+        """Close a fraction of an open position at market (for partial take profit)."""
+        positions = mt5.positions_get(ticket=ticket)
+        if positions is None or len(positions) == 0:
+            logger.warning("Position %d not found for partial close", ticket)
+            return False
+
+        pos = positions[0]
+        close_volume = self._normalize_volume(pos.volume * close_fraction)
+        if close_volume <= 0:
+            logger.warning("Partial close volume too small for ticket %d", ticket)
+            return False
+
+        close_type = mt5.ORDER_TYPE_SELL if pos.type == mt5.ORDER_TYPE_BUY else mt5.ORDER_TYPE_BUY
+        close_price = self.current_bid if pos.type == mt5.ORDER_TYPE_BUY else self.current_ask
+
+        request = {
+            "action": mt5.TRADE_ACTION_DEAL,
+            "symbol": self.mt5_config.symbol,
+            "volume": close_volume,
+            "type": close_type,
+            "position": ticket,
+            "price": close_price,
+            "deviation": self.mt5_config.deviation,
+            "magic": self.mt5_config.magic_number,
+            "comment": "SMC_PARTIAL",
+            "type_filling": self._get_fill_type(),
+        }
+
+        result = mt5.order_send(request)
+        if result is None or result.retcode != mt5.TRADE_RETCODE_DONE:
+            logger.error("Partial close failed for ticket %d: %s", ticket, result)
+            return False
+
+        logger.info(
+            "Partial close: ticket=%d, closed %.4f of %.4f lots (%.0f%%)",
+            ticket, close_volume, pos.volume, close_fraction * 100,
+        )
+        return True
+
     def close_position(self, ticket: int) -> bool:
         """Close an open position at market."""
         positions = mt5.positions_get(ticket=ticket)

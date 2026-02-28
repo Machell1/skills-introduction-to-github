@@ -44,6 +44,9 @@ class RiskManager:
         # Drawdown brake state
         self._risk_reduced: bool = False
 
+        # Hard drawdown halt state (circuit breaker)
+        self._hard_halt_active: bool = False
+
     # ── Position Sizing ───────────────────────────────────────────
 
     def calculate_lot_size(
@@ -139,6 +142,14 @@ class RiskManager:
         Returns:
             (allowed, reason) — True if trade is allowed, else False with reason.
         """
+        # 0. HARD DRAWDOWN CIRCUIT BREAKER — highest priority check
+        if self._hard_halt_active:
+            return False, (
+                f"HARD DRAWDOWN HALT ACTIVE: drawdown {self.metrics.current_drawdown_pct:.2f}% "
+                f"exceeded {self.config.risk.max_drawdown_halt_pct}% — "
+                f"resumes at {self.config.risk.hard_drawdown_resume_pct}%"
+            )
+
         # 1. Maximum positions check
         if current_open_positions >= self.config.risk.max_positions:
             return False, f"Max positions reached ({self.config.risk.max_positions})"
@@ -189,6 +200,24 @@ class RiskManager:
             self.metrics.current_drawdown_pct = dd
             if dd > self.metrics.max_drawdown_pct:
                 self.metrics.max_drawdown_pct = dd
+
+            # Hard drawdown circuit breaker (halt at threshold, resume at recovery)
+            if dd >= self.config.risk.max_drawdown_halt_pct:
+                if not self._hard_halt_active:
+                    self._hard_halt_active = True
+                    logger.critical(
+                        "HARD DRAWDOWN HALT ENGAGED: drawdown %.2f%% >= %.2f%% threshold. "
+                        "All trading suspended until drawdown recovers to %.2f%%.",
+                        dd, self.config.risk.max_drawdown_halt_pct,
+                        self.config.risk.hard_drawdown_resume_pct,
+                    )
+            elif self._hard_halt_active and dd <= self.config.risk.hard_drawdown_resume_pct:
+                self._hard_halt_active = False
+                logger.warning(
+                    "HARD DRAWDOWN HALT RELEASED: drawdown recovered to %.2f%% (<= %.2f%%). "
+                    "Trading can resume.",
+                    dd, self.config.risk.hard_drawdown_resume_pct,
+                )
 
         # Check rolling drawdown brake
         self._check_drawdown_brake()
