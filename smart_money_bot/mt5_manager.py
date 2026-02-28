@@ -369,6 +369,160 @@ class MT5Manager:
         logger.info("Sell limit placed: ticket=%d, price=%.2f, vol=%.2f", result.order, price, volume)
         return result.order
 
+    def place_buy_stop(
+        self, price: float, volume: float, sl: float, tp: float, comment: str = ""
+    ) -> Optional[int]:
+        """
+        Place a buy stop order (entry ABOVE current ask).
+        Triggers when price rises to the stop level — used for breakout entries.
+        """
+        price = self._normalize_price(price)
+        sl = self._normalize_price(sl)
+        tp = self._normalize_price(tp)
+        volume = self._normalize_volume(volume)
+
+        request = {
+            "action": mt5.TRADE_ACTION_PENDING,
+            "symbol": self.mt5_config.symbol,
+            "volume": volume,
+            "type": mt5.ORDER_TYPE_BUY_STOP,
+            "price": price,
+            "sl": sl,
+            "tp": tp,
+            "deviation": self.mt5_config.deviation,
+            "magic": self.mt5_config.magic_number,
+            "comment": comment,
+            "type_time": mt5.ORDER_TIME_GTC,
+            "type_filling": self._get_fill_type(),
+        }
+
+        result = mt5.order_send(request)
+        if result is None or result.retcode != mt5.TRADE_RETCODE_DONE:
+            logger.error("Buy stop failed: %s", result)
+            return None
+
+        logger.info("Buy stop placed: ticket=%d, price=%.2f, vol=%.2f", result.order, price, volume)
+        return result.order
+
+    def place_sell_stop(
+        self, price: float, volume: float, sl: float, tp: float, comment: str = ""
+    ) -> Optional[int]:
+        """
+        Place a sell stop order (entry BELOW current bid).
+        Triggers when price falls to the stop level — used for breakdown entries.
+        """
+        price = self._normalize_price(price)
+        sl = self._normalize_price(sl)
+        tp = self._normalize_price(tp)
+        volume = self._normalize_volume(volume)
+
+        request = {
+            "action": mt5.TRADE_ACTION_PENDING,
+            "symbol": self.mt5_config.symbol,
+            "volume": volume,
+            "type": mt5.ORDER_TYPE_SELL_STOP,
+            "price": price,
+            "sl": sl,
+            "tp": tp,
+            "deviation": self.mt5_config.deviation,
+            "magic": self.mt5_config.magic_number,
+            "comment": comment,
+            "type_time": mt5.ORDER_TIME_GTC,
+            "type_filling": self._get_fill_type(),
+        }
+
+        result = mt5.order_send(request)
+        if result is None or result.retcode != mt5.TRADE_RETCODE_DONE:
+            logger.error("Sell stop failed: %s", result)
+            return None
+
+        logger.info("Sell stop placed: ticket=%d, price=%.2f, vol=%.2f", result.order, price, volume)
+        return result.order
+
+    def place_buy_stop_limit(
+        self, trigger_price: float, limit_price: float, volume: float,
+        sl: float, tp: float, comment: str = ""
+    ) -> Optional[int]:
+        """
+        Place a buy stop-limit order.
+        When price rises to trigger_price (stoplimit), a buy limit at limit_price is activated.
+        Rule: trigger_price > Ask, limit_price < trigger_price.
+        """
+        trigger_price = self._normalize_price(trigger_price)
+        limit_price = self._normalize_price(limit_price)
+        sl = self._normalize_price(sl)
+        tp = self._normalize_price(tp)
+        volume = self._normalize_volume(volume)
+
+        request = {
+            "action": mt5.TRADE_ACTION_PENDING,
+            "symbol": self.mt5_config.symbol,
+            "volume": volume,
+            "type": mt5.ORDER_TYPE_BUY_STOP_LIMIT,
+            "price": limit_price,
+            "stoplimit": trigger_price,
+            "sl": sl,
+            "tp": tp,
+            "deviation": self.mt5_config.deviation,
+            "magic": self.mt5_config.magic_number,
+            "comment": comment,
+            "type_time": mt5.ORDER_TIME_GTC,
+            "type_filling": self._get_fill_type(),
+        }
+
+        result = mt5.order_send(request)
+        if result is None or result.retcode != mt5.TRADE_RETCODE_DONE:
+            logger.error("Buy stop-limit failed: %s", result)
+            return None
+
+        logger.info(
+            "Buy stop-limit placed: ticket=%d, trigger=%.2f, limit=%.2f, vol=%.2f",
+            result.order, trigger_price, limit_price, volume,
+        )
+        return result.order
+
+    def place_sell_stop_limit(
+        self, trigger_price: float, limit_price: float, volume: float,
+        sl: float, tp: float, comment: str = ""
+    ) -> Optional[int]:
+        """
+        Place a sell stop-limit order.
+        When price falls to trigger_price (stoplimit), a sell limit at limit_price is activated.
+        Rule: trigger_price < Bid, limit_price > trigger_price.
+        """
+        trigger_price = self._normalize_price(trigger_price)
+        limit_price = self._normalize_price(limit_price)
+        sl = self._normalize_price(sl)
+        tp = self._normalize_price(tp)
+        volume = self._normalize_volume(volume)
+
+        request = {
+            "action": mt5.TRADE_ACTION_PENDING,
+            "symbol": self.mt5_config.symbol,
+            "volume": volume,
+            "type": mt5.ORDER_TYPE_SELL_STOP_LIMIT,
+            "price": limit_price,
+            "stoplimit": trigger_price,
+            "sl": sl,
+            "tp": tp,
+            "deviation": self.mt5_config.deviation,
+            "magic": self.mt5_config.magic_number,
+            "comment": comment,
+            "type_time": mt5.ORDER_TIME_GTC,
+            "type_filling": self._get_fill_type(),
+        }
+
+        result = mt5.order_send(request)
+        if result is None or result.retcode != mt5.TRADE_RETCODE_DONE:
+            logger.error("Sell stop-limit failed: %s", result)
+            return None
+
+        logger.info(
+            "Sell stop-limit placed: ticket=%d, trigger=%.2f, limit=%.2f, vol=%.2f",
+            result.order, trigger_price, limit_price, volume,
+        )
+        return result.order
+
     def place_buy_market(
         self, volume: float, sl: float, tp: float, comment: str = ""
     ) -> Optional[int]:

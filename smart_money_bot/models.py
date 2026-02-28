@@ -26,6 +26,17 @@ class SweepStatus(Enum):
     CONFIRMED = "confirmed"  # MSS confirmed after sweep
 
 
+class OrderType(Enum):
+    BUY_LIMIT = "buy_limit"
+    SELL_LIMIT = "sell_limit"
+    BUY_STOP = "buy_stop"
+    SELL_STOP = "sell_stop"
+    BUY_STOP_LIMIT = "buy_stop_limit"
+    SELL_STOP_LIMIT = "sell_stop_limit"
+    BUY_MARKET = "buy_market"
+    SELL_MARKET = "sell_market"
+
+
 class SetupState(Enum):
     AWAITING_SWEEP = "awaiting_sweep"
     AWAITING_MSS = "awaiting_mss"
@@ -202,8 +213,11 @@ class TradeSetup:
     # Execution
     lot_size: float = 0.0
     ticket: int = 0
+    order_type: Optional[OrderType] = None
+    trigger_price: float = 0.0  # For stop-limit orders: trigger/stoplimit price
     fill_price: float = 0.0
     fill_time: Optional[datetime] = None
+    stop_limit_triggered: bool = False  # For paper stop-limit: trigger phase passed
 
     # Management
     breakeven_moved: bool = False

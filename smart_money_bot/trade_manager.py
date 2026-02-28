@@ -15,7 +15,7 @@ from datetime import datetime
 from typing import Optional
 
 from .config import BotConfig
-from .models import Candle, SetupState, TradeResult, TradeSetup
+from .models import Candle, OrderType, SetupState, TradeResult, TradeSetup
 from .mt5_manager import MT5Manager
 from .risk_manager import RiskManager
 
@@ -74,86 +74,182 @@ class TradeManager:
         else:
             return self._place_live_order(setup)
 
+    @staticmethod
+    def _determine_order_type(
+        direction: str, entry_price: float, bid: float, ask: float,
+        trigger_price: float = 0.0, spread_tolerance: float = 0.5,
+    ) -> OrderType:
+        """
+        Determine the correct MT5 order type based on entry price vs current market.
+
+        Rules:
+          Long:  entry < ask → Buy Limit | entry > ask → Buy Stop | entry ≈ ask → Market
+          Short: entry > bid → Sell Limit | entry < bid → Sell Stop | entry ≈ bid → Market
+          Stop-Limit: when trigger_price is set and conditions are met.
+        """
+        spread = max(ask - bid, 0.01)  # Prevent zero-spread edge case
+        tolerance = spread * spread_tolerance
+
+        if direction == "long":
+            # Stop-limit: trigger above ask, limit below trigger
+            if trigger_price > 0 and trigger_price > ask and entry_price < trigger_price:
+                return OrderType.BUY_STOP_LIMIT
+            if abs(entry_price - ask) <= tolerance:
+                return OrderType.BUY_MARKET
+            elif entry_price < ask:
+                return OrderType.BUY_LIMIT
+            else:
+                return OrderType.BUY_STOP
+        else:
+            # Stop-limit: trigger below bid, limit above trigger
+            if trigger_price > 0 and trigger_price < bid and entry_price > trigger_price:
+                return OrderType.SELL_STOP_LIMIT
+            if abs(entry_price - bid) <= tolerance:
+                return OrderType.SELL_MARKET
+            elif entry_price > bid:
+                return OrderType.SELL_LIMIT
+            else:
+                return OrderType.SELL_STOP
+
     def _place_live_order(self, setup: TradeSetup) -> bool:
-        """Place a live order via MT5, choosing limit or market based on current price."""
+        """Place a live order via MT5, choosing the correct order type based on price rules."""
         comment = f"SMC_{setup.template[:3].upper()}_{setup.direction[0].upper()}"
         bid, ask = self.mt5.get_current_price()
 
-        if setup.direction == "long":
-            if setup.entry_price >= ask:
-                # Price already at or below entry — enter at market
-                logger.info(
-                    "Buy entry %.2f >= ask %.2f — using market order", setup.entry_price, ask,
-                )
-                ticket = self.mt5.place_buy_market(
-                    volume=setup.lot_size,
-                    sl=setup.stop_price,
-                    tp=setup.target_price,
-                    comment=comment,
-                )
-            else:
-                ticket = self.mt5.place_buy_limit(
-                    price=setup.entry_price,
-                    volume=setup.lot_size,
-                    sl=setup.stop_price,
-                    tp=setup.target_price,
-                    comment=comment,
-                )
-        else:
-            if setup.entry_price <= bid:
-                # Price already at or above entry — enter at market
-                logger.info(
-                    "Sell entry %.2f <= bid %.2f — using market order", setup.entry_price, bid,
-                )
-                ticket = self.mt5.place_sell_market(
-                    volume=setup.lot_size,
-                    sl=setup.stop_price,
-                    tp=setup.target_price,
-                    comment=comment,
-                )
-            else:
-                ticket = self.mt5.place_sell_limit(
-                    price=setup.entry_price,
-                    volume=setup.lot_size,
-                    sl=setup.stop_price,
-                    tp=setup.target_price,
-                    comment=comment,
-                )
+        if bid <= 0 or ask <= 0:
+            logger.error("Invalid bid/ask: bid=%.2f ask=%.2f — cannot place order", bid, ask)
+            setup.state = SetupState.CANCELLED
+            return False
+
+        order_type = self._determine_order_type(
+            direction=setup.direction,
+            entry_price=setup.entry_price,
+            bid=bid,
+            ask=ask,
+            trigger_price=setup.trigger_price,
+        )
+        setup.order_type = order_type
+        ticket = None
+
+        if order_type == OrderType.BUY_LIMIT:
+            ticket = self.mt5.place_buy_limit(
+                price=setup.entry_price, volume=setup.lot_size,
+                sl=setup.stop_price, tp=setup.target_price, comment=comment,
+            )
+        elif order_type == OrderType.SELL_LIMIT:
+            ticket = self.mt5.place_sell_limit(
+                price=setup.entry_price, volume=setup.lot_size,
+                sl=setup.stop_price, tp=setup.target_price, comment=comment,
+            )
+        elif order_type == OrderType.BUY_STOP:
+            ticket = self.mt5.place_buy_stop(
+                price=setup.entry_price, volume=setup.lot_size,
+                sl=setup.stop_price, tp=setup.target_price, comment=comment,
+            )
+        elif order_type == OrderType.SELL_STOP:
+            ticket = self.mt5.place_sell_stop(
+                price=setup.entry_price, volume=setup.lot_size,
+                sl=setup.stop_price, tp=setup.target_price, comment=comment,
+            )
+        elif order_type == OrderType.BUY_STOP_LIMIT:
+            ticket = self.mt5.place_buy_stop_limit(
+                trigger_price=setup.trigger_price, limit_price=setup.entry_price,
+                volume=setup.lot_size, sl=setup.stop_price, tp=setup.target_price,
+                comment=comment,
+            )
+        elif order_type == OrderType.SELL_STOP_LIMIT:
+            ticket = self.mt5.place_sell_stop_limit(
+                trigger_price=setup.trigger_price, limit_price=setup.entry_price,
+                volume=setup.lot_size, sl=setup.stop_price, tp=setup.target_price,
+                comment=comment,
+            )
+        elif order_type == OrderType.BUY_MARKET:
+            logger.info("Buy entry %.2f ≈ ask %.2f — using market order", setup.entry_price, ask)
+            ticket = self.mt5.place_buy_market(
+                volume=setup.lot_size, sl=setup.stop_price,
+                tp=setup.target_price, comment=comment,
+            )
+        elif order_type == OrderType.SELL_MARKET:
+            logger.info("Sell entry %.2f ≈ bid %.2f — using market order", setup.entry_price, bid)
+            ticket = self.mt5.place_sell_market(
+                volume=setup.lot_size, sl=setup.stop_price,
+                tp=setup.target_price, comment=comment,
+            )
 
         if ticket is None:
-            logger.error("Failed to place limit order for setup")
+            logger.error("Failed to place %s order for setup", order_type.value)
             setup.state = SetupState.CANCELLED
             return False
 
         setup.ticket = ticket
         setup.state = SetupState.ENTRY_PENDING
-        self.pending_setups.append(setup)
+
+        # Market orders are immediately active (filled)
+        if order_type in (OrderType.BUY_MARKET, OrderType.SELL_MARKET):
+            actual_price = self.mt5.get_position_open_price(ticket)
+            setup.fill_price = actual_price if actual_price else setup.entry_price
+            setup.state = SetupState.ACTIVE
+            self.active_trades.append(setup)
+        else:
+            self.pending_setups.append(setup)
 
         logger.info(
-            "ORDER PLACED | Ticket: %d | %s %s @ %.2f | SL: %.2f | TP: %.2f | Lots: %.4f",
-            ticket, setup.direction.upper(), setup.template.upper(),
+            "ORDER PLACED | Type: %s | Ticket: %d | %s %s @ %.2f | SL: %.2f | TP: %.2f | Lots: %.4f",
+            order_type.value, ticket, setup.direction.upper(), setup.template.upper(),
             setup.entry_price, setup.stop_price, setup.target_price, setup.lot_size,
         )
         return True
 
     def _place_paper_order(self, setup: TradeSetup) -> bool:
-        """Simulate a limit order in paper mode."""
-        # Round prices to symbol precision (default 2 digits for XAUUSD)
+        """Simulate an order in paper mode with correct order type classification."""
         digits = self.mt5.symbol_digits
         setup.entry_price = round(setup.entry_price, digits)
         setup.stop_price = round(setup.stop_price, digits)
         setup.target_price = round(setup.target_price, digits)
 
+        # Determine order type using last known price as proxy for bid/ask
+        # In paper mode we approximate: bid ≈ ask ≈ last close
+        proxy_price = setup.entry_price  # Fallback
+        bid = self.mt5.current_bid
+        ask = self.mt5.current_ask
+        if bid > 0 and ask > 0:
+            order_type = self._determine_order_type(
+                direction=setup.direction,
+                entry_price=setup.entry_price,
+                bid=bid, ask=ask,
+                trigger_price=setup.trigger_price,
+            )
+        else:
+            # No live prices — default to limit orders
+            order_type = OrderType.BUY_LIMIT if setup.direction == "long" else OrderType.SELL_LIMIT
+
+        setup.order_type = order_type
+
         self._paper_ticket_counter += 1
         setup.ticket = self._paper_ticket_counter
-        setup.state = SetupState.ENTRY_PENDING
-        self.pending_setups.append(setup)
 
-        logger.info(
-            "[PAPER] ORDER PLACED | Ticket: %d | %s %s @ %.2f | SL: %.2f | TP: %.2f | Lots: %.4f",
-            setup.ticket, setup.direction.upper(), setup.template.upper(),
-            setup.entry_price, setup.stop_price, setup.target_price, setup.lot_size,
-        )
+        # Market orders fill immediately in paper mode
+        if order_type in (OrderType.BUY_MARKET, OrderType.SELL_MARKET):
+            half_spread = self.mt5.symbol_point * self.config.execution.paper_spread_points / 2.0
+            if setup.direction == "long":
+                setup.fill_price = setup.entry_price + half_spread
+            else:
+                setup.fill_price = setup.entry_price - half_spread
+            setup.state = SetupState.ACTIVE
+            self.active_trades.append(setup)
+            logger.info(
+                "[PAPER] MARKET ORDER FILLED | Ticket: %d | %s %s @ %.2f | Lots: %.4f",
+                setup.ticket, setup.direction.upper(), setup.template.upper(),
+                setup.fill_price, setup.lot_size,
+            )
+        else:
+            setup.state = SetupState.ENTRY_PENDING
+            self.pending_setups.append(setup)
+            logger.info(
+                "[PAPER] ORDER PLACED | Type: %s | Ticket: %d | %s %s @ %.2f | SL: %.2f | TP: %.2f | Lots: %.4f",
+                order_type.value, setup.ticket, setup.direction.upper(), setup.template.upper(),
+                setup.entry_price, setup.stop_price, setup.target_price, setup.lot_size,
+            )
         return True
 
     # ── Order Monitoring ──────────────────────────────────────────
@@ -183,16 +279,71 @@ class TradeManager:
                 continue
 
             if self._paper_mode:
-                # Paper mode: check if candle range touched the limit price
-                # Apply simulated spread slippage for realistic fills
+                # Paper mode: check fill conditions based on order type
                 half_spread = self.mt5.symbol_point * self.config.execution.paper_spread_points / 2.0
-                if setup.direction == "long" and candle.low <= setup.entry_price:
-                    setup.fill_price = setup.entry_price + half_spread  # Filled at ask (entry + spread)
-                    setup.fill_time = candle.time
-                    setup.state = SetupState.ACTIVE
-                    filled.append(setup)
-                elif setup.direction == "short" and candle.high >= setup.entry_price:
-                    setup.fill_price = setup.entry_price - half_spread  # Filled at bid (entry - spread)
+                order_filled = False
+
+                if setup.order_type == OrderType.BUY_LIMIT:
+                    # Buy Limit: fills when price dips to entry (candle.low touches entry)
+                    if candle.low <= setup.entry_price:
+                        setup.fill_price = setup.entry_price + half_spread
+                        order_filled = True
+
+                elif setup.order_type == OrderType.SELL_LIMIT:
+                    # Sell Limit: fills when price rises to entry (candle.high touches entry)
+                    if candle.high >= setup.entry_price:
+                        setup.fill_price = setup.entry_price - half_spread
+                        order_filled = True
+
+                elif setup.order_type == OrderType.BUY_STOP:
+                    # Buy Stop: fills when price rises THROUGH entry (breakout)
+                    if candle.high >= setup.entry_price:
+                        # Stop orders get worse fill (slippage through the stop level)
+                        setup.fill_price = setup.entry_price + half_spread
+                        order_filled = True
+
+                elif setup.order_type == OrderType.SELL_STOP:
+                    # Sell Stop: fills when price falls THROUGH entry (breakdown)
+                    if candle.low <= setup.entry_price:
+                        setup.fill_price = setup.entry_price - half_spread
+                        order_filled = True
+
+                elif setup.order_type == OrderType.BUY_STOP_LIMIT:
+                    # Two-phase: first trigger must be hit, then limit fill
+                    if not setup.stop_limit_triggered:
+                        if candle.high >= setup.trigger_price:
+                            setup.stop_limit_triggered = True
+                            logger.info(
+                                "[PAPER] Buy stop-limit TRIGGERED | Ticket: %d | Trigger: %.2f hit, awaiting limit fill at %.2f",
+                                setup.ticket, setup.trigger_price, setup.entry_price,
+                            )
+                    if setup.stop_limit_triggered and candle.low <= setup.entry_price:
+                        setup.fill_price = setup.entry_price + half_spread
+                        order_filled = True
+
+                elif setup.order_type == OrderType.SELL_STOP_LIMIT:
+                    # Two-phase: first trigger must be hit, then limit fill
+                    if not setup.stop_limit_triggered:
+                        if candle.low <= setup.trigger_price:
+                            setup.stop_limit_triggered = True
+                            logger.info(
+                                "[PAPER] Sell stop-limit TRIGGERED | Ticket: %d | Trigger: %.2f hit, awaiting limit fill at %.2f",
+                                setup.ticket, setup.trigger_price, setup.entry_price,
+                            )
+                    if setup.stop_limit_triggered and candle.high >= setup.entry_price:
+                        setup.fill_price = setup.entry_price - half_spread
+                        order_filled = True
+
+                else:
+                    # Fallback for legacy orders without order_type set
+                    if setup.direction == "long" and candle.low <= setup.entry_price:
+                        setup.fill_price = setup.entry_price + half_spread
+                        order_filled = True
+                    elif setup.direction == "short" and candle.high >= setup.entry_price:
+                        setup.fill_price = setup.entry_price - half_spread
+                        order_filled = True
+
+                if order_filled:
                     setup.fill_time = candle.time
                     setup.state = SetupState.ACTIVE
                     filled.append(setup)
