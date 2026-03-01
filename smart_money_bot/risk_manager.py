@@ -215,8 +215,9 @@ class RiskManager:
         if current_open_positions >= self.config.risk.max_positions:
             return False, f"Max positions reached ({self.config.risk.max_positions})"
 
-        # 1b. Total open risk check
-        total_open_risk = current_open_positions * self.config.risk.risk_per_trade_pct
+        # 1b. Total open risk check (use effective rate after Kelly/drawdown brake)
+        effective_risk_pct = self._get_effective_risk_fraction() * 100.0
+        total_open_risk = current_open_positions * effective_risk_pct
         if total_open_risk >= self.config.risk.max_total_open_risk_pct:
             return False, f"Total open risk {total_open_risk:.2f}% >= cap {self.config.risk.max_total_open_risk_pct}%"
 

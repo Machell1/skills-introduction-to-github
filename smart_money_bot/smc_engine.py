@@ -164,9 +164,9 @@ class SMCEngine:
         midpoint = last_low.price + 0.5 * swing_range
         position = (current_price - last_low.price) / swing_range
 
-        if position > 0.55:
+        if position > 0.575:
             return "premium", midpoint
-        elif position < 0.45:
+        elif position < 0.425:
             return "discount", midpoint
         return "equilibrium", midpoint
 
@@ -489,12 +489,19 @@ class SMCEngine:
         is_displacement = body_size >= k * atr
 
         if sweep.direction == "long":
-            # Bullish MSS: close above the nearest structural high
-            # Use the higher of sweep candle high and last swing high
+            # Bullish MSS: close above nearest internal structure after the sweep
+            # Use sweep candle high as base, only upgrade with swing highs that
+            # formed BETWEEN the sweep candle and the current candle (internal structure).
+            # This avoids using a distant global swing high that makes MSS unreachable.
             break_level = sweep.sweep_candle.high
-            last_swing_high = self.get_last_swing_high(swings, candle_index)
-            if last_swing_high and last_swing_high.price > break_level:
-                break_level = last_swing_high.price
+            sweep_idx = sweep.sweep_candle.index
+            for sh in swings:
+                if (sh.type == SwingType.HIGH
+                        and sh.candle_index > sweep_idx
+                        and sh.confirmation_index <= candle_index
+                        and sh.price > break_level):
+                    break_level = sh.price
+                    break  # Use the nearest internal swing high
 
             close_above = candle.close > break_level
             if close_above and is_displacement:
@@ -513,12 +520,18 @@ class SMCEngine:
                 )
 
         elif sweep.direction == "short":
-            # Bearish MSS: close below the nearest structural low
-            # Use the lower of sweep candle low and last swing low
+            # Bearish MSS: close below nearest internal structure after the sweep
+            # Use sweep candle low as base, only lower with swing lows that
+            # formed BETWEEN the sweep candle and the current candle (internal structure).
             break_level = sweep.sweep_candle.low
-            last_swing_low = self.get_last_swing_low(swings, candle_index)
-            if last_swing_low and last_swing_low.price < break_level:
-                break_level = last_swing_low.price
+            sweep_idx = sweep.sweep_candle.index
+            for sl in swings:
+                if (sl.type == SwingType.LOW
+                        and sl.candle_index > sweep_idx
+                        and sl.confirmation_index <= candle_index
+                        and sl.price < break_level):
+                    break_level = sl.price
+                    break  # Use the nearest internal swing low
 
             close_below = candle.close < break_level
             if close_below and is_displacement:

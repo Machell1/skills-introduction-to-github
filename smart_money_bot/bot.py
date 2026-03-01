@@ -347,15 +347,17 @@ class SMCBot:
 
         # ── 7. Deduplicate and place orders for new setups ────────
         for setup in new_setups:
-            # Dedup: skip if existing pending/active trade has entry within 1 ATR
+            # Dedup: skip if existing pending/active trade has entry within dedup radius
+            dedup_radius = current_atr * self.config.execution.dedup_atr_fraction
             is_dup = False
             for existing in self.trade_mgr.pending_setups + list(self.trade_mgr.active_trades):
                 if (existing.direction == setup.direction
-                        and abs(existing.entry_price - setup.entry_price) < current_atr):
+                        and abs(existing.entry_price - setup.entry_price) < dedup_radius):
                     is_dup = True
                     logger.info(
-                        "Duplicate setup skipped: %s %s @ %.2f (existing @ %.2f within 1 ATR)",
+                        "Duplicate setup skipped: %s %s @ %.2f (existing @ %.2f within %.1f ATR)",
                         setup.template, setup.direction, setup.entry_price, existing.entry_price,
+                        self.config.execution.dedup_atr_fraction,
                     )
                     break
             if is_dup:

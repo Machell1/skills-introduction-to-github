@@ -49,7 +49,7 @@ class SwingConfig:
 class DisplacementConfig:
     """Displacement candle detection parameters."""
     atr_period: int = 14
-    body_atr_multiplier: float = 0.5  # k: body >= k * ATR (range: 0.3-2.0)
+    body_atr_multiplier: float = 0.4  # k: body >= k * ATR (range: 0.3-2.0); 0.4 captures multi-candle XAUUSD displacement
 
 
 @dataclass
@@ -60,7 +60,7 @@ class OrderBlockConfig:
     max_mss_candles: int = 15  # N: max candles after sweep to confirm MSS (range: 6-40)
     ob_lookback: int = 20  # How many candles back to search for the OB (range: 10-50)
     equal_level_atr_fraction: float = 0.1  # Equal highs/lows tolerance as fraction of ATR
-    require_fvg_confluence: bool = True  # Require FVG overlap with OB for valid setup
+    require_fvg_confluence: bool = False  # FVG confluence is logged when found but not required; strong OB + displacement is sufficient for XAUUSD
     min_ob_body_range_ratio: float = 0.3  # Min body/range ratio for OB candle quality
     use_fibonacci_entry: bool = True  # Use OTE (62-79% retracement) instead of fixed fraction
     fib_entry_level: float = 0.705  # Fibonacci retracement level for OTE (70.5% = midpoint of 62-79%)
@@ -109,12 +109,14 @@ class KillZoneConfig:
     enabled: bool = True
     # Quality score (0.0-1.0) per UTC hour. 0.0 = no trade, 1.0 = best session.
     hourly_quality: dict = field(default_factory=lambda: {
+        0: 0.3, 1: 0.3, 2: 0.3, 3: 0.3, 4: 0.3, 5: 0.3, 6: 0.3,  # Asian session (low quality, high-R only)
         7: 0.5, 8: 0.6, 9: 0.7, 10: 0.8, 11: 0.8, 12: 0.85,
         13: 1.0, 14: 1.0, 15: 1.0, 16: 0.9,  # London/NY overlap
         17: 0.8, 18: 0.75, 19: 0.7, 20: 0.5,
+        21: 0.3, 22: 0.3, 23: 0.3,  # Late session (low quality, high-R only)
     })
     min_quality: float = 0.5  # Skip hours below this quality
-    low_quality_min_r: float = 2.5  # Require higher R during low-quality hours
+    low_quality_min_r: float = 1.8  # Require higher R during low-quality hours; 1.8 allows solid XAUUSD setups while filtering noise
 
 
 @dataclass
@@ -228,6 +230,7 @@ class ExecutionConfig:
     close_positions_on_shutdown: bool = False  # Close all positions on bot stop
     trade_journal_path: str = "trade_journal.csv"  # CSV journal export path
     reconnect_attempts: int = 3  # Number of reconnect attempts before exit
+    dedup_atr_fraction: float = 0.5  # Dedup radius: skip new setups within this fraction of ATR from existing entries
     session_filter_enabled: bool = True
     session_start_utc: int = 7  # Trading session start hour UTC (London open)
     session_end_utc: int = 20  # Trading session end hour UTC (NY close)
@@ -365,8 +368,8 @@ class BotConfig:
             self.kill_zone.min_quality = 0.5
             warnings.append("kill_zone.min_quality out of [0,1], reset to 0.5")
         if self.kill_zone.low_quality_min_r < 1.0:
-            self.kill_zone.low_quality_min_r = 2.5
-            warnings.append("kill_zone.low_quality_min_r < 1.0, reset to 2.5")
+            self.kill_zone.low_quality_min_r = 1.8
+            warnings.append("kill_zone.low_quality_min_r < 1.0, reset to 1.8")
         # Validate hourly_quality keys (0-23) and values (0.0-1.0)
         valid_hq = {}
         for h, q in self.kill_zone.hourly_quality.items():

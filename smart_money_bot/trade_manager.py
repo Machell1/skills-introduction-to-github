@@ -51,28 +51,50 @@ class TradeManager:
         """
         # Round all prices to symbol precision before computing risk_distance
         digits = self.mt5.symbol_digits
+        point = self.mt5.symbol_point
         setup.entry_price = round(setup.entry_price, digits)
         setup.stop_price = round(setup.stop_price, digits)
         setup.target_price = round(setup.target_price, digits)
-        setup.risk_distance = abs(setup.entry_price - setup.stop_price)
 
-        # SL/TP direction validation (defense-in-depth)
+        # Nudge stop by 1 tick if rounding collapsed or inverted the distance
         if setup.direction == "long":
             if setup.stop_price >= setup.entry_price:
-                logger.error("Invalid long setup: SL %.2f >= entry %.2f", setup.stop_price, setup.entry_price)
+                logger.info(
+                    "Rounding collapsed long SL %.5f >= entry %.5f — nudging SL down by 1 tick",
+                    setup.stop_price, setup.entry_price,
+                )
+                setup.stop_price = round(setup.entry_price - point, digits)
+            if setup.target_price <= setup.entry_price:
+                setup.target_price = round(setup.entry_price + point, digits)
+        else:
+            if setup.stop_price <= setup.entry_price:
+                logger.info(
+                    "Rounding collapsed short SL %.5f <= entry %.5f — nudging SL up by 1 tick",
+                    setup.stop_price, setup.entry_price,
+                )
+                setup.stop_price = round(setup.entry_price + point, digits)
+            if setup.target_price >= setup.entry_price:
+                setup.target_price = round(setup.entry_price - point, digits)
+
+        setup.risk_distance = abs(setup.entry_price - setup.stop_price)
+
+        # SL/TP direction validation (defense-in-depth — should not trigger after nudge)
+        if setup.direction == "long":
+            if setup.stop_price >= setup.entry_price:
+                logger.error("Invalid long setup after nudge: SL %.2f >= entry %.2f", setup.stop_price, setup.entry_price)
                 setup.state = SetupState.CANCELLED
                 return False
             if setup.target_price <= setup.entry_price:
-                logger.error("Invalid long setup: TP %.2f <= entry %.2f", setup.target_price, setup.entry_price)
+                logger.error("Invalid long setup after nudge: TP %.2f <= entry %.2f", setup.target_price, setup.entry_price)
                 setup.state = SetupState.CANCELLED
                 return False
         else:
             if setup.stop_price <= setup.entry_price:
-                logger.error("Invalid short setup: SL %.2f <= entry %.2f", setup.stop_price, setup.entry_price)
+                logger.error("Invalid short setup after nudge: SL %.2f <= entry %.2f", setup.stop_price, setup.entry_price)
                 setup.state = SetupState.CANCELLED
                 return False
             if setup.target_price >= setup.entry_price:
-                logger.error("Invalid short setup: TP %.2f >= entry %.2f", setup.target_price, setup.entry_price)
+                logger.error("Invalid short setup after nudge: TP %.2f >= entry %.2f", setup.target_price, setup.entry_price)
                 setup.state = SetupState.CANCELLED
                 return False
 

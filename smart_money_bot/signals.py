@@ -93,7 +93,7 @@ class ReversalSignalGenerator:
 
         for sweep in new_sweeps:
             # Skip if this price level was already swept (prevents duplicates from recreated objects)
-            price_key = round(sweep.level.price, 2)
+            price_key = round(sweep.level.price, 5)
             if price_key in self._swept_prices:
                 continue
 
@@ -166,7 +166,7 @@ class ReversalSignalGenerator:
 
                 # ── Step 4b: Check FVG confluence ─────────────────
                 fvgs = self.engine.detect_fvg(candles, max(0, ob.candle_index - 3))
-                fvg = self.engine.find_nearest_fvg(fvgs, mss.direction, ob.candle_index, ob.midpoint, current_index)
+                fvg = self.engine.find_nearest_fvg(fvgs, mss.direction, max(0, ob.candle_index - 2), ob.midpoint, current_index)
                 if fvg:
                     logger.info(
                         "FVG CONFLUENCE | %s FVG [%.2f-%.2f] overlaps OB [%.2f-%.2f]",
@@ -199,14 +199,14 @@ class ReversalSignalGenerator:
             s.level.swept = False
             self.active_sweeps.remove(s)
             self._sweep_tick.pop(id(s), None)
-            self._swept_prices.discard(round(s.level.price, 2))
+            self._swept_prices.discard(round(s.level.price, 5))
 
         # Clean up confirmed sweeps — release swept price if no setup was produced
         confirmed = [s for s in self.active_sweeps if s.mss_confirmed]
         for s in confirmed:
             self.active_sweeps.remove(s)
             self._sweep_tick.pop(id(s), None)
-            price_key = round(s.level.price, 2)
+            price_key = round(s.level.price, 5)
             if not any(rs.sweep is s for rs in ready_setups):
                 self._swept_prices.discard(price_key)
 
@@ -392,7 +392,7 @@ class ContinuationSignalGenerator:
         bos = self.engine.detect_bos(candle, current_index, swings, atr_values, bias)
         if bos:
             # Dedup: skip if this swing level was already broken
-            level_key = round(bos.break_level, 2)
+            level_key = round(bos.break_level, 5)
             if level_key in self._broken_levels:
                 return ready_setups
             self._broken_levels.add(level_key)
@@ -410,7 +410,7 @@ class ContinuationSignalGenerator:
 
             # Check FVG confluence (consistent with reversal generator)
             fvgs = self.engine.detect_fvg(candles, max(0, ob.candle_index - 3))
-            fvg = self.engine.find_nearest_fvg(fvgs, bos.direction, ob.candle_index, ob.midpoint, current_index)
+            fvg = self.engine.find_nearest_fvg(fvgs, bos.direction, max(0, ob.candle_index - 2), ob.midpoint, current_index)
             if fvg:
                 logger.info(
                     "Continuation FVG CONFLUENCE | %s FVG [%.2f-%.2f] overlaps OB [%.2f-%.2f]",
@@ -657,7 +657,7 @@ class LowerTFSignalGenerator:
         new_sweeps = self.engine.detect_sweep(candle, liquidity_levels, current_atr=h1_atr)
         for sweep in new_sweeps:
             # Skip if this price level was already swept (prevents duplicates)
-            price_key = round(sweep.level.price, 2)
+            price_key = round(sweep.level.price, 5)
             if price_key in self._swept_prices:
                 continue
 
@@ -714,7 +714,7 @@ class LowerTFSignalGenerator:
 
                 # Check FVG confluence on LTF candles
                 ltf_fvgs = self.engine.detect_fvg(ltf_candles, max(0, ob.candle_index - 3))
-                ltf_fvg = self.engine.find_nearest_fvg(ltf_fvgs, mss.direction, ob.candle_index, ob.midpoint, current_index)
+                ltf_fvg = self.engine.find_nearest_fvg(ltf_fvgs, mss.direction, max(0, ob.candle_index - 2), ob.midpoint, current_index)
                 if ltf_fvg:
                     logger.info(
                         "[%s] FVG CONFLUENCE | %s FVG [%.2f-%.2f] overlaps OB [%.2f-%.2f]",
@@ -762,14 +762,14 @@ class LowerTFSignalGenerator:
             s.level.swept = False
             self.active_sweeps.remove(s)
             self._sweep_tick.pop(id(s), None)
-            self._swept_prices.discard(round(s.level.price, 2))
+            self._swept_prices.discard(round(s.level.price, 5))
 
         # Clean up confirmed sweeps — release swept price if no setup was produced
         confirmed = [s for s in self.active_sweeps if s.mss_confirmed]
         for s in confirmed:
             self.active_sweeps.remove(s)
             self._sweep_tick.pop(id(s), None)
-            price_key = round(s.level.price, 2)
+            price_key = round(s.level.price, 5)
             if not any(rs.sweep is s for rs in ready_setups):
                 self._swept_prices.discard(price_key)
 
