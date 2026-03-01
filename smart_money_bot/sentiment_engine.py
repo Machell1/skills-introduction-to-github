@@ -19,7 +19,10 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-import requests
+try:
+    import requests
+except ImportError:
+    requests = None  # Optional — only needed when sentiment engine is enabled
 
 from .config import SentimentEngineConfig, SentimentSourceConfig
 from .sentiment_models import (
@@ -631,6 +634,11 @@ class SentimentEngine:
     }
 
     def __init__(self, config: SentimentEngineConfig):
+        if requests is None:
+            raise ImportError(
+                "The 'requests' package is required for the sentiment engine. "
+                "Install it with: pip install requests"
+            )
         self.config = config
         self._adapters: list[SentimentAdapter] = []
         self._last_signal: Optional[SentimentSignal] = None
