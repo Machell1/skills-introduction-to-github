@@ -112,18 +112,15 @@
       "cache_ttl_seconds": 1800
     },
     "put_call_ratio": {
-      "enabled": false,
+      "enabled": true,
+      "api_url": "https://cdn.cboe.com/resources/options/volume_and_call_put_ratios/indexpcarchive.csv",
       "fallback_file": "sentiment_data/put_call.json",
       "cache_ttl_seconds": 3600
     },
     "gold_etf_flows": {
-      "enabled": false,
+      "enabled": true,
+      "api_url": "https://www.spdrgoldshares.com/assets/dynamic/GLD/GLD_US_archive_EN.csv",
       "fallback_file": "sentiment_data/etf_flows.json",
-      "cache_ttl_seconds": 86400
-    },
-    "futures_positioning": {
-      "enabled": false,
-      "fallback_file": "sentiment_data/futures.json",
       "cache_ttl_seconds": 86400
     }
   },

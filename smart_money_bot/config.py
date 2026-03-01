@@ -154,7 +154,6 @@ class SentimentEngineConfig:
     news_sentiment: SentimentSourceConfig = None
     put_call_ratio: SentimentSourceConfig = None
     gold_etf_flows: SentimentSourceConfig = None
-    futures_positioning: SentimentSourceConfig = None
 
     def __post_init__(self):
         if self.cot_data is None:
@@ -177,20 +176,16 @@ class SentimentEngineConfig:
             )
         if self.put_call_ratio is None:
             self.put_call_ratio = SentimentSourceConfig(
-                enabled=False,
+                enabled=True,
+                api_url="https://cdn.cboe.com/resources/options/volume_and_call_put_ratios/indexpcarchive.csv",
                 fallback_file="sentiment_data/put_call.json",
                 cache_ttl_seconds=3600,
             )
         if self.gold_etf_flows is None:
             self.gold_etf_flows = SentimentSourceConfig(
-                enabled=False,
+                enabled=True,
+                api_url="https://www.spdrgoldshares.com/assets/dynamic/GLD/GLD_US_archive_EN.csv",
                 fallback_file="sentiment_data/etf_flows.json",
-                cache_ttl_seconds=86400,
-            )
-        if self.futures_positioning is None:
-            self.futures_positioning = SentimentSourceConfig(
-                enabled=False,
-                fallback_file="sentiment_data/futures.json",
                 cache_ttl_seconds=86400,
             )
 
@@ -260,7 +255,7 @@ class BotConfig:
             # Parse nested source configs
             source_fields = [
                 "cot_data", "fear_greed_index", "news_sentiment",
-                "put_call_ratio", "gold_etf_flows", "futures_positioning",
+                "put_call_ratio", "gold_etf_flows",
             ]
             for sf in source_fields:
                 if sf in s and isinstance(s[sf], dict):

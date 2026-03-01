@@ -4,12 +4,14 @@ Sentiment & Smart Money Aggregation Engine.
 Fetches, caches, and aggregates external sentiment data from multiple sources:
 - Smart Money: COT data (CFTC), Gold ETF flows
 - Social Sentiment: Fear & Greed Index, News headlines (AlphaVantage)
-- Bet Predictions: Put/Call ratio, Futures positioning
+- Bet Predictions: Put/Call ratio (CBOE)
 
 Produces a unified bullish/bearish/neutral signal that integrates with
 the existing bias filter in bot.py.
 """
 
+import csv
+import io
 import json
 import logging
 import os
@@ -211,52 +213,126 @@ class COTDataAdapter(SentimentAdapter):
 
 class GoldETFFlowsAdapter(SentimentAdapter, FileBasedAdapterMixin):
     """
-    Reads gold ETF flow data from a local JSON file.
+    Fetches SPDR Gold Shares (GLD) holdings data from official CSV.
 
-    Expected format:
-    {
-        "date": "2026-02-28",
-        "gld_tonnage_change": 2.5,
-        "iau_tonnage_change": 0.8,
-        "direction": "bullish",
-        "confidence": 0.6
-    }
+    Primary: Downloads CSV from spdrgoldshares.com, computes daily tonnage change.
+    Fallback: Reads from local JSON file if API fails.
 
-    Positive tonnage change (inflows) → bullish, negative → bearish.
+    Tonnage change > 1.0 → bullish (inflows), < -1.0 → bearish (outflows).
+    Source: https://www.spdrgoldshares.com/assets/dynamic/GLD/GLD_US_archive_EN.csv
     """
 
     def __init__(self, source_config: SentimentSourceConfig):
-        super().__init__("Gold ETF Flows", SourceCategory.SMART_MONEY, source_config)
+        super().__init__("Gold ETF Flows (GLD)", SourceCategory.SMART_MONEY, source_config)
 
     def _fetch(self) -> Optional[SourceReading]:
+        # Primary: fetch SPDR CSV
+        reading = self._fetch_spdr_csv()
+        if reading:
+            return reading
+
+        # Fallback: local JSON file
+        return self._fetch_fallback_json()
+
+    def _fetch_spdr_csv(self) -> Optional[SourceReading]:
+        """Download and parse SPDR Gold Trust CSV for tonnage change."""
+        url = self.cfg.api_url
+        if not url:
+            return None
+
+        try:
+            resp = requests.get(url, timeout=HTTP_TIMEOUT)
+            resp.raise_for_status()
+        except Exception as e:
+            logger.warning("[GLD ETF] CSV download failed: %s", e)
+            return None
+
+        try:
+            reader = csv.reader(io.StringIO(resp.text))
+            rows = list(reader)
+
+            if len(rows) < 3:  # header + at least 2 data rows
+                logger.warning("[GLD ETF] CSV has too few rows (%d)", len(rows))
+                return None
+
+            header = [h.strip().lower() for h in rows[0]]
+
+            # Find the tonnes column (varies: "GLD Holdings in Tonnes", etc.)
+            tonnes_col = None
+            for i, col in enumerate(header):
+                if "tonne" in col:
+                    tonnes_col = i
+                    break
+
+            if tonnes_col is None:
+                logger.warning("[GLD ETF] No tonnes column found in CSV header: %s", header)
+                return None
+
+            # Get last 2 valid rows (skip empty/malformed)
+            valid_rows = []
+            for row in reversed(rows[1:]):
+                if len(row) > tonnes_col and row[tonnes_col].strip():
+                    try:
+                        float(row[tonnes_col].replace(",", ""))
+                        valid_rows.append(row)
+                    except ValueError:
+                        continue
+                if len(valid_rows) >= 2:
+                    break
+
+            if len(valid_rows) < 2:
+                logger.warning("[GLD ETF] Not enough valid data rows for change calculation")
+                return None
+
+            today_tonnes = float(valid_rows[0][tonnes_col].replace(",", ""))
+            yesterday_tonnes = float(valid_rows[1][tonnes_col].replace(",", ""))
+            tonnage_change = today_tonnes - yesterday_tonnes
+
+            logger.info(
+                "[GLD ETF] Holdings: %.2f → %.2f tonnes (change: %+.2f)",
+                yesterday_tonnes, today_tonnes, tonnage_change,
+            )
+
+        except Exception as e:
+            logger.warning("[GLD ETF] CSV parsing failed: %s", e)
+            return None
+
+        return self._score_tonnage_change(tonnage_change)
+
+    def _fetch_fallback_json(self) -> Optional[SourceReading]:
+        """Read from local JSON fallback file."""
         data = self._read_fallback_file(self.cfg.fallback_file)
         if not data:
             return None
 
-        # Support explicit direction or derive from tonnage
         if "direction" in data:
             direction = SentimentDirection(data["direction"])
             confidence = float(data.get("confidence", 0.5))
             raw_value = float(data.get("gld_tonnage_change", 0))
-        else:
-            gld = float(data.get("gld_tonnage_change", 0))
-            iau = float(data.get("iau_tonnage_change", 0))
-            total_flow = gld + iau
+            return SourceReading(
+                source_name=self.name, category=self.category,
+                direction=direction, confidence=confidence, raw_value=raw_value,
+            )
 
-            if total_flow > 1.0:
-                direction = SentimentDirection.BULLISH
-                confidence = min(total_flow / 10.0, 0.9)
-            elif total_flow < -1.0:
-                direction = SentimentDirection.BEARISH
-                confidence = min(abs(total_flow) / 10.0, 0.9)
-            else:
-                direction = SentimentDirection.NEUTRAL
-                confidence = 0.3
-            raw_value = total_flow
+        gld = float(data.get("gld_tonnage_change", 0))
+        iau = float(data.get("iau_tonnage_change", 0))
+        return self._score_tonnage_change(gld + iau)
+
+    def _score_tonnage_change(self, tonnage_change: float) -> SourceReading:
+        """Convert tonnage change to directional reading."""
+        if tonnage_change > 1.0:
+            direction = SentimentDirection.BULLISH
+            confidence = min(abs(tonnage_change) / 10.0, 0.9)
+        elif tonnage_change < -1.0:
+            direction = SentimentDirection.BEARISH
+            confidence = min(abs(tonnage_change) / 10.0, 0.9)
+        else:
+            direction = SentimentDirection.NEUTRAL
+            confidence = 0.3
 
         return SourceReading(
             source_name=self.name, category=self.category,
-            direction=direction, confidence=confidence, raw_value=raw_value,
+            direction=direction, confidence=confidence, raw_value=tonnage_change,
         )
 
 
@@ -412,25 +488,89 @@ class NewsSentimentAdapter(SentimentAdapter):
 
 class PutCallRatioAdapter(SentimentAdapter, FileBasedAdapterMixin):
     """
-    Reads gold options put/call ratio from a local JSON file.
+    Fetches CBOE index put/call ratio from official CSV archive.
 
-    Expected format:
-    {
-        "date": "2026-02-28",
-        "put_call_ratio": 0.85,
-        "put_volume": 12000,
-        "call_volume": 14100
-    }
+    Primary: Downloads CSV from cdn.cboe.com, reads latest row.
+    Fallback: Reads from local JSON file if API fails.
 
     P/C < 0.7 → bullish (more calls, expecting up)
     P/C 0.7-1.0 → neutral
     P/C > 1.0 → bearish (more puts, expecting down)
+
+    Source: https://cdn.cboe.com/resources/options/volume_and_call_put_ratios/indexpcarchive.csv
     """
 
     def __init__(self, source_config: SentimentSourceConfig):
-        super().__init__("Put/Call Ratio", SourceCategory.BET_PREDICTIONS, source_config)
+        super().__init__("Put/Call Ratio (CBOE)", SourceCategory.BET_PREDICTIONS, source_config)
 
     def _fetch(self) -> Optional[SourceReading]:
+        # Primary: fetch CBOE CSV
+        reading = self._fetch_cboe_csv()
+        if reading:
+            return reading
+
+        # Fallback: local JSON file
+        return self._fetch_fallback_json()
+
+    def _fetch_cboe_csv(self) -> Optional[SourceReading]:
+        """Download and parse CBOE index put/call ratio CSV."""
+        url = self.cfg.api_url
+        if not url:
+            return None
+
+        try:
+            resp = requests.get(url, timeout=HTTP_TIMEOUT)
+            resp.raise_for_status()
+        except Exception as e:
+            logger.warning("[CBOE P/C] CSV download failed: %s", e)
+            return None
+
+        try:
+            reader = csv.reader(io.StringIO(resp.text))
+            rows = list(reader)
+
+            if len(rows) < 2:  # header + at least 1 data row
+                logger.warning("[CBOE P/C] CSV has too few rows (%d)", len(rows))
+                return None
+
+            header = [h.strip().upper() for h in rows[0]]
+
+            # Find P/C ratio column
+            pc_col = None
+            for i, col in enumerate(header):
+                if "P/C" in col or "RATIO" in col:
+                    pc_col = i
+                    break
+
+            # Fallback: last column is typically the ratio
+            if pc_col is None:
+                pc_col = len(header) - 1
+
+            # Get last valid row
+            pc_ratio = None
+            for row in reversed(rows[1:]):
+                if len(row) > pc_col and row[pc_col].strip():
+                    try:
+                        pc_ratio = float(row[pc_col].strip())
+                        date_str = row[0].strip() if row[0].strip() else "unknown"
+                        break
+                    except ValueError:
+                        continue
+
+            if pc_ratio is None:
+                logger.warning("[CBOE P/C] No valid P/C ratio found in CSV")
+                return None
+
+            logger.info("[CBOE P/C] Latest ratio: %.3f (date: %s)", pc_ratio, date_str)
+
+        except Exception as e:
+            logger.warning("[CBOE P/C] CSV parsing failed: %s", e)
+            return None
+
+        return self._score_pc_ratio(pc_ratio)
+
+    def _fetch_fallback_json(self) -> Optional[SourceReading]:
+        """Read from local JSON fallback file."""
         data = self._read_fallback_file(self.cfg.fallback_file)
         if not data:
             return None
@@ -438,7 +578,6 @@ class PutCallRatioAdapter(SentimentAdapter, FileBasedAdapterMixin):
         pc_ratio = float(data.get("put_call_ratio", 0))
 
         if pc_ratio <= 0:
-            # Try to compute from volumes
             put_vol = float(data.get("put_volume", 0))
             call_vol = float(data.get("call_volume", 0))
             if call_vol > 0:
@@ -446,6 +585,10 @@ class PutCallRatioAdapter(SentimentAdapter, FileBasedAdapterMixin):
             else:
                 return None
 
+        return self._score_pc_ratio(pc_ratio)
+
+    def _score_pc_ratio(self, pc_ratio: float) -> SourceReading:
+        """Convert put/call ratio to directional reading."""
         if pc_ratio < 0.7:
             direction = SentimentDirection.BULLISH
             confidence = min((0.7 - pc_ratio) / 0.4, 0.9)
@@ -459,71 +602,6 @@ class PutCallRatioAdapter(SentimentAdapter, FileBasedAdapterMixin):
         return SourceReading(
             source_name=self.name, category=self.category,
             direction=direction, confidence=confidence, raw_value=pc_ratio,
-        )
-
-
-# ── Futures Positioning Adapter (File-Based — Bet Predictions) ─────
-
-
-class FuturesPositioningAdapter(SentimentAdapter, FileBasedAdapterMixin):
-    """
-    Reads gold futures positioning data from a local JSON file.
-
-    Expected format:
-    {
-        "date": "2026-02-28",
-        "long_contracts": 250000,
-        "short_contracts": 180000,
-        "open_interest": 500000,
-        "net_change_long": 5000,
-        "net_change_short": -3000
-    }
-
-    Positive net change in longs + negative net change in shorts → bullish
-    """
-
-    def __init__(self, source_config: SentimentSourceConfig):
-        super().__init__("Futures Positioning", SourceCategory.BET_PREDICTIONS, source_config)
-
-    def _fetch(self) -> Optional[SourceReading]:
-        data = self._read_fallback_file(self.cfg.fallback_file)
-        if not data:
-            return None
-
-        longs = float(data.get("long_contracts", 0))
-        shorts = float(data.get("short_contracts", 0))
-        total = longs + shorts
-
-        if total == 0:
-            return None
-
-        # Net ratio: +1 = all long, -1 = all short
-        net_ratio = (longs - shorts) / total
-
-        # Also factor in changes if available
-        net_change_long = float(data.get("net_change_long", 0))
-        net_change_short = float(data.get("net_change_short", 0))
-        momentum = net_change_long - net_change_short  # Positive = bullish momentum
-
-        if net_ratio > 0.15:
-            direction = SentimentDirection.BULLISH
-            confidence = min(abs(net_ratio), 0.9)
-        elif net_ratio < -0.15:
-            direction = SentimentDirection.BEARISH
-            confidence = min(abs(net_ratio), 0.9)
-        else:
-            direction = SentimentDirection.NEUTRAL
-            confidence = 0.3
-
-        # Boost confidence if momentum confirms direction
-        if momentum > 0 and direction == SentimentDirection.BULLISH:
-            confidence = min(confidence + 0.1, 0.95)
-        elif momentum < 0 and direction == SentimentDirection.BEARISH:
-            confidence = min(confidence + 0.1, 0.95)
-
-        return SourceReading(
-            source_name=self.name, category=self.category,
-            direction=direction, confidence=confidence, raw_value=net_ratio,
         )
 
 
@@ -573,7 +651,6 @@ class SentimentEngine:
             (self.config.news_sentiment, NewsSentimentAdapter),
             (self.config.put_call_ratio, PutCallRatioAdapter),
             (self.config.gold_etf_flows, GoldETFFlowsAdapter),
-            (self.config.futures_positioning, FuturesPositioningAdapter),
         ]
         for src_config, adapter_cls in adapter_map:
             if src_config.enabled:
