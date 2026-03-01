@@ -1,0 +1,9 @@
+{
+  "date": "2026-02-28",
+  "long_contracts": 250000,
+  "short_contracts": 180000,
+  "open_interest": 500000,
+  "net_change_long": 5000,
+  "net_change_short": -3000,
+  "notes": "Update this file with gold futures positioning data from CME or CFTC reports."
+}

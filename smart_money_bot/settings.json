@@ -80,5 +80,52 @@
     "session_start_utc": 7,
     "session_end_utc": 20
   },
+  "sentiment": {
+    "enabled": false,
+    "mode": "augment",
+    "min_confidence": 0.4,
+    "high_confidence": 0.7,
+    "smart_money_weight": 0.45,
+    "social_sentiment_weight": 0.25,
+    "bet_predictions_weight": 0.30,
+    "bullish_threshold": 0.15,
+    "bearish_threshold": -0.15,
+    "stale_weight_factor": 0.3,
+    "log_readings": true,
+    "cot_data": {
+      "enabled": true,
+      "weight": 1.0,
+      "api_url": "https://publicreporting.cftc.gov/resource/6dca-aqc2.json",
+      "cache_ttl_seconds": 604800
+    },
+    "fear_greed_index": {
+      "enabled": true,
+      "weight": 1.0,
+      "api_url": "https://api.alternative.me/fng/",
+      "cache_ttl_seconds": 3600
+    },
+    "news_sentiment": {
+      "enabled": true,
+      "weight": 1.0,
+      "api_key": "",
+      "api_url": "https://www.alphavantage.co/query",
+      "cache_ttl_seconds": 1800
+    },
+    "put_call_ratio": {
+      "enabled": false,
+      "fallback_file": "sentiment_data/put_call.json",
+      "cache_ttl_seconds": 3600
+    },
+    "gold_etf_flows": {
+      "enabled": false,
+      "fallback_file": "sentiment_data/etf_flows.json",
+      "cache_ttl_seconds": 86400
+    },
+    "futures_positioning": {
+      "enabled": false,
+      "fallback_file": "sentiment_data/futures.json",
+      "cache_ttl_seconds": 86400
+    }
+  },
   "active_templates": ["reversal", "continuation"]
 }

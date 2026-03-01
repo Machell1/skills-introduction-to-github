@@ -21,6 +21,7 @@ from .config import BotConfig, TemplateType
 from .models import Candle, DailyLevels
 from .mt5_manager import MT5Manager
 from .risk_manager import RiskManager
+from .sentiment_engine import SentimentEngine
 from .signals import ContinuationSignalGenerator, LowerTFSignalGenerator, ReversalSignalGenerator
 from .smc_engine import SMCEngine
 from .trade_manager import TradeManager
@@ -57,6 +58,11 @@ class SMCBot:
         self.reversal_gen = ReversalSignalGenerator(config, self.engine)
         self.continuation_gen = ContinuationSignalGenerator(config, self.engine)
 
+        # Sentiment engine (optional — disabled by default)
+        self.sentiment_engine: Optional[SentimentEngine] = None
+        if config.sentiment.enabled:
+            self.sentiment_engine = SentimentEngine(config.sentiment)
+
         # Lower-timeframe entry scanners
         self.ltf_generators: list[LowerTFSignalGenerator] = []
         for tf in config.mt5.entry_timeframes:
@@ -82,6 +88,11 @@ class SMCBot:
                      self.config.mt5.entry_timeframes)
         logger.info("Templates: %s", [t.value for t in self.config.active_templates])
         logger.info("Paper Mode: %s", self.config.execution.paper_trading)
+        if self.sentiment_engine:
+            logger.info("Sentiment Engine: ENABLED (mode=%s, %d adapters)",
+                         self.config.sentiment.mode, len(self.sentiment_engine._adapters))
+        else:
+            logger.info("Sentiment Engine: DISABLED")
         logger.info("=" * 60)
 
         # Connect to MT5
@@ -223,14 +234,21 @@ class SMCBot:
             daily_levels = self.mt5.get_daily_levels()
         self._last_daily_levels = daily_levels
 
-        # Daily bias
-        bias = None
+        # Daily bias (EMA + optional sentiment aggregation)
+        ema_bias = None
         if daily_candles and len(daily_candles) >= self.config.bias_filter.ema_period:
-            bias = self.engine.get_daily_bias(daily_candles)
+            ema_bias = self.engine.get_daily_bias(daily_candles)
+
+        sentiment_bias = None
+        if self.sentiment_engine:
+            sentiment_bias = self.sentiment_engine.get_bias_string()
+
+        bias = self._combine_bias(ema_bias, sentiment_bias)
 
         logger.info(
-            "Analysis: ATR=%.2f | Swings=%d | PDH=%.2f | PDL=%.2f | Bias=%s",
-            current_atr, len(swings), daily_levels.pdh, daily_levels.pdl, bias or "none",
+            "Analysis: ATR=%.2f | Swings=%d | PDH=%.2f | PDL=%.2f | EMA_Bias=%s | Sentiment=%s | Bias=%s",
+            current_atr, len(swings), daily_levels.pdh, daily_levels.pdl,
+            ema_bias or "none", sentiment_bias or "none", bias or "none",
         )
 
         # ── 3. Update equity and risk ─────────────────────────────
@@ -420,6 +438,66 @@ class SMCBot:
             current_day_low=min(c.low for c in curr_candles),
             date=datetime.combine(curr_date, datetime.min.time()),
         )
+
+    # ── Bias Combination ─────────────────────────────────────────
+
+    def _combine_bias(self, ema_bias: Optional[str], sentiment_bias: Optional[str]) -> Optional[str]:
+        """
+        Combine EMA bias and sentiment bias according to configured mode.
+
+        Modes:
+        - augment: EMA prevails unless sentiment disagrees with high confidence.
+        - replace: Sentiment replaces EMA when available.
+        - confirm: Both must agree; disagreement → None (no trade).
+
+        If sentiment engine is disabled or unavailable, returns EMA bias unchanged.
+        """
+        if not self.sentiment_engine or sentiment_bias is None:
+            return ema_bias
+
+        mode = self.config.sentiment.mode
+
+        if mode == "replace":
+            return sentiment_bias
+
+        if mode == "confirm":
+            if ema_bias == sentiment_bias:
+                return ema_bias
+            if ema_bias is None:
+                return sentiment_bias
+            if sentiment_bias is None:
+                return ema_bias
+            # Disagreement → no trade
+            logger.info(
+                "Bias CONFLICT (confirm mode): EMA=%s vs Sentiment=%s → no bias",
+                ema_bias, sentiment_bias,
+            )
+            return None
+
+        # Default: "augment" mode
+        if ema_bias == sentiment_bias:
+            return ema_bias  # Agreement — strong signal
+        if ema_bias is None:
+            return sentiment_bias  # EMA unavailable, use sentiment
+        if sentiment_bias is None:
+            return ema_bias  # Sentiment unavailable, use EMA
+
+        # Disagreement — check sentiment confidence
+        signal = self.sentiment_engine._last_signal
+        if signal and signal.confidence >= self.config.sentiment.high_confidence:
+            logger.info(
+                "Bias override (augment mode): EMA=%s overridden by Sentiment=%s (conf=%.2f >= %.2f)",
+                ema_bias, sentiment_bias, signal.confidence, self.config.sentiment.high_confidence,
+            )
+            return sentiment_bias
+
+        # Low-confidence disagreement — EMA prevails
+        logger.info(
+            "Bias kept (augment mode): EMA=%s retained over Sentiment=%s (conf=%.2f < %.2f)",
+            ema_bias, sentiment_bias,
+            signal.confidence if signal else 0, self.config.sentiment.high_confidence,
+        )
+        return ema_bias
 
     # ── Journal Export ────────────────────────────────────────────
 

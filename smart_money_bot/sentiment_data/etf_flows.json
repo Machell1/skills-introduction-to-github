@@ -1,0 +1,6 @@
+{
+  "date": "2026-02-28",
+  "gld_tonnage_change": 2.5,
+  "iau_tonnage_change": 0.8,
+  "notes": "Update this file with daily GLD/IAU ETF tonnage changes. Positive = inflows (bullish), negative = outflows (bearish)."
+}

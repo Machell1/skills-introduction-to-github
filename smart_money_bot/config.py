@@ -125,6 +125,77 @@ class ContinuationConfig:
 
 
 @dataclass
+class SentimentSourceConfig:
+    """Configuration for a single sentiment data source."""
+    enabled: bool = False
+    weight: float = 1.0
+    api_url: str = ""
+    api_key: str = ""
+    fallback_file: str = ""
+    cache_ttl_seconds: int = 3600  # Default 1 hour
+
+
+@dataclass
+class SentimentEngineConfig:
+    """Sentiment aggregation engine configuration."""
+    enabled: bool = False
+    mode: str = "augment"  # augment | replace | confirm
+    min_confidence: float = 0.4  # Discard readings below this confidence
+    high_confidence: float = 0.7  # Threshold for sentiment to override EMA in augment mode
+    smart_money_weight: float = 0.45
+    social_sentiment_weight: float = 0.25
+    bet_predictions_weight: float = 0.30
+    bullish_threshold: float = 0.15  # net_score > this → bullish
+    bearish_threshold: float = -0.15  # net_score < this → bearish
+    stale_weight_factor: float = 0.3  # Multiply weight by this for stale data
+    log_readings: bool = True  # Log individual source readings
+    cot_data: SentimentSourceConfig = None
+    fear_greed_index: SentimentSourceConfig = None
+    news_sentiment: SentimentSourceConfig = None
+    put_call_ratio: SentimentSourceConfig = None
+    gold_etf_flows: SentimentSourceConfig = None
+    futures_positioning: SentimentSourceConfig = None
+
+    def __post_init__(self):
+        if self.cot_data is None:
+            self.cot_data = SentimentSourceConfig(
+                enabled=True,
+                api_url="https://publicreporting.cftc.gov/resource/6dca-aqc2.json",
+                cache_ttl_seconds=604800,
+            )
+        if self.fear_greed_index is None:
+            self.fear_greed_index = SentimentSourceConfig(
+                enabled=True,
+                api_url="https://api.alternative.me/fng/",
+                cache_ttl_seconds=3600,
+            )
+        if self.news_sentiment is None:
+            self.news_sentiment = SentimentSourceConfig(
+                enabled=True,
+                api_url="https://www.alphavantage.co/query",
+                cache_ttl_seconds=1800,
+            )
+        if self.put_call_ratio is None:
+            self.put_call_ratio = SentimentSourceConfig(
+                enabled=False,
+                fallback_file="sentiment_data/put_call.json",
+                cache_ttl_seconds=3600,
+            )
+        if self.gold_etf_flows is None:
+            self.gold_etf_flows = SentimentSourceConfig(
+                enabled=False,
+                fallback_file="sentiment_data/etf_flows.json",
+                cache_ttl_seconds=86400,
+            )
+        if self.futures_positioning is None:
+            self.futures_positioning = SentimentSourceConfig(
+                enabled=False,
+                fallback_file="sentiment_data/futures.json",
+                cache_ttl_seconds=86400,
+            )
+
+
+@dataclass
 class ExecutionConfig:
     """Execution and monitoring parameters."""
     check_interval_seconds: int = 60  # How often to check for signals
@@ -157,6 +228,7 @@ class BotConfig:
     bias_filter: BiasFilterConfig = field(default_factory=BiasFilterConfig)
     continuation: ContinuationConfig = field(default_factory=ContinuationConfig)
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
+    sentiment: SentimentEngineConfig = field(default_factory=SentimentEngineConfig)
     active_templates: list = field(default_factory=lambda: [
         TemplateType.REVERSAL,
         TemplateType.CONTINUATION,
@@ -179,6 +251,23 @@ class BotConfig:
             "continuation": (cfg.continuation, ContinuationConfig),
             "execution": (cfg.execution, ExecutionConfig),
         }
+        # Handle sentiment config separately (nested sub-configs)
+        if "sentiment" in d:
+            s = d["sentiment"]
+            for k, v in s.items():
+                if hasattr(cfg.sentiment, k) and not isinstance(v, dict):
+                    setattr(cfg.sentiment, k, v)
+            # Parse nested source configs
+            source_fields = [
+                "cot_data", "fear_greed_index", "news_sentiment",
+                "put_call_ratio", "gold_etf_flows", "futures_positioning",
+            ]
+            for sf in source_fields:
+                if sf in s and isinstance(s[sf], dict):
+                    src_obj = getattr(cfg.sentiment, sf)
+                    for k, v in s[sf].items():
+                        if hasattr(src_obj, k):
+                            setattr(src_obj, k, v)
         for section_name, (section_obj, section_cls) in section_map.items():
             if section_name in d:
                 for k, v in d[section_name].items():
@@ -241,6 +330,19 @@ class BotConfig:
         # Trailing stop levels must be sorted by trigger
         if self.trade_mgmt.trailing_stop_levels:
             self.trade_mgmt.trailing_stop_levels.sort(key=lambda x: x[0])
+
+        # Sentiment engine validation
+        if self.sentiment.mode not in ("augment", "replace", "confirm"):
+            self.sentiment.mode = "augment"
+            warnings.append(f"sentiment.mode was invalid, reset to 'augment'")
+        total_weight = (self.sentiment.smart_money_weight
+                        + self.sentiment.social_sentiment_weight
+                        + self.sentiment.bet_predictions_weight)
+        if total_weight <= 0:
+            self.sentiment.smart_money_weight = 0.45
+            self.sentiment.social_sentiment_weight = 0.25
+            self.sentiment.bet_predictions_weight = 0.30
+            warnings.append("sentiment category weights summed to 0, reset to defaults")
 
         for w in warnings:
             _log.warning("Config validation: %s", w)

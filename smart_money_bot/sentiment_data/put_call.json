@@ -1,0 +1,7 @@
+{
+  "date": "2026-02-28",
+  "put_call_ratio": 0.85,
+  "put_volume": 12000,
+  "call_volume": 14100,
+  "notes": "Update this file with current gold options put/call ratio data. P/C < 0.7 = bullish, 0.7-1.0 = neutral, > 1.0 = bearish."
+}
