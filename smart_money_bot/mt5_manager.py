@@ -536,7 +536,7 @@ class MT5Manager:
             "symbol": self.mt5_config.symbol,
             "volume": volume,
             "type": mt5.ORDER_TYPE_BUY,
-            "price": self.current_ask,
+            "price": self._normalize_price(self.current_ask),
             "sl": sl,
             "tp": tp,
             "deviation": self.mt5_config.deviation,
@@ -566,7 +566,7 @@ class MT5Manager:
             "symbol": self.mt5_config.symbol,
             "volume": volume,
             "type": mt5.ORDER_TYPE_SELL,
-            "price": self.current_bid,
+            "price": self._normalize_price(self.current_bid),
             "sl": sl,
             "tp": tp,
             "deviation": self.mt5_config.deviation,
@@ -638,7 +638,9 @@ class MT5Manager:
             return False
 
         close_type = mt5.ORDER_TYPE_SELL if pos.type == mt5.ORDER_TYPE_BUY else mt5.ORDER_TYPE_BUY
-        close_price = self.current_bid if pos.type == mt5.ORDER_TYPE_BUY else self.current_ask
+        close_price = self._normalize_price(
+            self.current_bid if pos.type == mt5.ORDER_TYPE_BUY else self.current_ask
+        )
 
         request = {
             "action": mt5.TRADE_ACTION_DEAL,
@@ -673,7 +675,9 @@ class MT5Manager:
 
         pos = positions[0]
         close_type = mt5.ORDER_TYPE_SELL if pos.type == mt5.ORDER_TYPE_BUY else mt5.ORDER_TYPE_BUY
-        close_price = self.current_bid if pos.type == mt5.ORDER_TYPE_BUY else self.current_ask
+        close_price = self._normalize_price(
+            self.current_bid if pos.type == mt5.ORDER_TYPE_BUY else self.current_ask
+        )
 
         request = {
             "action": mt5.TRADE_ACTION_DEAL,

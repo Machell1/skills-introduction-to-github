@@ -78,6 +78,7 @@ class TradeManager:
     def _determine_order_type(
         direction: str, entry_price: float, bid: float, ask: float,
         trigger_price: float = 0.0, spread_tolerance: float = 0.5,
+        symbol_point: float = 0.01,
     ) -> OrderType:
         """
         Determine the correct MT5 order type based on entry price vs current market.
@@ -87,7 +88,7 @@ class TradeManager:
           Short: entry > bid → Sell Limit | entry < bid → Sell Stop | entry ≈ bid → Market
           Stop-Limit: when trigger_price is set and conditions are met.
         """
-        spread = max(ask - bid, 0.01)  # Prevent zero-spread edge case
+        spread = max(ask - bid, symbol_point)  # Prevent zero-spread edge case
         tolerance = spread * spread_tolerance
 
         if direction == "long":
@@ -127,6 +128,7 @@ class TradeManager:
             bid=bid,
             ask=ask,
             trigger_price=setup.trigger_price,
+            symbol_point=self.mt5.symbol_point,
         )
         setup.order_type = order_type
         ticket = None
@@ -157,12 +159,30 @@ class TradeManager:
                 volume=setup.lot_size, sl=setup.stop_price, tp=setup.target_price,
                 comment=comment,
             )
+            if ticket is None:
+                # Deriv may not support stop-limit — fall back to buy stop
+                logger.warning("Buy stop-limit failed, falling back to Buy Stop order")
+                setup.order_type = OrderType.BUY_STOP
+                order_type = OrderType.BUY_STOP
+                ticket = self.mt5.place_buy_stop(
+                    price=setup.entry_price, volume=setup.lot_size,
+                    sl=setup.stop_price, tp=setup.target_price, comment=comment,
+                )
         elif order_type == OrderType.SELL_STOP_LIMIT:
             ticket = self.mt5.place_sell_stop_limit(
                 trigger_price=setup.trigger_price, limit_price=setup.entry_price,
                 volume=setup.lot_size, sl=setup.stop_price, tp=setup.target_price,
                 comment=comment,
             )
+            if ticket is None:
+                # Deriv may not support stop-limit — fall back to sell stop
+                logger.warning("Sell stop-limit failed, falling back to Sell Stop order")
+                setup.order_type = OrderType.SELL_STOP
+                order_type = OrderType.SELL_STOP
+                ticket = self.mt5.place_sell_stop(
+                    price=setup.entry_price, volume=setup.lot_size,
+                    sl=setup.stop_price, tp=setup.target_price, comment=comment,
+                )
         elif order_type == OrderType.BUY_MARKET:
             logger.info("Buy entry %.2f ≈ ask %.2f — using market order", setup.entry_price, ask)
             ticket = self.mt5.place_buy_market(
@@ -218,6 +238,7 @@ class TradeManager:
                 entry_price=setup.entry_price,
                 bid=bid, ask=ask,
                 trigger_price=setup.trigger_price,
+                symbol_point=self.mt5.symbol_point,
             )
         else:
             # No live prices — default to limit orders

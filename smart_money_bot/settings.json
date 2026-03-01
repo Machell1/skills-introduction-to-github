@@ -37,8 +37,6 @@
   "trade_mgmt": {
     "max_hold_candles": 72,
     "breakeven_enabled": true,
-    "breakeven_trigger_r": 1.0,
-    "breakeven_offset_r": 0.1,
     "trailing_stop_levels": [[1.0, 0.1], [1.5, 0.5], [2.0, 1.0], [2.5, 1.5], [3.0, 2.0], [4.0, 3.0]],
     "partial_close_enabled": true,
     "partial_close_fraction": 0.5,

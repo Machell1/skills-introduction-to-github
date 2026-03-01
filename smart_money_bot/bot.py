@@ -435,17 +435,22 @@ class SMCBot:
             with open(path, "w", newline="") as f:
                 writer = csv.writer(f)
                 writer.writerow([
-                    "ticket", "template", "direction", "entry_price", "fill_price",
-                    "exit_price", "stop_price", "target_price", "lot_size",
+                    "ticket", "template", "direction", "order_type",
+                    "entry_price", "fill_price", "exit_price", "stop_price", "target_price",
+                    "lot_size", "original_lot_size",
                     "r_multiple", "realized_r", "pnl", "result",
+                    "partial_closed", "partial_close_price", "breakeven_moved",
                     "signal_time", "fill_time", "exit_time",
                 ])
                 for t in closed:
                     writer.writerow([
-                        t.ticket, t.template, t.direction, t.entry_price, t.fill_price,
-                        t.exit_price, t.stop_price, t.target_price, t.lot_size,
+                        t.ticket, t.template, t.direction,
+                        t.order_type.value if t.order_type else "",
+                        t.entry_price, t.fill_price, t.exit_price, t.stop_price, t.target_price,
+                        t.lot_size, t.original_lot_size,
                         f"{t.r_multiple:.2f}", f"{t.realized_r:.2f}", f"{t.pnl:.2f}",
                         t.result.value if t.result else "unknown",
+                        t.partial_closed, f"{t.partial_close_price:.2f}", t.breakeven_moved,
                         t.signal_time, t.fill_time, t.exit_time,
                     ])
             logger.info("Trade journal exported to %s (%d trades)", path, len(closed))

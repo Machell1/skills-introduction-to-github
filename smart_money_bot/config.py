@@ -33,7 +33,6 @@ class MT5Config:
     path: str = ""  # Path to MT5 terminal executable
     symbol: str = "XAUUSD"
     timeframe: str = "H1"
-    timeframe_daily: str = "D1"
     entry_timeframes: list = field(default_factory=lambda: ["M15", "M30"])  # Lower TFs for entry detection
     magic_number: int = 20240101
     deviation: int = 20  # Max slippage in points
@@ -85,8 +84,6 @@ class TradeManagementConfig:
     """Trade management parameters."""
     max_hold_candles: int = 72  # H: time stop in candles (range: 48-288)
     breakeven_enabled: bool = True
-    breakeven_trigger_r: float = 1.0  # Move to BE after +1R
-    breakeven_offset_r: float = 0.1  # BE offset (entry + 0.1R)
     trailing_stop_levels: list = field(default_factory=lambda: [
         [1.0, 0.1], [1.5, 0.5], [2.0, 1.0],
         [2.5, 1.5], [3.0, 2.0], [4.0, 3.0],  # Extended levels for runners
@@ -135,7 +132,6 @@ class ExecutionConfig:
     paper_spread_points: float = 30.0  # Simulated spread for paper mode
     volatility_filter_enabled: bool = True
     volatility_filter_atr_percentile: float = 90.0  # Skip trades when ATR > 90th percentile
-    no_trade_minutes_before_news: int = 30
     log_level: str = "INFO"
     log_file: str = "smc_bot.log"
     paper_trading: bool = True  # Start in paper mode for safety
@@ -226,6 +222,25 @@ class BotConfig:
             warnings.append(f"daily_loss_limit_pct={self.risk.daily_loss_limit_pct}% is very high")
         if self.target.fixed_r_multiple < 1.0:
             warnings.append(f"fixed_r_multiple={self.target.fixed_r_multiple} is < 1R (negative expectancy)")
+
+        # Partial close fraction must be 0 < f < 1
+        if self.trade_mgmt.partial_close_fraction <= 0 or self.trade_mgmt.partial_close_fraction >= 1.0:
+            self.trade_mgmt.partial_close_fraction = 0.5
+            warnings.append("partial_close_fraction was out of (0,1) range, reset to 0.5")
+
+        # Urgency candles must be less than max_hold_candles
+        if self.trade_mgmt.urgency_candles >= self.trade_mgmt.max_hold_candles:
+            self.trade_mgmt.urgency_candles = int(self.trade_mgmt.max_hold_candles * 0.67)
+            warnings.append(f"urgency_candles >= max_hold_candles, reset to {self.trade_mgmt.urgency_candles}")
+
+        # Hard drawdown halt must be > resume threshold
+        if self.risk.max_drawdown_halt_pct <= self.risk.hard_drawdown_resume_pct:
+            self.risk.hard_drawdown_resume_pct = round(self.risk.max_drawdown_halt_pct * 0.67, 2)
+            warnings.append("hard_drawdown_resume_pct >= halt_pct, reset for hysteresis")
+
+        # Trailing stop levels must be sorted by trigger
+        if self.trade_mgmt.trailing_stop_levels:
+            self.trade_mgmt.trailing_stop_levels.sort(key=lambda x: x[0])
 
         for w in warnings:
             _log.warning("Config validation: %s", w)

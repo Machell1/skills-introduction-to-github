@@ -41,7 +41,6 @@ class ReversalSignalGenerator:
         self.config = config
         self.engine = engine
         self.active_sweeps: list[LiquiditySweep] = []
-        self.pending_setups: list[TradeSetup] = []
         self.max_candles_for_mss: int = config.order_block.max_mss_candles
 
         # Monotonic tick counter for sweep age (candle indices shift on each fetch)
@@ -54,7 +53,6 @@ class ReversalSignalGenerator:
     def reset(self):
         """Clear all tracked state."""
         self.active_sweeps.clear()
-        self.pending_setups.clear()
         self._tick_counter = 0
         self._sweep_tick.clear()
 
@@ -172,7 +170,6 @@ class ReversalSignalGenerator:
                 if setup:
                     setup.fvg = fvg  # Attach FVG confluence (may be None)
                     ready_setups.append(setup)
-                    self.pending_setups.append(setup)
 
         # Clean up expired sweeps — reset swept flag so level can be re-swept
         for s in expired_sweeps:
@@ -328,13 +325,13 @@ class ContinuationSignalGenerator:
     def __init__(self, config: BotConfig, engine: SMCEngine):
         self.config = config
         self.engine = engine
-        self.active_bos: list[MarketStructureShift] = []
-        self.pending_setups: list[TradeSetup] = []
+
+        # Track broken swing levels to prevent duplicate BOS signals
+        self._broken_levels: set[float] = set()
 
     def reset(self):
         """Clear tracked state."""
-        self.active_bos.clear()
-        self.pending_setups.clear()
+        self._broken_levels.clear()
 
     def process_candle(
         self,
@@ -361,6 +358,12 @@ class ContinuationSignalGenerator:
         # ── Detect BOS in trend direction ─────────────────────────
         bos = self.engine.detect_bos(candle, current_index, swings, atr_values, bias)
         if bos:
+            # Dedup: skip if this swing level was already broken
+            level_key = round(bos.break_level, 2)
+            if level_key in self._broken_levels:
+                return ready_setups
+            self._broken_levels.add(level_key)
+
             logger.info(
                 "Continuation: BOS detected | Direction: %s | Break: %.2f | Body: %.2f",
                 bos.direction, bos.break_level, bos.displacement_body_size,
@@ -370,6 +373,21 @@ class ContinuationSignalGenerator:
             ob = self.engine.find_order_block(candles, current_index, bos.direction)
             if ob is None:
                 logger.info("No OB found for continuation BOS at index %d", current_index)
+                return ready_setups
+
+            # Check FVG confluence (consistent with reversal generator)
+            fvgs = self.engine.detect_fvg(candles, max(0, ob.candle_index - 3))
+            fvg = self.engine.find_nearest_fvg(fvgs, bos.direction, ob.candle_index, ob.midpoint)
+            if fvg:
+                logger.info(
+                    "Continuation FVG CONFLUENCE | %s FVG [%.2f-%.2f] overlaps OB [%.2f-%.2f]",
+                    fvg.direction, fvg.low, fvg.high, ob.low, ob.high,
+                )
+            elif self.config.order_block.require_fvg_confluence:
+                logger.info(
+                    "Continuation setup REJECTED: No FVG confluence for OB [%.2f-%.2f] at index %d",
+                    ob.low, ob.high, ob.candle_index,
+                )
                 return ready_setups
 
             # Build setup
@@ -383,8 +401,8 @@ class ContinuationSignalGenerator:
                 swings=swings,
             )
             if setup:
+                setup.fvg = fvg  # Attach FVG confluence (may be None)
                 ready_setups.append(setup)
-                self.pending_setups.append(setup)
 
         return ready_setups
 
@@ -531,11 +549,15 @@ class LowerTFSignalGenerator:
         self._tick_counter: int = 0
         self._sweep_tick: dict[int, int] = {}  # sweep id(obj) → tick when detected
 
+        # Track swept price levels to prevent duplicates from recreated objects
+        self._swept_prices: set[float] = set()
+
     def reset(self):
         self.active_sweeps.clear()
         self._last_candle_time = None
         self._tick_counter = 0
         self._sweep_tick.clear()
+        self._swept_prices.clear()
 
     def process_candles(
         self,
@@ -582,6 +604,11 @@ class LowerTFSignalGenerator:
         # ── Detect sweeps on LTF candle ────────────────────────────
         new_sweeps = self.engine.detect_sweep(candle, liquidity_levels)
         for sweep in new_sweeps:
+            # Skip if this price level was already swept (prevents duplicates)
+            price_key = round(sweep.level.price, 2)
+            if price_key in self._swept_prices:
+                continue
+
             if self.config.bias_filter.require_alignment and bias:
                 if sweep.direction == "long" and bias != "bullish":
                     logger.info("[%s] Skipping long sweep at %.2f — bias is %s", self.timeframe, sweep.level.price, bias)
@@ -590,6 +617,7 @@ class LowerTFSignalGenerator:
                     logger.info("[%s] Skipping short sweep at %.2f — bias is %s", self.timeframe, sweep.level.price, bias)
                     continue
 
+            self._swept_prices.add(price_key)
             self.active_sweeps.append(sweep)
             self._sweep_tick[id(sweep)] = self._tick_counter
             logger.info(
@@ -664,6 +692,13 @@ class LowerTFSignalGenerator:
 
         for s in expired_sweeps:
             s.level.swept = False
+            self.active_sweeps.remove(s)
+            self._sweep_tick.pop(id(s), None)
+            self._swept_prices.discard(round(s.level.price, 2))
+
+        # Clean up confirmed sweeps that already produced setups (memory leak fix)
+        confirmed = [s for s in self.active_sweeps if s.mss_confirmed]
+        for s in confirmed:
             self.active_sweeps.remove(s)
             self._sweep_tick.pop(id(s), None)
 
