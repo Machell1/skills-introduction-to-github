@@ -430,32 +430,43 @@ class TradeManager:
     def _check_paper_exit(self, setup: TradeSetup, candle: Candle, current_index: int) -> bool:
         """Check exit conditions in paper mode using OHLC candle data."""
 
-        # ── Partial close at first target ────────────────────────
+        # ── Multi-level partial close schedule ─────────────────────
         if (self.config.trade_mgmt.partial_close_enabled
-                and not setup.partial_closed
                 and setup.risk_distance > 0):
             if setup.direction == "long":
                 unrealized_r_pc = (candle.high - setup.fill_price) / setup.risk_distance
             else:
                 unrealized_r_pc = (setup.fill_price - candle.low) / setup.risk_distance
 
-            if unrealized_r_pc >= self.config.trade_mgmt.partial_close_r_trigger:
-                frac = self.config.trade_mgmt.partial_close_fraction
-                setup.original_lot_size = setup.lot_size
-                setup.partial_closed = True
-                if setup.direction == "long":
-                    setup.partial_close_price = setup.fill_price + self.config.trade_mgmt.partial_close_r_trigger * setup.risk_distance
-                else:
-                    setup.partial_close_price = setup.fill_price - self.config.trade_mgmt.partial_close_r_trigger * setup.risk_distance
-                setup.lot_size = setup.lot_size * (1.0 - frac)
-                # Move SL to breakeven for remainder
-                setup.stop_price = setup.fill_price
-                setup.breakeven_moved = True
-                logger.info(
-                    "[PAPER] PARTIAL CLOSE | Ticket: %d | Closed %.0f%% at %.1fR (%.2f) | Remainder: %.4f lots",
-                    setup.ticket, frac * 100, self.config.trade_mgmt.partial_close_r_trigger,
-                    setup.partial_close_price, setup.lot_size,
-                )
+            schedule = self.config.trade_mgmt.multi_partial_schedule
+            for trigger_r, frac in sorted(schedule, key=lambda x: x[0]):
+                level_key = f"{trigger_r:.1f}"
+                if level_key in setup.partial_closes:
+                    continue  # Already closed at this level
+                if unrealized_r_pc >= trigger_r:
+                    if not setup.original_lot_size:
+                        setup.original_lot_size = setup.lot_size
+                    close_lots = setup.lot_size * frac
+                    setup.lot_size -= close_lots
+                    if setup.direction == "long":
+                        close_price = setup.fill_price + trigger_r * setup.risk_distance
+                    else:
+                        close_price = setup.fill_price - trigger_r * setup.risk_distance
+                    setup.partial_closes[level_key] = {"price": close_price, "fraction": frac, "lots": close_lots}
+                    setup.partial_closed = True
+                    setup.partial_close_price = close_price
+                    # Move SL up with each partial level
+                    new_sl = setup.fill_price + (trigger_r * 0.5) * setup.risk_distance if setup.direction == "long" else setup.fill_price - (trigger_r * 0.5) * setup.risk_distance
+                    if setup.direction == "long" and new_sl > setup.stop_price:
+                        setup.stop_price = new_sl
+                    elif setup.direction == "short" and new_sl < setup.stop_price:
+                        setup.stop_price = new_sl
+                    setup.breakeven_moved = True
+                    logger.info(
+                        "[PAPER] PARTIAL CLOSE L%s | Ticket: %d | Closed %.0f%% (%.4f lots) at %.1fR (%.2f) | Remainder: %.4f lots | SL → %.2f",
+                        level_key, setup.ticket, frac * 100, close_lots, trigger_r,
+                        close_price, setup.lot_size, setup.stop_price,
+                    )
 
         # ── Trailing stop logic (progressive R levels) ─────────────
         if self.config.trade_mgmt.breakeven_enabled and setup.risk_distance > 0:
@@ -586,35 +597,46 @@ class TradeManager:
     def _check_live_exit(self, setup: TradeSetup, candle: Candle, current_index: int) -> bool:
         """Check exit conditions for live positions."""
 
-        # Partial close at first target (live)
+        # Multi-level partial close (live)
         if (self.config.trade_mgmt.partial_close_enabled
-                and not setup.partial_closed
                 and setup.risk_distance > 0):
             bid, ask = self.mt5.get_current_price()
             if setup.direction == "long":
                 unrealized_r_pc = (bid - setup.fill_price) / setup.risk_distance
             else:
-                unrealized_r_pc = (ask - setup.fill_price) / setup.risk_distance
-                unrealized_r_pc = -unrealized_r_pc  # Invert for short
+                unrealized_r_pc = (setup.fill_price - ask) / setup.risk_distance
 
-            if unrealized_r_pc >= self.config.trade_mgmt.partial_close_r_trigger:
-                frac = self.config.trade_mgmt.partial_close_fraction
-                if self.mt5.partial_close_position(setup.ticket, frac):
-                    setup.original_lot_size = setup.lot_size
-                    setup.partial_closed = True
-                    if setup.direction == "long":
-                        setup.partial_close_price = setup.fill_price + self.config.trade_mgmt.partial_close_r_trigger * setup.risk_distance
-                    else:
-                        setup.partial_close_price = setup.fill_price - self.config.trade_mgmt.partial_close_r_trigger * setup.risk_distance
-                    setup.lot_size = setup.lot_size * (1.0 - frac)
-                    # Move SL to breakeven for remainder
-                    self.mt5.modify_position_sl(setup.ticket, setup.fill_price)
-                    setup.stop_price = setup.fill_price
-                    setup.breakeven_moved = True
-                    logger.info(
-                        "PARTIAL CLOSE | Ticket: %d | Closed %.0f%% at %.1fR | Remainder: %.4f lots",
-                        setup.ticket, frac * 100, self.config.trade_mgmt.partial_close_r_trigger, setup.lot_size,
-                    )
+            schedule = self.config.trade_mgmt.multi_partial_schedule
+            for trigger_r, frac in sorted(schedule, key=lambda x: x[0]):
+                level_key = f"{trigger_r:.1f}"
+                if level_key in setup.partial_closes:
+                    continue
+                if unrealized_r_pc >= trigger_r:
+                    if self.mt5.partial_close_position(setup.ticket, frac):
+                        if not setup.original_lot_size:
+                            setup.original_lot_size = setup.lot_size
+                        close_lots = setup.lot_size * frac
+                        setup.lot_size -= close_lots
+                        if setup.direction == "long":
+                            close_price = setup.fill_price + trigger_r * setup.risk_distance
+                        else:
+                            close_price = setup.fill_price - trigger_r * setup.risk_distance
+                        setup.partial_closes[level_key] = {"price": close_price, "fraction": frac, "lots": close_lots}
+                        setup.partial_closed = True
+                        setup.partial_close_price = close_price
+                        # Move SL up proportionally
+                        new_sl = setup.fill_price + (trigger_r * 0.5) * setup.risk_distance if setup.direction == "long" else setup.fill_price - (trigger_r * 0.5) * setup.risk_distance
+                        if setup.direction == "long" and new_sl > setup.stop_price:
+                            self.mt5.modify_position_sl(setup.ticket, new_sl)
+                            setup.stop_price = new_sl
+                        elif setup.direction == "short" and new_sl < setup.stop_price:
+                            self.mt5.modify_position_sl(setup.ticket, new_sl)
+                            setup.stop_price = new_sl
+                        setup.breakeven_moved = True
+                        logger.info(
+                            "PARTIAL CLOSE L%s | Ticket: %d | Closed %.0f%% at %.1fR | Remainder: %.4f lots | SL → %.2f",
+                            level_key, setup.ticket, frac * 100, trigger_r, setup.lot_size, setup.stop_price,
+                        )
 
         # Trailing stop logic (live)
         if self.config.trade_mgmt.breakeven_enabled and setup.risk_distance > 0:
@@ -715,7 +737,7 @@ class TradeManager:
         return False
 
     def _calculate_realized(self, setup: TradeSetup):
-        """Calculate realized R and PnL for a closed trade, accounting for partial close."""
+        """Calculate realized R and PnL for a closed trade, accounting for multi-level partial closes."""
         if setup.risk_distance <= 0:
             setup.realized_r = 0.0
             setup.pnl = 0.0
@@ -723,11 +745,42 @@ class TradeManager:
 
         contract_size = self.mt5.symbol_contract_size
 
-        if setup.partial_closed and setup.original_lot_size > 0:
-            # Partial close: weighted average of partial and remainder PnL
+        if setup.partial_closes and setup.original_lot_size > 0:
+            # Multi-partial close: sum up PnL from each partial + remainder
+            total_pnl = 0.0
+            total_weighted_r = 0.0
+            total_lots = setup.original_lot_size
+
+            for level_key, info in setup.partial_closes.items():
+                trigger_r = float(level_key)
+                close_lots = info.get("lots", 0.0)
+                close_price = info.get("price", 0.0)
+                lot_fraction = close_lots / total_lots if total_lots > 0 else 0.0
+
+                if setup.direction == "long":
+                    total_pnl += (close_price - setup.fill_price) * close_lots * contract_size
+                else:
+                    total_pnl += (setup.fill_price - close_price) * close_lots * contract_size
+                total_weighted_r += lot_fraction * trigger_r
+
+            # Remainder PnL
+            remaining_lots = setup.lot_size
+            remaining_fraction = remaining_lots / total_lots if total_lots > 0 else 0.0
+            if setup.direction == "long":
+                total_pnl += (setup.exit_price - setup.fill_price) * remaining_lots * contract_size
+                remainder_r = (setup.exit_price - setup.fill_price) / setup.risk_distance
+            else:
+                total_pnl += (setup.fill_price - setup.exit_price) * remaining_lots * contract_size
+                remainder_r = (setup.fill_price - setup.exit_price) / setup.risk_distance
+            total_weighted_r += remaining_fraction * remainder_r
+
+            setup.pnl = total_pnl
+            setup.realized_r = total_weighted_r
+        elif setup.partial_closed and setup.original_lot_size > 0:
+            # Legacy single partial close fallback
             frac = self.config.trade_mgmt.partial_close_fraction
             partial_lots = setup.original_lot_size * frac
-            remaining_lots = setup.lot_size  # Already reduced by partial close
+            remaining_lots = setup.lot_size
 
             if setup.direction == "long":
                 partial_pnl = (setup.partial_close_price - setup.fill_price) * partial_lots * contract_size
@@ -739,7 +792,6 @@ class TradeManager:
                 remainder_r = (setup.fill_price - setup.exit_price) / setup.risk_distance
 
             setup.pnl = partial_pnl + remainder_pnl
-            # Weighted R: partial got fixed R at trigger, remainder got exit R
             partial_r = self.config.trade_mgmt.partial_close_r_trigger
             setup.realized_r = frac * partial_r + (1.0 - frac) * remainder_r
         else:

@@ -112,9 +112,16 @@ class RiskManager:
 
     def _get_effective_risk_fraction(self) -> float:
         """
-        Get the effective risk-per-trade fraction, accounting for drawdown brakes.
+        Get the effective risk-per-trade fraction, accounting for:
+        1. Kelly criterion (when enough history exists)
+        2. Drawdown brakes
         """
         base_r = self.config.risk.risk_per_trade_pct / 100.0
+
+        # Kelly criterion: after 50+ trades, use data-driven sizing
+        kelly_r = self._compute_kelly_fraction()
+        if kelly_r is not None:
+            base_r = kelly_r
 
         if self._risk_reduced:
             effective_r = base_r * self.config.risk.risk_reduction_factor
@@ -125,6 +132,59 @@ class RiskManager:
             return effective_r
 
         return base_r
+
+    def _compute_kelly_fraction(self) -> Optional[float]:
+        """
+        Compute fractional Kelly criterion position sizing.
+
+        Kelly formula: f* = (p*b - q) / b
+        Where: p = win rate, q = 1-p, b = avg_win / avg_loss
+
+        Uses 25% Kelly (quarter-Kelly) for safety.
+        Requires 50+ trade history to activate.
+        Capped at 2% max, floored at 0.1%.
+
+        Returns:
+            Kelly-optimal risk fraction, or None if insufficient history.
+        """
+        min_trades = 50
+        if len(self._trade_history) < min_trades:
+            return None
+
+        trades = list(self._trade_history)
+        wins = [t for t in trades if t.result and t.result.value == "win"]
+        losses = [t for t in trades if t.result and t.result.value == "loss"]
+
+        if not wins or not losses:
+            return None
+
+        p = len(wins) / len(trades)  # Win probability
+        q = 1.0 - p
+        avg_win = sum(t.realized_r for t in wins) / len(wins)
+        avg_loss = sum(abs(t.realized_r) for t in losses) / len(losses)
+
+        if avg_loss <= 0:
+            return None
+
+        b = avg_win / avg_loss  # Win/loss ratio
+
+        kelly_full = (p * b - q) / b
+        if kelly_full <= 0:
+            # Negative Kelly = no edge, use minimum
+            logger.info("Kelly criterion negative (%.4f) — no statistical edge detected", kelly_full)
+            return 0.001  # 0.1% floor
+
+        # Quarter-Kelly for safety
+        kelly_fraction = 0.25 * kelly_full
+
+        # Clamp to [0.1%, 2.0%]
+        kelly_fraction = max(0.001, min(0.02, kelly_fraction))
+
+        logger.info(
+            "Kelly sizing: p=%.2f, b=%.2f, full_kelly=%.4f, quarter_kelly=%.4f (%d trades)",
+            p, b, kelly_full, kelly_fraction, len(trades),
+        )
+        return kelly_fraction
 
     # ── Exposure Checks ───────────────────────────────────────────
 

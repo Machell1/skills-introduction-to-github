@@ -271,18 +271,30 @@ class SMCBot:
             self.trade_mgr.reconcile_positions()
 
         # ── 5. Run risk pre-checks ────────────────────────────────
-        # Session/kill zone filter
-        if self.config.execution.session_filter_enabled:
-            current_hour = datetime.utcnow().hour
+        # Session/kill zone filter (quality matrix replaces binary on/off)
+        current_hour = datetime.utcnow().hour
+        session_quality = 0.0
+
+        if self.config.kill_zone.enabled:
+            session_quality = self.config.kill_zone.hourly_quality.get(current_hour, 0.0)
+            if session_quality < self.config.kill_zone.min_quality:
+                logger.info(
+                    "Kill zone: hour %02d quality %.2f < min %.2f — skipping signals",
+                    current_hour, session_quality, self.config.kill_zone.min_quality,
+                )
+                return
+        elif self.config.execution.session_filter_enabled:
+            # Fallback: legacy binary session filter
             start = self.config.execution.session_start_utc
             end = self.config.execution.session_end_utc
             if start <= end:
                 in_session = start <= current_hour < end
-            else:  # Wraps midnight
+            else:
                 in_session = current_hour >= start or current_hour < end
             if not in_session:
                 logger.info("Outside trading session (%02d:00-%02d:00 UTC) — skipping signals", start, end)
                 return
+            session_quality = 1.0  # Binary mode: in-session = full quality
 
         open_count = self.trade_mgr.total_open_count
         spread = self.mt5.current_spread_points if not self.config.execution.paper_trading else 0.0
@@ -358,9 +370,14 @@ class SMCBot:
                 )
                 break
 
-            # Validate minimum R
-            if setup.r_multiple < 1.0:
-                logger.info("Setup R too low (%.2f) — skipping", setup.r_multiple)
+            # Validate minimum R (higher threshold during low-quality hours)
+            min_r = 1.0
+            if (self.config.kill_zone.enabled
+                    and session_quality < 0.8
+                    and session_quality >= self.config.kill_zone.min_quality):
+                min_r = self.config.kill_zone.low_quality_min_r
+            if setup.r_multiple < min_r:
+                logger.info("Setup R too low (%.2f < %.1f) — skipping (quality=%.2f)", setup.r_multiple, min_r, session_quality)
                 continue
 
             success = self.trade_mgr.place_order(setup)

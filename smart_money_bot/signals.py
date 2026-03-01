@@ -84,13 +84,36 @@ class ReversalSignalGenerator:
         liquidity_levels = self.engine.identify_liquidity_levels(
             swings, daily_levels, current_index, current_atr=current_atr,
         )
-        new_sweeps = self.engine.detect_sweep(candle, liquidity_levels)
+        new_sweeps = self.engine.detect_sweep(candle, liquidity_levels, current_atr=current_atr)
+
+        # Premium/discount zone check
+        zone, midpoint = "equilibrium", 0.0
+        if self.config.bias_filter.premium_discount_enabled:
+            zone, midpoint = self.engine.get_premium_discount_zone(swings, candle.close, current_index)
 
         for sweep in new_sweeps:
             # Skip if this price level was already swept (prevents duplicates from recreated objects)
             price_key = round(sweep.level.price, 2)
             if price_key in self._swept_prices:
                 continue
+
+            # Inducement filter: reject shallow sweeps
+            min_depth = self.config.order_block.min_sweep_depth_atr
+            if current_atr > 0 and sweep.sweep_depth < min_depth * current_atr:
+                logger.info(
+                    "Sweep REJECTED (inducement): depth %.2f < %.2f ATR at %.2f",
+                    sweep.sweep_depth, min_depth, sweep.level.price,
+                )
+                continue
+
+            # Premium/discount filter: only long in discount, short in premium
+            if self.config.bias_filter.premium_discount_enabled:
+                if sweep.direction == "long" and zone == "premium":
+                    logger.info("Skipping long sweep at %.2f — price in premium zone", sweep.level.price)
+                    continue
+                if sweep.direction == "short" and zone == "discount":
+                    logger.info("Skipping short sweep at %.2f — price in discount zone", sweep.level.price)
+                    continue
 
             # Optional: filter by bias alignment
             if self.config.bias_filter.require_alignment and bias:
@@ -105,8 +128,8 @@ class ReversalSignalGenerator:
             self.active_sweeps.append(sweep)
             self._sweep_tick[id(sweep)] = self._tick_counter
             logger.info(
-                "Reversal: New sweep tracked | Direction: %s | Level: %.2f (%s)",
-                sweep.direction, sweep.level.price, sweep.level.source,
+                "Reversal: New sweep tracked | Direction: %s | Level: %.2f (%s) | Quality: %.2f",
+                sweep.direction, sweep.level.price, sweep.level.source, sweep.sweep_quality,
             )
 
         # ── Step 3: Check active sweeps for MSS confirmation ──────
@@ -143,7 +166,7 @@ class ReversalSignalGenerator:
 
                 # ── Step 4b: Check FVG confluence ─────────────────
                 fvgs = self.engine.detect_fvg(candles, max(0, ob.candle_index - 3))
-                fvg = self.engine.find_nearest_fvg(fvgs, mss.direction, ob.candle_index, ob.midpoint)
+                fvg = self.engine.find_nearest_fvg(fvgs, mss.direction, ob.candle_index, ob.midpoint, current_index)
                 if fvg:
                     logger.info(
                         "FVG CONFLUENCE | %s FVG [%.2f-%.2f] overlaps OB [%.2f-%.2f]",
@@ -218,6 +241,13 @@ class ReversalSignalGenerator:
             entry_expiry_index=current_index + self.config.order_block.entry_expiry_candles,
             max_hold_index=current_index + self.config.trade_mgmt.max_hold_candles,
         )
+
+        # Compute Fibonacci OTE entry if enabled
+        if self.config.order_block.use_fibonacci_entry and mss:
+            sweep_ref = sweep.sweep_low if sweep.direction == "long" else sweep.sweep_high
+            fib_entry = self.engine.compute_fib_entry(ob, sweep_ref, mss.break_level)
+            ob.entry_price = fib_entry
+            logger.info("Fibonacci OTE entry: %.2f (OB range: %.2f-%.2f)", fib_entry, ob.low, ob.high)
 
         if sweep.direction == "long":
             setup.entry_price = ob.entry_price
@@ -377,7 +407,7 @@ class ContinuationSignalGenerator:
 
             # Check FVG confluence (consistent with reversal generator)
             fvgs = self.engine.detect_fvg(candles, max(0, ob.candle_index - 3))
-            fvg = self.engine.find_nearest_fvg(fvgs, bos.direction, ob.candle_index, ob.midpoint)
+            fvg = self.engine.find_nearest_fvg(fvgs, bos.direction, ob.candle_index, ob.midpoint, current_index)
             if fvg:
                 logger.info(
                     "Continuation FVG CONFLUENCE | %s FVG [%.2f-%.2f] overlaps OB [%.2f-%.2f]",
@@ -602,7 +632,7 @@ class LowerTFSignalGenerator:
         )
 
         # ── Detect sweeps on LTF candle ────────────────────────────
-        new_sweeps = self.engine.detect_sweep(candle, liquidity_levels)
+        new_sweeps = self.engine.detect_sweep(candle, liquidity_levels, current_atr=h1_atr)
         for sweep in new_sweeps:
             # Skip if this price level was already swept (prevents duplicates)
             price_key = round(sweep.level.price, 2)
@@ -662,7 +692,7 @@ class LowerTFSignalGenerator:
 
                 # Check FVG confluence on LTF candles
                 ltf_fvgs = self.engine.detect_fvg(ltf_candles, max(0, ob.candle_index - 3))
-                ltf_fvg = self.engine.find_nearest_fvg(ltf_fvgs, mss.direction, ob.candle_index, ob.midpoint)
+                ltf_fvg = self.engine.find_nearest_fvg(ltf_fvgs, mss.direction, ob.candle_index, ob.midpoint, current_index)
                 if ltf_fvg:
                     logger.info(
                         "[%s] FVG CONFLUENCE | %s FVG [%.2f-%.2f] overlaps OB [%.2f-%.2f]",

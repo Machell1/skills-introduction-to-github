@@ -62,6 +62,10 @@ class OrderBlockConfig:
     equal_level_atr_fraction: float = 0.1  # Equal highs/lows tolerance as fraction of ATR
     require_fvg_confluence: bool = True  # Require FVG overlap with OB for valid setup
     min_ob_body_range_ratio: float = 0.3  # Min body/range ratio for OB candle quality
+    use_fibonacci_entry: bool = True  # Use OTE (62-79% retracement) instead of fixed fraction
+    fib_entry_level: float = 0.705  # Fibonacci retracement level for OTE (70.5% = midpoint of 62-79%)
+    fvg_max_age_candles: int = 30  # FVGs older than this get reduced weight
+    min_sweep_depth_atr: float = 0.2  # Min sweep depth as fraction of ATR to filter inducements
 
 
 @dataclass
@@ -85,13 +89,32 @@ class TradeManagementConfig:
     max_hold_candles: int = 72  # H: time stop in candles (range: 48-288)
     breakeven_enabled: bool = True
     trailing_stop_levels: list = field(default_factory=lambda: [
-        [1.0, 0.1], [1.5, 0.5], [2.0, 1.0],
+        [1.0, 0.5], [1.5, 0.75], [2.0, 1.25],
         [2.5, 1.5], [3.0, 2.0], [4.0, 3.0],  # Extended levels for runners
     ])
     partial_close_enabled: bool = True  # Close fraction at first target
-    partial_close_fraction: float = 0.5  # Close this fraction at trigger
-    partial_close_r_trigger: float = 1.5  # Trigger partial close at this R
-    urgency_candles: int = 48  # Close trade if < 0.5R profit after this many candles
+    partial_close_fraction: float = 0.4  # Close this fraction at trigger
+    partial_close_r_trigger: float = 1.0  # Trigger partial close at this R
+    urgency_candles: int = 24  # Close trade if < 0.5R profit after this many candles
+    multi_partial_schedule: list = field(default_factory=lambda: [
+        [1.0, 0.40],   # At 1.0R, close 40% of position
+        [2.5, 0.25],   # At 2.5R, close 25% of remaining
+        [4.0, 0.50],   # At 4.0R, close 50% of remaining
+    ])
+
+
+@dataclass
+class KillZoneConfig:
+    """Session quality matrix — trade intensity by hour."""
+    enabled: bool = True
+    # Quality score (0.0-1.0) per UTC hour. 0.0 = no trade, 1.0 = best session.
+    hourly_quality: dict = field(default_factory=lambda: {
+        7: 0.5, 8: 0.6, 9: 0.7, 10: 0.8, 11: 0.8, 12: 0.85,
+        13: 1.0, 14: 1.0, 15: 1.0, 16: 0.9,  # London/NY overlap
+        17: 0.8, 18: 0.75, 19: 0.7, 20: 0.5,
+    })
+    min_quality: float = 0.5  # Skip hours below this quality
+    low_quality_min_r: float = 2.5  # Require higher R during low-quality hours
 
 
 @dataclass
@@ -114,6 +137,7 @@ class BiasFilterConfig:
     enabled: bool = True
     ema_period: int = 20  # Daily EMA period for directional bias
     require_alignment: bool = True  # Require bias alignment for reversals (higher win rate)
+    premium_discount_enabled: bool = True  # Only long in discount, short in premium
 
 
 @dataclass
@@ -223,6 +247,7 @@ class BotConfig:
     bias_filter: BiasFilterConfig = field(default_factory=BiasFilterConfig)
     continuation: ContinuationConfig = field(default_factory=ContinuationConfig)
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
+    kill_zone: KillZoneConfig = field(default_factory=KillZoneConfig)
     sentiment: SentimentEngineConfig = field(default_factory=SentimentEngineConfig)
     active_templates: list = field(default_factory=lambda: [
         TemplateType.REVERSAL,
@@ -246,6 +271,15 @@ class BotConfig:
             "continuation": (cfg.continuation, ContinuationConfig),
             "execution": (cfg.execution, ExecutionConfig),
         }
+        # Handle kill_zone config (dict values need special handling for hourly_quality)
+        if "kill_zone" in d:
+            kz = d["kill_zone"]
+            for k, v in kz.items():
+                if k == "hourly_quality" and isinstance(v, dict):
+                    # JSON keys are strings; convert to int
+                    cfg.kill_zone.hourly_quality = {int(h): q for h, q in v.items()}
+                elif hasattr(cfg.kill_zone, k):
+                    setattr(cfg.kill_zone, k, v)
         # Handle sentiment config separately (nested sub-configs)
         if "sentiment" in d:
             s = d["sentiment"]
@@ -325,6 +359,11 @@ class BotConfig:
         # Trailing stop levels must be sorted by trigger
         if self.trade_mgmt.trailing_stop_levels:
             self.trade_mgmt.trailing_stop_levels.sort(key=lambda x: x[0])
+
+        # Kill zone validation
+        if self.kill_zone.min_quality < 0 or self.kill_zone.min_quality > 1.0:
+            self.kill_zone.min_quality = 0.5
+            warnings.append("kill_zone.min_quality out of [0,1], reset to 0.5")
 
         # Sentiment engine validation
         if self.sentiment.mode not in ("augment", "replace", "confirm"):

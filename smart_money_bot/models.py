@@ -121,6 +121,8 @@ class LiquiditySweep:
     direction: str  # "long" (swept below, expect up) or "short" (swept above, expect down)
     sweep_low: float = 0.0  # Lowest point of sweep (for longs)
     sweep_high: float = 0.0  # Highest point of sweep (for shorts)
+    sweep_depth: float = 0.0  # How far past the level the sweep went (in price units)
+    sweep_quality: float = 1.0  # Quality score (0-1): depth/rejection strength
     mss_confirmed: bool = False
     mss_candle_index: Optional[int] = None
 
@@ -224,6 +226,7 @@ class TradeSetup:
     partial_closed: bool = False  # True after partial close at first target
     partial_close_price: float = 0.0  # Price at which partial close executed
     original_lot_size: float = 0.0  # Lot size before partial close
+    partial_closes: dict = field(default_factory=dict)  # {r_level: {"price": x, "fraction": y}}
 
     # Result
     exit_price: float = 0.0

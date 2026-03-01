@@ -135,6 +135,87 @@ class SMCEngine:
             return "bearish"
         return None
 
+    # ── Premium / Discount Zone ────────────────────────────────────
+
+    def get_premium_discount_zone(
+        self,
+        swings: list[SwingPoint],
+        current_price: float,
+        current_index: int,
+    ) -> tuple[str, float]:
+        """
+        Determine whether current price is in premium, discount, or equilibrium.
+
+        Uses the last confirmed swing high and swing low to define the range.
+        - Above 50% = premium (expensive — favour shorts)
+        - Below 50% = discount (cheap — favour longs)
+        - Within 5% of 50% = equilibrium (neutral)
+
+        Returns:
+            (zone, midpoint) where zone is "premium", "discount", or "equilibrium"
+        """
+        last_high = self.get_last_swing_high(swings, current_index)
+        last_low = self.get_last_swing_low(swings, current_index)
+
+        if not last_high or not last_low or last_high.price <= last_low.price:
+            return "equilibrium", current_price
+
+        swing_range = last_high.price - last_low.price
+        midpoint = last_low.price + 0.5 * swing_range
+        position = (current_price - last_low.price) / swing_range
+
+        if position > 0.55:
+            return "premium", midpoint
+        elif position < 0.45:
+            return "discount", midpoint
+        return "equilibrium", midpoint
+
+    # ── Fibonacci OTE Entry ──────────────────────────────────────
+
+    def compute_fib_entry(
+        self,
+        ob: OrderBlock,
+        sweep_reference: float,
+        mss_break_level: float,
+    ) -> float:
+        """
+        Compute Optimal Trade Entry (OTE) using Fibonacci retracement.
+
+        The OTE zone is 62-79% retracement of the impulse move.
+        Default entry at 70.5% (configurable via fib_entry_level).
+
+        For bullish: measure from sweep low to MSS break level, enter at
+        fib_entry_level retracement — but clamped within the OB zone.
+
+        For bearish: measure from sweep high to MSS break level, enter at
+        fib_entry_level retracement — but clamped within the OB zone.
+
+        Returns:
+            Fibonacci-adjusted entry price (clamped to OB bounds).
+        """
+        if not self.config.order_block.use_fibonacci_entry:
+            return ob.entry_price  # Fallback to standard fixed-fraction entry
+
+        fib = self.config.order_block.fib_entry_level  # 0.705 default
+
+        if ob.direction == "bullish":
+            # Impulse: sweep_low → mss_break_level (upward)
+            impulse_range = mss_break_level - sweep_reference
+            if impulse_range <= 0:
+                return ob.entry_price
+            fib_price = mss_break_level - fib * impulse_range
+            # Clamp within OB zone
+            return max(ob.low, min(ob.high, fib_price))
+
+        else:  # bearish
+            # Impulse: sweep_high → mss_break_level (downward)
+            impulse_range = sweep_reference - mss_break_level
+            if impulse_range <= 0:
+                return ob.entry_price
+            fib_price = mss_break_level + fib * impulse_range
+            # Clamp within OB zone
+            return max(ob.low, min(ob.high, fib_price))
+
     # ── Swing Detection ───────────────────────────────────────────
 
     def detect_swings(self, candles: list[Candle]) -> list[SwingPoint]:
@@ -306,6 +387,7 @@ class SMCEngine:
         self,
         candle: Candle,
         liquidity_levels: list[LiquidityLevel],
+        current_atr: float = 0.0,
     ) -> list[LiquiditySweep]:
         """
         Check if a candle sweeps any liquidity level.
@@ -313,8 +395,12 @@ class SMCEngine:
 
         Sell-side sweep (bullish): candle low < level price AND candle close > level price
         Buy-side sweep (bearish): candle high > level price AND candle close < level price
+
+        Inducement scoring: measures sweep depth vs ATR. Shallow sweeps (< min_sweep_depth_atr)
+        are scored lower and can be filtered by signal generators.
         """
         sweeps = []
+        min_depth_atr = self.config.order_block.min_sweep_depth_atr
 
         for level in liquidity_levels:
             if level.swept:
@@ -323,35 +409,49 @@ class SMCEngine:
             if level.type == LiquidityType.SELL_SIDE:
                 # Sell-side liquidity sweep → potential long
                 if candle.low < level.price and candle.close > level.price:
+                    depth = level.price - candle.low
+                    depth_atr = depth / current_atr if current_atr > 0 else 1.0
+                    quality = min(1.0, depth_atr / 0.5) if current_atr > 0 else 1.0
+
                     level.swept = True
                     level.sweep_time = candle.time
                     level.sweep_candle_index = candle.index
-                    sweeps.append(LiquiditySweep(
+                    sweep = LiquiditySweep(
                         level=level,
                         sweep_candle=candle,
                         direction="long",
                         sweep_low=candle.low,
-                    ))
+                        sweep_depth=depth,
+                        sweep_quality=quality,
+                    )
+                    sweeps.append(sweep)
                     logger.info(
-                        "SELL-SIDE SWEEP detected at %.2f (source: %s) | Candle low: %.2f | Close: %.2f",
-                        level.price, level.source, candle.low, candle.close,
+                        "SELL-SIDE SWEEP at %.2f (source: %s) | Low: %.2f | Depth: %.2f (%.2f ATR) | Quality: %.2f",
+                        level.price, level.source, candle.low, depth, depth_atr, quality,
                     )
 
             elif level.type == LiquidityType.BUY_SIDE:
                 # Buy-side liquidity sweep → potential short
                 if candle.high > level.price and candle.close < level.price:
+                    depth = candle.high - level.price
+                    depth_atr = depth / current_atr if current_atr > 0 else 1.0
+                    quality = min(1.0, depth_atr / 0.5) if current_atr > 0 else 1.0
+
                     level.swept = True
                     level.sweep_time = candle.time
                     level.sweep_candle_index = candle.index
-                    sweeps.append(LiquiditySweep(
+                    sweep = LiquiditySweep(
                         level=level,
                         sweep_candle=candle,
                         direction="short",
                         sweep_high=candle.high,
-                    ))
+                        sweep_depth=depth,
+                        sweep_quality=quality,
+                    )
+                    sweeps.append(sweep)
                     logger.info(
-                        "BUY-SIDE SWEEP detected at %.2f (source: %s) | Candle high: %.2f | Close: %.2f",
-                        level.price, level.source, candle.high, candle.close,
+                        "BUY-SIDE SWEEP at %.2f (source: %s) | High: %.2f | Depth: %.2f (%.2f ATR) | Quality: %.2f",
+                        level.price, level.source, candle.high, depth, depth_atr, quality,
                     )
 
         return sweeps
@@ -620,8 +720,15 @@ class SMCEngine:
         direction: str,
         after_index: int,
         near_price: float,
+        current_index: int = 0,
     ) -> Optional[FairValueGap]:
-        """Find the nearest valid FVG in the given direction near a price level."""
+        """
+        Find the nearest valid FVG in the given direction near a price level.
+
+        FVG freshness weighting: older FVGs are penalised in the sort.
+        Age thresholds (in candles): 0-5 = 100%, 6-15 = 80%, 16-30 = 60%, 30+ = 40%.
+        """
+        max_age = self.config.order_block.fvg_max_age_candles
         candidates = [
             f for f in fvgs
             if f.direction == direction and f.candle_index >= after_index and f.is_valid and not f.filled
@@ -629,6 +736,18 @@ class SMCEngine:
         if not candidates:
             return None
 
-        # Sort by proximity to near_price
-        candidates.sort(key=lambda f: abs(f.midpoint - near_price))
+        def freshness_weight(fvg: FairValueGap) -> float:
+            if current_index <= 0:
+                return 1.0
+            age = current_index - fvg.candle_index
+            if age <= 5:
+                return 1.0
+            elif age <= 15:
+                return 0.8
+            elif age <= max_age:
+                return 0.6
+            return 0.4
+
+        # Sort by proximity to near_price, penalised by staleness
+        candidates.sort(key=lambda f: abs(f.midpoint - near_price) / freshness_weight(f))
         return candidates[0]
