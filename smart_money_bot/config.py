@@ -173,11 +173,11 @@ class SentimentEngineConfig:
     bearish_threshold: float = -0.15  # net_score < this → bearish
     stale_weight_factor: float = 0.3  # Multiply weight by this for stale data
     log_readings: bool = True  # Log individual source readings
-    cot_data: SentimentSourceConfig = None
-    fear_greed_index: SentimentSourceConfig = None
-    news_sentiment: SentimentSourceConfig = None
-    put_call_ratio: SentimentSourceConfig = None
-    gold_etf_flows: SentimentSourceConfig = None
+    cot_data: Optional[SentimentSourceConfig] = None
+    fear_greed_index: Optional[SentimentSourceConfig] = None
+    news_sentiment: Optional[SentimentSourceConfig] = None
+    put_call_ratio: Optional[SentimentSourceConfig] = None
+    gold_etf_flows: Optional[SentimentSourceConfig] = None
 
     def __post_init__(self):
         if self.cot_data is None:
@@ -364,6 +364,44 @@ class BotConfig:
         if self.kill_zone.min_quality < 0 or self.kill_zone.min_quality > 1.0:
             self.kill_zone.min_quality = 0.5
             warnings.append("kill_zone.min_quality out of [0,1], reset to 0.5")
+        if self.kill_zone.low_quality_min_r < 1.0:
+            self.kill_zone.low_quality_min_r = 2.5
+            warnings.append("kill_zone.low_quality_min_r < 1.0, reset to 2.5")
+        # Validate hourly_quality keys (0-23) and values (0.0-1.0)
+        valid_hq = {}
+        for h, q in self.kill_zone.hourly_quality.items():
+            if not (0 <= h <= 23):
+                warnings.append(f"kill_zone.hourly_quality key {h} not in 0-23, skipped")
+                continue
+            q = max(0.0, min(1.0, float(q)))
+            valid_hq[h] = q
+        self.kill_zone.hourly_quality = valid_hq
+
+        # Order block entry_fraction bounds
+        if self.order_block.entry_fraction < 0.1 or self.order_block.entry_fraction > 0.9:
+            self.order_block.entry_fraction = 0.50
+            warnings.append("order_block.entry_fraction out of [0.1,0.9], reset to 0.50")
+        if self.order_block.fib_entry_level < 0.5 or self.order_block.fib_entry_level > 0.9:
+            self.order_block.fib_entry_level = 0.705
+            warnings.append("order_block.fib_entry_level out of [0.5,0.9], reset to 0.705")
+
+        # Session hours bounds
+        if self.execution.session_start_utc < 0 or self.execution.session_start_utc > 23:
+            self.execution.session_start_utc = 7
+            warnings.append("session_start_utc out of [0,23], reset to 7")
+        if self.execution.session_end_utc < 0 or self.execution.session_end_utc > 23:
+            self.execution.session_end_utc = 20
+            warnings.append("session_end_utc out of [0,23], reset to 20")
+
+        # Multi-partial schedule: fractions should not exceed 1.0 cumulatively
+        if self.trade_mgmt.multi_partial_schedule:
+            self.trade_mgmt.multi_partial_schedule.sort(key=lambda x: x[0])
+            cumulative = 0.0
+            for _, frac in self.trade_mgmt.multi_partial_schedule:
+                remaining = 1.0 - cumulative
+                cumulative += remaining * frac
+            if cumulative > 0.99:
+                warnings.append(f"multi_partial_schedule cumulative close ~{cumulative:.2%} — nearly all lots will be closed before final exit")
 
         # Sentiment engine validation
         if self.sentiment.mode not in ("augment", "replace", "confirm"):

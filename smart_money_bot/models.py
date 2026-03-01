@@ -107,7 +107,7 @@ class LiquidityLevel:
     type: LiquidityType
     price: float
     source: str  # "pdh", "pdl", "swing_high", "swing_low", "equal_highs", "equal_lows"
-    creation_time: datetime = None
+    creation_time: Optional[datetime] = None
     swept: bool = False
     sweep_time: Optional[datetime] = None
     sweep_candle_index: Optional[int] = None
@@ -122,7 +122,7 @@ class LiquiditySweep:
     sweep_low: float = 0.0  # Lowest point of sweep (for longs)
     sweep_high: float = 0.0  # Highest point of sweep (for shorts)
     sweep_depth: float = 0.0  # How far past the level the sweep went (in price units)
-    sweep_quality: float = 1.0  # Quality score (0-1): depth/rejection strength
+    sweep_quality: float = 0.0  # Quality score (0-1): depth/rejection strength (0 = unscored)
     mss_confirmed: bool = False
     mss_candle_index: Optional[int] = None
 

@@ -201,11 +201,14 @@ class ReversalSignalGenerator:
             self._sweep_tick.pop(id(s), None)
             self._swept_prices.discard(round(s.level.price, 2))
 
-        # Clean up confirmed sweeps that already produced setups (memory leak fix)
+        # Clean up confirmed sweeps — release swept price if no setup was produced
         confirmed = [s for s in self.active_sweeps if s.mss_confirmed]
         for s in confirmed:
             self.active_sweeps.remove(s)
             self._sweep_tick.pop(id(s), None)
+            price_key = round(s.level.price, 2)
+            if not any(rs.sweep is s for rs in ready_setups):
+                self._swept_prices.discard(price_key)
 
         return ready_setups
 
@@ -420,6 +423,25 @@ class ContinuationSignalGenerator:
                 )
                 return ready_setups
 
+            # Premium/discount zone filter
+            if self.config.bias_filter.premium_discount_enabled:
+                zone, _ = self.engine.get_premium_discount_zone(swings, candle.close, current_index)
+                if bos.direction == "bullish" and zone == "premium":
+                    logger.info("Continuation REJECTED: bullish BOS in premium zone")
+                    return ready_setups
+                elif bos.direction == "bearish" and zone == "discount":
+                    logger.info("Continuation REJECTED: bearish BOS in discount zone")
+                    return ready_setups
+
+            # Fibonacci OTE entry
+            if self.config.order_block.use_fibonacci_entry and bos:
+                if bos.direction == "bullish":
+                    sweep_ref = candle.low
+                else:
+                    sweep_ref = candle.high
+                fib_entry = self.engine.compute_fib_entry(ob, sweep_ref, bos.break_level)
+                ob.entry_price = fib_entry
+
             # Build setup
             setup = self._build_setup(
                 bos=bos,
@@ -628,7 +650,7 @@ class LowerTFSignalGenerator:
 
         # ── Build liquidity levels from H1 structure ───────────────
         liquidity_levels = self.engine.identify_liquidity_levels(
-            h1_swings, daily_levels, len(h1_swings), current_atr=h1_atr,
+            h1_swings, daily_levels, h1_current_index, current_atr=h1_atr,
         )
 
         # ── Detect sweeps on LTF candle ────────────────────────────
@@ -705,6 +727,22 @@ class LowerTFSignalGenerator:
                     )
                     continue
 
+                # Premium/discount zone filter (using H1 swings)
+                if self.config.bias_filter.premium_discount_enabled:
+                    zone, _ = self.engine.get_premium_discount_zone(h1_swings, candle.close, h1_current_index)
+                    if sweep.direction == "long" and zone == "premium":
+                        logger.info("[%s] LTF REJECTED: long sweep in premium zone", self.timeframe)
+                        continue
+                    elif sweep.direction == "short" and zone == "discount":
+                        logger.info("[%s] LTF REJECTED: short sweep in discount zone", self.timeframe)
+                        continue
+
+                # Fibonacci OTE entry
+                if self.config.order_block.use_fibonacci_entry and mss:
+                    sweep_ref = sweep.sweep_low if sweep.direction == "long" else sweep.sweep_high
+                    fib_entry = self.engine.compute_fib_entry(ob, sweep_ref, mss.break_level)
+                    ob.entry_price = fib_entry
+
                 # Build setup using H1 ATR for stop buffer, LTF OB for entry
                 setup = self._build_ltf_setup(
                     sweep=sweep,
@@ -726,11 +764,14 @@ class LowerTFSignalGenerator:
             self._sweep_tick.pop(id(s), None)
             self._swept_prices.discard(round(s.level.price, 2))
 
-        # Clean up confirmed sweeps that already produced setups (memory leak fix)
+        # Clean up confirmed sweeps — release swept price if no setup was produced
         confirmed = [s for s in self.active_sweeps if s.mss_confirmed]
         for s in confirmed:
             self.active_sweeps.remove(s)
             self._sweep_tick.pop(id(s), None)
+            price_key = round(s.level.price, 2)
+            if not any(rs.sweep is s for rs in ready_setups):
+                self._swept_prices.discard(price_key)
 
         return ready_setups
 

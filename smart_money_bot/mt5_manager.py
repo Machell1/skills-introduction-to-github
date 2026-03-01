@@ -5,7 +5,7 @@ Adapts dynamically to any equity account connected through Deriv.
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import MetaTrader5 as mt5
@@ -239,7 +239,7 @@ class MT5Manager:
         candles = []
         for i, r in enumerate(rates):
             candles.append(Candle(
-                time=datetime.utcfromtimestamp(r["time"]),
+                time=datetime.fromtimestamp(r["time"], tz=timezone.utc),
                 open=float(r["open"]),
                 high=float(r["high"]),
                 low=float(r["low"]),
@@ -282,7 +282,54 @@ class MT5Manager:
             return 0.0, 0.0
         return tick.bid, tick.ask
 
+    @property
+    def symbol_trade_stops_level(self) -> int:
+        """Minimum distance (in points) for SL/TP from price. 0 means no restriction."""
+        self._refresh_symbol_info()
+        return self._symbol_info.trade_stops_level if self._symbol_info else 0
+
     # ── Order Execution ───────────────────────────────────────────
+
+    def _validate_stops(self, price: float, sl: float, tp: float, direction: str) -> tuple[float, float]:
+        """
+        Validate and adjust SL/TP to comply with SYMBOL_TRADE_STOPS_LEVEL.
+
+        Returns adjusted (sl, tp) that satisfy Deriv's minimum distance requirement.
+        """
+        stops_level = self.symbol_trade_stops_level
+        if stops_level <= 0:
+            return sl, tp
+
+        min_distance = stops_level * self.symbol_point
+
+        if direction == "long":
+            # SL must be at least min_distance below price
+            max_sl = price - min_distance
+            if sl > max_sl:
+                logger.warning("SL %.2f too close to price %.2f (min dist %.2f pts), adjusted to %.2f",
+                               sl, price, stops_level, max_sl)
+                sl = self._normalize_price(max_sl)
+            # TP must be at least min_distance above price
+            min_tp = price + min_distance
+            if tp > 0 and tp < min_tp:
+                logger.warning("TP %.2f too close to price %.2f (min dist %.2f pts), adjusted to %.2f",
+                               tp, price, stops_level, min_tp)
+                tp = self._normalize_price(min_tp)
+        else:
+            # SL must be at least min_distance above price
+            min_sl = price + min_distance
+            if sl < min_sl:
+                logger.warning("SL %.2f too close to price %.2f (min dist %.2f pts), adjusted to %.2f",
+                               sl, price, stops_level, min_sl)
+                sl = self._normalize_price(min_sl)
+            # TP must be at least min_distance below price
+            max_tp = price - min_distance
+            if tp > 0 and tp > max_tp:
+                logger.warning("TP %.2f too close to price %.2f (min dist %.2f pts), adjusted to %.2f",
+                               tp, price, stops_level, max_tp)
+                tp = self._normalize_price(max_tp)
+
+        return sl, tp
 
     def _get_fill_type(self) -> int:
         """Determine the appropriate fill type for the broker."""
@@ -293,7 +340,13 @@ class MT5Manager:
         step = self.symbol_volume_step
         vol_min = self.symbol_volume_min
         vol_max = self.symbol_volume_max
-        normalized = max(vol_min, min(vol_max, round(volume / step) * step))
+        rounded = round(volume / step) * step
+        if rounded < vol_min:
+            logger.warning(
+                "Volume %.4f rounded to %.4f < volume_min %.4f — floored to min (risk may exceed calculated)",
+                volume, rounded, vol_min,
+            )
+        normalized = max(vol_min, min(vol_max, rounded))
         return round(normalized, 8)
 
     def _normalize_price(self, price: float) -> float:
@@ -312,6 +365,7 @@ class MT5Manager:
         price = self._normalize_price(price)
         sl = self._normalize_price(sl)
         tp = self._normalize_price(tp)
+        sl, tp = self._validate_stops(price, sl, tp, "long")
         volume = self._normalize_volume(volume)
 
         request = {
@@ -322,7 +376,6 @@ class MT5Manager:
             "price": price,
             "sl": sl,
             "tp": tp,
-            "deviation": self.mt5_config.deviation,
             "magic": self.mt5_config.magic_number,
             "comment": comment,
             "type_time": mt5.ORDER_TIME_GTC,
@@ -344,6 +397,7 @@ class MT5Manager:
         price = self._normalize_price(price)
         sl = self._normalize_price(sl)
         tp = self._normalize_price(tp)
+        sl, tp = self._validate_stops(price, sl, tp, "short")
         volume = self._normalize_volume(volume)
 
         request = {
@@ -354,7 +408,6 @@ class MT5Manager:
             "price": price,
             "sl": sl,
             "tp": tp,
-            "deviation": self.mt5_config.deviation,
             "magic": self.mt5_config.magic_number,
             "comment": comment,
             "type_time": mt5.ORDER_TIME_GTC,
@@ -379,6 +432,7 @@ class MT5Manager:
         price = self._normalize_price(price)
         sl = self._normalize_price(sl)
         tp = self._normalize_price(tp)
+        sl, tp = self._validate_stops(price, sl, tp, "long")
         volume = self._normalize_volume(volume)
 
         request = {
@@ -389,7 +443,6 @@ class MT5Manager:
             "price": price,
             "sl": sl,
             "tp": tp,
-            "deviation": self.mt5_config.deviation,
             "magic": self.mt5_config.magic_number,
             "comment": comment,
             "type_time": mt5.ORDER_TIME_GTC,
@@ -414,6 +467,7 @@ class MT5Manager:
         price = self._normalize_price(price)
         sl = self._normalize_price(sl)
         tp = self._normalize_price(tp)
+        sl, tp = self._validate_stops(price, sl, tp, "short")
         volume = self._normalize_volume(volume)
 
         request = {
@@ -424,7 +478,6 @@ class MT5Manager:
             "price": price,
             "sl": sl,
             "tp": tp,
-            "deviation": self.mt5_config.deviation,
             "magic": self.mt5_config.magic_number,
             "comment": comment,
             "type_time": mt5.ORDER_TIME_GTC,
@@ -454,6 +507,7 @@ class MT5Manager:
         tp = self._normalize_price(tp)
         volume = self._normalize_volume(volume)
 
+        sl, tp = self._validate_stops(limit_price, sl, tp, "long")
         request = {
             "action": mt5.TRADE_ACTION_PENDING,
             "symbol": self.mt5_config.symbol,
@@ -463,7 +517,6 @@ class MT5Manager:
             "stoplimit": trigger_price,
             "sl": sl,
             "tp": tp,
-            "deviation": self.mt5_config.deviation,
             "magic": self.mt5_config.magic_number,
             "comment": comment,
             "type_time": mt5.ORDER_TIME_GTC,
@@ -496,6 +549,7 @@ class MT5Manager:
         tp = self._normalize_price(tp)
         volume = self._normalize_volume(volume)
 
+        sl, tp = self._validate_stops(limit_price, sl, tp, "short")
         request = {
             "action": mt5.TRADE_ACTION_PENDING,
             "symbol": self.mt5_config.symbol,
@@ -505,7 +559,6 @@ class MT5Manager:
             "stoplimit": trigger_price,
             "sl": sl,
             "tp": tp,
-            "deviation": self.mt5_config.deviation,
             "magic": self.mt5_config.magic_number,
             "comment": comment,
             "type_time": mt5.ORDER_TIME_GTC,
@@ -530,6 +583,7 @@ class MT5Manager:
         volume = self._normalize_volume(volume)
         sl = self._normalize_price(sl)
         tp = self._normalize_price(tp)
+        sl, tp = self._validate_stops(self.current_ask, sl, tp, "long")
 
         request = {
             "action": mt5.TRADE_ACTION_DEAL,
@@ -560,6 +614,7 @@ class MT5Manager:
         volume = self._normalize_volume(volume)
         sl = self._normalize_price(sl)
         tp = self._normalize_price(tp)
+        sl, tp = self._validate_stops(self.current_bid, sl, tp, "short")
 
         request = {
             "action": mt5.TRADE_ACTION_DEAL,
@@ -724,6 +779,13 @@ class MT5Manager:
         positions = mt5.positions_get(ticket=ticket)
         if positions and len(positions) > 0:
             return positions[0].price_open
+        return None
+
+    def get_position_volume(self, ticket: int) -> Optional[float]:
+        """Get the current volume of an open position (for lot sync after partial close)."""
+        positions = mt5.positions_get(ticket=ticket)
+        if positions and len(positions) > 0:
+            return positions[0].volume
         return None
 
     def is_order_pending(self, ticket: int) -> bool:

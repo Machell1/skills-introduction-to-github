@@ -411,7 +411,7 @@ class SMCEngine:
                 if candle.low < level.price and candle.close > level.price:
                     depth = level.price - candle.low
                     depth_atr = depth / current_atr if current_atr > 0 else 1.0
-                    quality = min(1.0, depth_atr / 0.5) if current_atr > 0 else 1.0
+                    quality = min(1.0, depth_atr / max(min_depth_atr, 0.1)) if current_atr > 0 else 1.0
 
                     level.swept = True
                     level.sweep_time = candle.time
@@ -435,7 +435,7 @@ class SMCEngine:
                 if candle.high > level.price and candle.close < level.price:
                     depth = candle.high - level.price
                     depth_atr = depth / current_atr if current_atr > 0 else 1.0
-                    quality = min(1.0, depth_atr / 0.5) if current_atr > 0 else 1.0
+                    quality = min(1.0, depth_atr / max(min_depth_atr, 0.1)) if current_atr > 0 else 1.0
 
                     level.swept = True
                     level.sweep_time = candle.time
@@ -628,7 +628,7 @@ class SMCEngine:
 
         if direction == "bullish":
             # Search backwards for the last bearish candle before displacement
-            for i in range(displacement_candle_index - 1, max(0, displacement_candle_index - ob_lookback), -1):
+            for i in range(displacement_candle_index - 1, max(0, displacement_candle_index - ob_lookback) - 1, -1):
                 if candles[i].is_bearish:
                     # OB quality filter: skip doji/spinning top candles
                     if candles[i].range_size > 0 and candles[i].body_size / candles[i].range_size < min_body_ratio:
@@ -653,7 +653,7 @@ class SMCEngine:
 
         elif direction == "bearish":
             # Search backwards for the last bullish candle before displacement
-            for i in range(displacement_candle_index - 1, max(0, displacement_candle_index - ob_lookback), -1):
+            for i in range(displacement_candle_index - 1, max(0, displacement_candle_index - ob_lookback) - 1, -1):
                 if candles[i].is_bullish:
                     # OB quality filter: skip doji/spinning top candles
                     if candles[i].range_size > 0 and candles[i].body_size / candles[i].range_size < min_body_ratio:
@@ -720,7 +720,7 @@ class SMCEngine:
         direction: str,
         after_index: int,
         near_price: float,
-        current_index: int = 0,
+        current_index: int = -1,
     ) -> Optional[FairValueGap]:
         """
         Find the nearest valid FVG in the given direction near a price level.
@@ -732,12 +732,13 @@ class SMCEngine:
         candidates = [
             f for f in fvgs
             if f.direction == direction and f.candle_index >= after_index and f.is_valid and not f.filled
+            and (current_index < 0 or (current_index - f.candle_index) <= max_age)
         ]
         if not candidates:
             return None
 
         def freshness_weight(fvg: FairValueGap) -> float:
-            if current_index <= 0:
+            if current_index < 0:
                 return 1.0
             age = current_index - fvg.candle_index
             if age <= 5:

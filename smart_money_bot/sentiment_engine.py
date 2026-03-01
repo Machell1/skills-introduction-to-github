@@ -16,7 +16,7 @@ import json
 import logging
 import os
 from abc import ABC, abstractmethod
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import requests
@@ -60,7 +60,7 @@ class SentimentAdapter(ABC):
         if not self.cfg.enabled:
             return None
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Check cache validity
         if self._cached_reading and self._cache_time:
@@ -723,7 +723,7 @@ class SentimentEngine:
             confidence=min(avg_confidence, 1.0),
             active_sources=len(readings),
             readings=readings,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
         )
 
         logger.info(
@@ -733,6 +733,16 @@ class SentimentEngine:
 
         self._last_signal = signal
         return signal
+
+    @property
+    def adapter_count(self) -> int:
+        """Number of active adapters."""
+        return len(self._adapters)
+
+    @property
+    def last_signal(self) -> Optional[SentimentSignal]:
+        """Most recent aggregated signal."""
+        return self._last_signal
 
     def get_bias_string(self) -> Optional[str]:
         """

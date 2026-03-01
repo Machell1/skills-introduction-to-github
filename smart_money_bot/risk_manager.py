@@ -11,7 +11,7 @@ Implements:
 
 import logging
 from collections import deque
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from .config import BotConfig
@@ -152,13 +152,14 @@ class RiskManager:
             return None
 
         trades = list(self._trade_history)
-        wins = [t for t in trades if t.result and t.result.value == "win"]
-        losses = [t for t in trades if t.result and t.result.value == "loss"]
+        wins = [t for t in trades if t.result == TradeResult.WIN]
+        losses = [t for t in trades if t.result == TradeResult.LOSS]
 
         if not wins or not losses:
             return None
 
-        p = len(wins) / len(trades)  # Win probability
+        # Use only win+loss count (exclude breakeven/time_stop from denominator)
+        p = len(wins) / (len(wins) + len(losses))
         q = 1.0 - p
         avg_win = sum(t.realized_r for t in wins) / len(wins)
         avg_loss = sum(abs(t.realized_r) for t in losses) / len(losses)
@@ -170,9 +171,9 @@ class RiskManager:
 
         kelly_full = (p * b - q) / b
         if kelly_full <= 0:
-            # Negative Kelly = no edge, use minimum
+            # Negative Kelly = no edge, return None (fall back to fixed risk)
             logger.info("Kelly criterion negative (%.4f) — no statistical edge detected", kelly_full)
-            return 0.001  # 0.1% floor
+            return None
 
         # Quarter-Kelly for safety
         kelly_fraction = 0.25 * kelly_full
@@ -317,7 +318,7 @@ class RiskManager:
         self._recent_trades.append(setup)
 
         # Update daily PnL
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         if self._daily_date is None or now.date() != self._daily_date.date():
             self._daily_pnl = 0.0
             self._daily_date = now
@@ -376,7 +377,7 @@ class RiskManager:
         """Reset daily counters (call at start of each trading day)."""
         logger.info("Daily PnL reset (previous: $%.2f)", self._daily_pnl)
         self._daily_pnl = 0.0
-        self._daily_date = datetime.utcnow()
+        self._daily_date = datetime.now(timezone.utc)
 
     # ── Reporting ─────────────────────────────────────────────────
 

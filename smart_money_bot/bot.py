@@ -14,7 +14,7 @@ import logging
 import signal
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from .config import BotConfig, TemplateType
@@ -90,7 +90,7 @@ class SMCBot:
         logger.info("Paper Mode: %s", self.config.execution.paper_trading)
         if self.sentiment_engine:
             logger.info("Sentiment Engine: ENABLED (mode=%s, %d adapters)",
-                         self.config.sentiment.mode, len(self.sentiment_engine._adapters))
+                         self.config.sentiment.mode, self.sentiment_engine.adapter_count)
         else:
             logger.info("Sentiment Engine: DISABLED")
         logger.info("=" * 60)
@@ -253,13 +253,13 @@ class SMCBot:
 
         # ── 3. Update equity and risk ─────────────────────────────
         if self.config.execution.paper_trading:
-            equity = self.trade_mgr._get_paper_equity()
+            equity = self.trade_mgr._get_paper_equity(latest_candle)
         else:
             equity = self.mt5.account_equity
         self.risk.update_equity(equity)
 
         # Reset daily counters if new day
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         if self.risk._daily_date and now.date() != self.risk._daily_date.date():
             self.risk.reset_daily()
 
@@ -272,7 +272,7 @@ class SMCBot:
 
         # ── 5. Run risk pre-checks ────────────────────────────────
         # Session/kill zone filter (quality matrix replaces binary on/off)
-        current_hour = datetime.utcnow().hour
+        current_hour = datetime.now(timezone.utc).hour
         session_quality = 0.0
 
         if self.config.kill_zone.enabled:
@@ -500,7 +500,7 @@ class SMCBot:
             return ema_bias  # Sentiment unavailable, use EMA
 
         # Disagreement — check sentiment confidence
-        signal = self.sentiment_engine._last_signal
+        signal = self.sentiment_engine.last_signal
         if signal and signal.confidence >= self.config.sentiment.high_confidence:
             logger.info(
                 "Bias override (augment mode): EMA=%s overridden by Sentiment=%s (conf=%.2f >= %.2f)",
