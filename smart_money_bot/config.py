@@ -65,7 +65,7 @@ class OrderBlockConfig:
     use_fibonacci_entry: bool = True  # Use OTE (62-79% retracement) instead of fixed fraction
     fib_entry_level: float = 0.705  # Fibonacci retracement level for OTE (70.5% = midpoint of 62-79%)
     fvg_max_age_candles: int = 30  # FVGs older than this get reduced weight
-    min_sweep_depth_atr: float = 0.2  # Min sweep depth as fraction of ATR to filter inducements
+    min_sweep_depth_atr: float = 0.10  # Min sweep depth as fraction of ATR to filter inducements
 
 
 @dataclass
@@ -140,6 +140,7 @@ class BiasFilterConfig:
     ema_period: int = 20  # Daily EMA period for directional bias
     require_alignment: bool = True  # Require bias alignment for reversals (higher win rate)
     premium_discount_enabled: bool = True  # Only long in discount, short in premium
+    counter_bias_min_r: float = 2.0  # Allow counter-bias trades if sweep quality >= 0.8 and R >= this value
 
 
 @dataclass
@@ -379,6 +380,11 @@ class BotConfig:
             q = max(0.0, min(1.0, float(q)))
             valid_hq[h] = q
         self.kill_zone.hourly_quality = valid_hq
+
+        # Counter-bias min R must be >= 1.0
+        if self.bias_filter.counter_bias_min_r < 1.0:
+            self.bias_filter.counter_bias_min_r = 2.0
+            warnings.append("bias_filter.counter_bias_min_r < 1.0, reset to 2.0")
 
         # Order block entry_fraction bounds
         if self.order_block.entry_fraction < 0.1 or self.order_block.entry_fraction > 0.9:

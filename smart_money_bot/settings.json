@@ -27,7 +27,7 @@
     "use_fibonacci_entry": true,
     "fib_entry_level": 0.705,
     "fvg_max_age_candles": 30,
-    "min_sweep_depth_atr": 0.2
+    "min_sweep_depth_atr": 0.10
   },
   "stop": {
     "atr_buffer_multiplier": 0.25
@@ -63,7 +63,8 @@
     "enabled": true,
     "ema_period": 20,
     "require_alignment": true,
-    "premium_discount_enabled": true
+    "premium_discount_enabled": true,
+    "counter_bias_min_r": 2.0
   },
   "continuation": {
     "fixed_r_multiple": 2.5,

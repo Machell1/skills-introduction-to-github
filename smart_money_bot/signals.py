@@ -115,14 +115,26 @@ class ReversalSignalGenerator:
                     logger.info("Skipping short sweep at %.2f — price in discount zone", sweep.level.price)
                     continue
 
-            # Optional: filter by bias alignment
+            # Optional: filter by bias alignment (allow high-quality counter-bias)
             if self.config.bias_filter.require_alignment and bias:
-                if sweep.direction == "long" and bias != "bullish":
-                    logger.info("Skipping long sweep at %.2f — bias is %s", sweep.level.price, bias)
-                    continue
-                if sweep.direction == "short" and bias != "bearish":
-                    logger.info("Skipping short sweep at %.2f — bias is %s", sweep.level.price, bias)
-                    continue
+                is_counter_bias = (
+                    (sweep.direction == "long" and bias != "bullish")
+                    or (sweep.direction == "short" and bias != "bearish")
+                )
+                if is_counter_bias:
+                    if sweep.sweep_quality >= 0.8:
+                        logger.info(
+                            "Counter-bias sweep ALLOWED at %.2f (quality=%.2f, bias=%s) — will require R >= %.1f",
+                            sweep.level.price, sweep.sweep_quality, bias,
+                            self.config.bias_filter.counter_bias_min_r,
+                        )
+                        sweep._counter_bias = True
+                    else:
+                        logger.info(
+                            "Skipping %s sweep at %.2f — bias is %s (quality=%.2f < 0.80)",
+                            sweep.direction, sweep.level.price, bias, sweep.sweep_quality,
+                        )
+                        continue
 
             self._swept_prices.add(price_key)
             self.active_sweeps.append(sweep)
@@ -191,6 +203,16 @@ class ReversalSignalGenerator:
                     swings=swings,
                 )
                 if setup:
+                    # Enforce higher min R for counter-bias trades
+                    if getattr(sweep, '_counter_bias', False):
+                        min_r = self.config.bias_filter.counter_bias_min_r
+                        if setup.r_multiple < min_r:
+                            logger.info(
+                                "Counter-bias setup REJECTED: R %.2f < min %.1fR | %s at %.2f",
+                                setup.r_multiple, min_r, setup.direction, setup.entry_price,
+                            )
+                            continue
+                        logger.info("Counter-bias setup ACCEPTED: R %.2f >= min %.1fR", setup.r_multiple, min_r)
                     setup.fvg = fvg  # Attach FVG confluence (may be None)
                     ready_setups.append(setup)
 
@@ -662,12 +684,24 @@ class LowerTFSignalGenerator:
                 continue
 
             if self.config.bias_filter.require_alignment and bias:
-                if sweep.direction == "long" and bias != "bullish":
-                    logger.info("[%s] Skipping long sweep at %.2f — bias is %s", self.timeframe, sweep.level.price, bias)
-                    continue
-                if sweep.direction == "short" and bias != "bearish":
-                    logger.info("[%s] Skipping short sweep at %.2f — bias is %s", self.timeframe, sweep.level.price, bias)
-                    continue
+                is_counter_bias = (
+                    (sweep.direction == "long" and bias != "bullish")
+                    or (sweep.direction == "short" and bias != "bearish")
+                )
+                if is_counter_bias:
+                    if sweep.sweep_quality >= 0.8:
+                        logger.info(
+                            "[%s] Counter-bias sweep ALLOWED at %.2f (quality=%.2f, bias=%s) — will require R >= %.1f",
+                            self.timeframe, sweep.sweep_quality, sweep.level.price, bias,
+                            self.config.bias_filter.counter_bias_min_r,
+                        )
+                        sweep._counter_bias = True
+                    else:
+                        logger.info(
+                            "[%s] Skipping %s sweep at %.2f — bias is %s (quality=%.2f < 0.80)",
+                            self.timeframe, sweep.direction, sweep.level.price, bias, sweep.sweep_quality,
+                        )
+                        continue
 
             self._swept_prices.add(price_key)
             self.active_sweeps.append(sweep)
@@ -756,6 +790,19 @@ class LowerTFSignalGenerator:
                     h1_current_index=h1_current_index,
                 )
                 if setup:
+                    # Enforce higher min R for counter-bias trades
+                    if getattr(sweep, '_counter_bias', False):
+                        min_r = self.config.bias_filter.counter_bias_min_r
+                        if setup.r_multiple < min_r:
+                            logger.info(
+                                "[%s] Counter-bias setup REJECTED: R %.2f < min %.1fR | %s at %.2f",
+                                self.timeframe, setup.r_multiple, min_r, setup.direction, setup.entry_price,
+                            )
+                            continue
+                        logger.info(
+                            "[%s] Counter-bias setup ACCEPTED: R %.2f >= min %.1fR",
+                            self.timeframe, setup.r_multiple, min_r,
+                        )
                     ready_setups.append(setup)
 
         for s in expired_sweeps:
