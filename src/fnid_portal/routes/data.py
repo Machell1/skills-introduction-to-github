@@ -84,3 +84,23 @@ def export_unit(unit):
     wb.save(filepath)
 
     return send_file(filepath, as_attachment=True, download_name=filename)
+
+
+@bp.route("/export/workbook")
+def export_workbook():
+    """Export the full JCF FO 4032 Operational Workbook (all 10 sheets)."""
+    from ..workbook import generate_operational_workbook
+
+    conn = get_db()
+    try:
+        wb = generate_operational_workbook(conn)
+    finally:
+        conn.close()
+
+    export_dir = current_app.config.get("EXPORT_DIR", "data/exports")
+    os.makedirs(export_dir, exist_ok=True)
+    filename = f"FNID_Operational_Workbook_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+    filepath = os.path.join(export_dir, filename)
+    wb.save(filepath)
+
+    return send_file(filepath, as_attachment=True, download_name=filename)
