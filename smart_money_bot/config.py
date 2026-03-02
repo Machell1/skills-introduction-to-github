@@ -209,8 +209,8 @@ class SentimentEngineConfig:
             )
         if self.gold_etf_flows is None:
             self.gold_etf_flows = SentimentSourceConfig(
-                enabled=True,
-                api_url="https://www.spdrgoldshares.com/assets/dynamic/GLD/GLD_US_archive_EN.csv",
+                enabled=False,  # SPDR has blocked direct CSV access; enable with valid URL or fallback file
+                api_url="",
                 fallback_file="sentiment_data/etf_flows.json",
                 cache_ttl_seconds=86400,
             )
