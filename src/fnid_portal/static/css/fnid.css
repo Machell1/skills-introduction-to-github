@@ -1,0 +1,315 @@
+/* =================================================================
+   FNID Area 3 Operational Portal - Professional Theme
+   Jamaica Constabulary Force
+   ================================================================= */
+
+:root {
+    --fnid-navy: #1F3864;
+    --fnid-dark-blue: #002060;
+    --fnid-light-blue: #D6E4F0;
+    --fnid-gold: #BF8F00;
+    --fnid-ops-red: #C00000;
+    --fnid-evidence-green: #538135;
+    --fnid-court-purple: #7030A0;
+    --fnid-narco-teal: #00B0F0;
+    --fnid-registry-brown: #8B4513;
+    --fnid-gray: #6c757d;
+    --fnid-light-gray: #f8f9fa;
+    --fnid-border: #dee2e6;
+}
+
+body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background-color: #f0f2f5;
+    font-size: 0.9rem;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+main {
+    flex: 1;
+}
+
+/* --- Navbar --- */
+.bg-fnid-navy {
+    background-color: var(--fnid-navy) !important;
+}
+
+.bg-fnid-gold {
+    background-color: var(--fnid-gold) !important;
+}
+
+.navbar-brand {
+    font-size: 1.1rem;
+    letter-spacing: 0.5px;
+}
+
+/* --- Cards --- */
+.card {
+    border: none;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
+    border-radius: 8px;
+    transition: box-shadow 0.2s ease;
+}
+
+.card:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.card-header {
+    border-radius: 8px 8px 0 0 !important;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+}
+
+/* --- Portal Cards --- */
+.portal-card {
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    border-left: 4px solid transparent;
+}
+
+.portal-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.12);
+}
+
+.portal-card .portal-icon {
+    font-size: 2.2rem;
+    opacity: 0.9;
+}
+
+.portal-card .portal-count {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--fnid-navy);
+}
+
+/* --- KPI Cards --- */
+.kpi-card {
+    text-align: center;
+    padding: 1.2rem;
+    border-radius: 8px;
+    background: white;
+    border-top: 3px solid var(--fnid-navy);
+}
+
+.kpi-card .kpi-value {
+    font-size: 2.4rem;
+    font-weight: 700;
+    color: var(--fnid-navy);
+    line-height: 1;
+    margin-bottom: 0.3rem;
+}
+
+.kpi-card .kpi-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--fnid-gray);
+    font-weight: 500;
+}
+
+.kpi-card.kpi-success { border-top-color: var(--fnid-evidence-green); }
+.kpi-card.kpi-warning { border-top-color: var(--fnid-gold); }
+.kpi-card.kpi-danger  { border-top-color: var(--fnid-ops-red); }
+.kpi-card.kpi-info    { border-top-color: var(--fnid-narco-teal); }
+
+/* --- Forms --- */
+.form-label {
+    font-weight: 500;
+    font-size: 0.82rem;
+    color: #495057;
+    margin-bottom: 0.25rem;
+}
+
+.form-label .required {
+    color: var(--fnid-ops-red);
+    font-weight: 700;
+}
+
+.form-control, .form-select {
+    font-size: 0.88rem;
+    border-radius: 6px;
+    border-color: var(--fnid-border);
+}
+
+.form-control:focus, .form-select:focus {
+    border-color: var(--fnid-navy);
+    box-shadow: 0 0 0 0.2rem rgba(31, 56, 100, 0.15);
+}
+
+.form-section {
+    background: white;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+.form-section-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--fnid-navy);
+    border-bottom: 2px solid var(--fnid-light-blue);
+    padding-bottom: 0.5rem;
+    margin-bottom: 1rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* --- Tables --- */
+.table {
+    font-size: 0.85rem;
+}
+
+.table thead th {
+    background-color: var(--fnid-navy);
+    color: white;
+    font-weight: 500;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border: none;
+    white-space: nowrap;
+    padding: 0.6rem 0.5rem;
+}
+
+.table tbody td {
+    vertical-align: middle;
+    padding: 0.5rem;
+}
+
+/* --- Status Badges --- */
+.badge-draft      { background-color: #FFF2CC; color: #856404; }
+.badge-submitted  { background-color: #D9EAD3; color: #155724; }
+.badge-edited     { background-color: #D0E0F0; color: #004085; }
+.badge-approved   { background-color: #C6EFCE; color: #155724; }
+.badge-rejected   { background-color: #FFC7CE; color: #721c24; }
+
+.badge-compliant     { background-color: #C6EFCE; color: #155724; }
+.badge-non-compliant { background-color: #FFC7CE; color: #721c24; }
+.badge-under-review  { background-color: #FFE699; color: #856404; }
+
+.badge-critical { background-color: #C00000; color: white; }
+.badge-high     { background-color: #FF6600; color: white; }
+.badge-medium   { background-color: #FFD700; color: #333; }
+.badge-low      { background-color: #90EE90; color: #333; }
+
+/* --- Login Page --- */
+.login-container {
+    min-height: 100vh;
+    background: linear-gradient(135deg, var(--fnid-navy) 0%, var(--fnid-dark-blue) 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.login-card {
+    max-width: 440px;
+    width: 100%;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    padding: 2.5rem;
+}
+
+.login-logo {
+    text-align: center;
+    margin-bottom: 1.5rem;
+}
+
+.login-logo i {
+    font-size: 3rem;
+    color: var(--fnid-navy);
+}
+
+.login-logo h2 {
+    color: var(--fnid-navy);
+    font-weight: 700;
+    margin-top: 0.5rem;
+}
+
+.login-logo p {
+    color: var(--fnid-gray);
+    font-size: 0.9rem;
+}
+
+/* --- SOP Checklist --- */
+.sop-item {
+    display: flex;
+    align-items: center;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.sop-item:last-child {
+    border-bottom: none;
+}
+
+.sop-item .form-check-input {
+    width: 1.2em;
+    height: 1.2em;
+    margin-right: 0.75rem;
+}
+
+.sop-item label {
+    font-size: 0.88rem;
+    flex: 1;
+}
+
+.sop-category {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--fnid-navy);
+    background: var(--fnid-light-blue);
+    padding: 0.5rem 0.75rem;
+    border-radius: 4px;
+    margin: 1rem 0 0.5rem 0;
+}
+
+/* --- Charts --- */
+.chart-container {
+    background: white;
+    border-radius: 8px;
+    padding: 1rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+/* --- Page Header --- */
+.page-header {
+    background: white;
+    border-radius: 8px;
+    padding: 1.2rem 1.5rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.page-header h4 {
+    margin: 0;
+    font-weight: 600;
+    color: var(--fnid-navy);
+}
+
+.page-header .breadcrumb {
+    margin: 0;
+    font-size: 0.82rem;
+}
+
+/* --- Print Styles --- */
+@media print {
+    .navbar, footer, .btn, .no-print { display: none !important; }
+    .card { box-shadow: none; border: 1px solid #ddd; }
+    body { background: white; }
+}
+
+/* --- Responsive --- */
+@media (max-width: 768px) {
+    .kpi-card .kpi-value { font-size: 1.8rem; }
+    .portal-card .portal-icon { font-size: 1.6rem; }
+    .page-header { flex-direction: column; align-items: flex-start; gap: 0.5rem; }
+}

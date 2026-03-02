@@ -1,59 +1,107 @@
-# Introduction to GitHub
+# FNID Area 3 Operational Portal
 
-<!-- ![](https://github.com/Machell1/skills-introduction-to-github/actions/workflows/0-start-exercise.yml/badge.svg) -->
-![](https://github.com/Machell1/skills-introduction-to-github/actions/workflows/1-create-a-branch.yml/badge.svg)
-![](https://github.com/Machell1/skills-introduction-to-github/actions/workflows/2-commit-a-file.yml/badge.svg)
-![](https://github.com/Machell1/skills-introduction-to-github/actions/workflows/3-open-a-pull-request.yml/badge.svg)
-![](https://github.com/Machell1/skills-introduction-to-github/actions/workflows/4-merge-your-pull-request.yml/badge.svg)
+Web-based case management and operational tracking system for the Jamaica Constabulary Force Firearms & Narcotics Investigation Division (FNID), Area 3 (Manchester, St. Elizabeth, Clarendon).
 
-_Get started using GitHub in less than an hour._
+## Features
 
-## Welcome
+- **6 Unit Portals**: Intelligence, Operations, Seizures, Arrests/Court, Forensics/Evidence, Case Registry
+- **Case Management**: Full investigation lifecycle from intelligence through conviction
+- **SOP Compliance**: Checklist tracking aligned to JCF operational requirements
+- **DPP File Pipeline**: Tracks file preparation per Prosecution Protocol (2012) and Disclosure Protocol (2013)
+- **Dashboards**: Per-unit and command-level statistics with Chart.js visualizations
+- **Audit Trail**: All record changes logged with officer identification
+- **Excel Export**: Export unit data to .xlsx format
 
-People use GitHub to build some of the most advanced technologies in the world. Whether you’re visualizing data or building a new game, there’s a whole community and set of tools on GitHub that can help you do it even better. GitHub Skills’ “Introduction to GitHub” exercise guides you through everything you need to start contributing in less than an hour.
+## Tech Stack
 
-- **Who is this for**: New developers, new GitHub users, and students.
-- **What you'll learn**: We'll introduce repositories, branches, commits, and pull requests.
-- **What you'll build**: We'll make a short Markdown file you can use as your [profile README](https://docs.github.com/account-and-profile/setting-up-and-managing-your-github-profile/customizing-your-profile/managing-your-profile-readme).
-- **Prerequisites**: None. This exercise is a great introduction for your first day on GitHub.
-- **How long**: This exercise takes less than one hour to complete.
+- **Backend**: Python 3.12, Flask 3.x
+- **Database**: SQLite with WAL mode
+- **Frontend**: Bootstrap 5.3, DataTables, Chart.js
+- **WSGI**: Gunicorn
+- **Container**: Docker
 
-In this exercise, you will:
+## Quick Start
 
-1. Create a branch
-2. Commit a file
-3. Open a pull request
-4. Merge your pull request
+### Docker (recommended)
 
-### How to start this exercise
+```bash
+# Copy and configure environment
+cp .env.example .env
+# Edit .env and set FNID_SECRET_KEY
 
-1. Right-click **Copy Exercise** and open the link in a new tab.
+# Build and run
+docker compose up --build
+```
 
-   <a id="copy-exercise">
-      <img src="https://img.shields.io/badge/📠_Copy_Exercise-AAA" height="25pt"/>
-   </a>
+The portal will be available at http://localhost:5000.
 
-2. In the new tab, most of the prompts will automatically fill in for you.
-   - For owner, choose your personal account or an organization to host the repository.
-   - We recommend creating a public repository, as private repositories will [use Actions minutes](https://docs.github.chttps://github.com/Machell1/skills-introduction-to-github/billing/managing-billing-for-github-actions/about-billing-for-github-actions).
-   - Scroll down and click the **Create repository** button at the bottom of the form.
+### Manual
 
-3. After your new repository is created, wait about 20 seconds for the exercise to be prepared and buttons updated. You will continue working from your copy of the exercise.
-   - The **Copy Exercise** button will deactivate, changing to gray.
-   - The **Start Exercise** button will activate, changing to green.
-   - You will likely need to refresh the page.
+```bash
+# Create virtual environment
+python -m venv .venv
+source .venv/bin/activate  # Linux/macOS
 
-4. Click **Start Exercise**. Follow the step-by-step instructions and feedback will be provided as you progress.
+# Install dependencies
+pip install -e ".[dev]"
 
-   <a id="start-exercise" href="https://github.com/Machell1/skills-introduction-to-github/issues/1">
-      <img src="https://img.shields.io/badge/🚀_Start_Exercise-008000" height="25pt"/>
-   </a>
+# Configure
+cp .env.example .env
+# Edit .env as needed
 
-> [!IMPORTANT]
-> The **Start Exercise** button will activate after copying the repository. You will probably need to refresh the page.
+# Run development server
+python wsgi.py
+```
 
----
+## Configuration
 
-Get help: [Post in our discussion board](https://github.com/orgs/skills/discussions/categories/introduction-to-github) &bull; [Review the GitHub status page](https://www.githubstatus.com/)
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `FNID_SECRET_KEY` | Production | Dev fallback | Flask session secret key |
+| `FLASK_ENV` | No | `development` | `development`, `production`, or `testing` |
+| `FNID_DB_PATH` | No | `src/fnid_portal/data/fnid.db` | SQLite database path |
+| `FNID_UPLOAD_DIR` | No | `src/fnid_portal/data/uploads` | File upload directory |
+| `FNID_EXPORT_DIR` | No | `src/fnid_portal/data/exports` | Excel export directory |
 
-&copy; 2024 GitHub &bull; [Code of Conduct](https://www.contributor-covenant.org/version/2/1/code_of_conduct/code_of_conduct.md) &bull; [MIT License](https://gh.io/mit)
+## Project Structure
+
+```
+src/fnid_portal/
+    __init__.py         # App factory
+    config.py           # Environment-based configuration
+    constants.py        # JCF controlled inputs and dropdown values
+    models.py           # SQLite database schema
+    routes/
+        auth.py         # Login / logout
+        main.py         # Home page, command dashboard
+        units.py        # Unit portals, CRUD operations
+        data.py         # Import / export
+        api.py          # JSON API endpoints
+    static/             # CSS, JS assets
+    templates/          # Jinja2 templates by unit
+tests/
+    conftest.py         # Pytest fixtures
+    test_app.py         # Smoke tests
+```
+
+## Testing
+
+```bash
+pip install -e ".[dev]"
+pytest tests/ -v
+```
+
+## Applicable Legislation
+
+- Firearms (Prohibition, Restriction and Regulation) Act, 2022
+- Dangerous Drugs Act (as amended 2015)
+- Gun Court Act, 1974
+- Proceeds of Crime Act (POCA), 2007
+- Bail Act, 2023
+- Constabulary Force Act s.15 (48-Hour Rule)
+- DPP Prosecution Protocol (April 2012)
+- DPP Disclosure Protocol (September 2013)
+
+## License
+
+MIT
