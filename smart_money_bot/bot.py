@@ -345,6 +345,39 @@ class SMCBot:
                         "[%s] Generated %d new setup(s)", ltf_gen.timeframe, len(ltf_setups),
                     )
 
+        # ── 6c. Intra-batch dedup: one setup per structural zone ──
+        # When multiple generators produce setups at the same structural level
+        # (same direction, entries within dedup_radius), keep only the best R:R.
+        if len(new_setups) > 1:
+            dedup_radius = current_atr * self.config.execution.dedup_atr_fraction
+            if dedup_radius > 0:
+                by_direction: dict[str, list] = {}
+                for setup in new_setups:
+                    by_direction.setdefault(setup.direction, []).append(setup)
+
+                filtered_setups = []
+                for direction, group in by_direction.items():
+                    group.sort(key=lambda s: s.entry_price)
+                    clusters: list[list] = []
+                    for setup in group:
+                        if clusters and abs(setup.entry_price - clusters[-1][-1].entry_price) < dedup_radius:
+                            clusters[-1].append(setup)
+                        else:
+                            clusters.append([setup])
+
+                    for cluster in clusters:
+                        best = max(cluster, key=lambda s: s.r_multiple)
+                        filtered_setups.append(best)
+                        for discarded in cluster:
+                            if discarded is not best:
+                                logger.info(
+                                    "Intra-batch dedup: %s %s @ %.2f (R=%.2f) superseded by %s @ %.2f (R=%.2f)",
+                                    discarded.template, discarded.direction,
+                                    discarded.entry_price, discarded.r_multiple,
+                                    best.template, best.entry_price, best.r_multiple,
+                                )
+                new_setups = filtered_setups
+
         # ── 7. Deduplicate and place orders for new setups ────────
         for setup in new_setups:
             # Dedup: skip if existing pending/active trade has entry within dedup radius
