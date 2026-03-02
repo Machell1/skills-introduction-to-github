@@ -14,7 +14,7 @@
   },
   "displacement": {
     "atr_period": 14,
-    "body_atr_multiplier": 0.5
+    "body_atr_multiplier": 0.4
   },
   "order_block": {
     "entry_fraction": 0.50,
@@ -22,7 +22,7 @@
     "max_mss_candles": 15,
     "ob_lookback": 20,
     "equal_level_atr_fraction": 0.1,
-    "require_fvg_confluence": true,
+    "require_fvg_confluence": false,
     "min_ob_body_range_ratio": 0.3,
     "use_fibonacci_entry": true,
     "fib_entry_level": 0.705,
@@ -73,12 +73,14 @@
   "kill_zone": {
     "enabled": true,
     "hourly_quality": {
+      "0": 0.5, "1": 0.5, "2": 0.5, "3": 0.5, "4": 0.5, "5": 0.5, "6": 0.5,
       "7": 0.5, "8": 0.6, "9": 0.7, "10": 0.8, "11": 0.8, "12": 0.85,
       "13": 1.0, "14": 1.0, "15": 1.0, "16": 0.9,
-      "17": 0.8, "18": 0.75, "19": 0.7, "20": 0.5
+      "17": 0.8, "18": 0.75, "19": 0.7, "20": 0.5,
+      "21": 0.5, "22": 0.5, "23": 0.5
     },
     "min_quality": 0.5,
-    "low_quality_min_r": 2.5
+    "low_quality_min_r": 1.8
   },
   "execution": {
     "check_interval_seconds": 60,
@@ -92,6 +94,7 @@
     "close_positions_on_shutdown": false,
     "trade_journal_path": "trade_journal.csv",
     "reconnect_attempts": 3,
+    "dedup_atr_fraction": 0.5,
     "session_filter_enabled": true,
     "session_start_utc": 7,
     "session_end_utc": 20
@@ -109,7 +112,7 @@
     "stale_weight_factor": 0.3,
     "log_readings": true,
     "cot_data": {
-      "enabled": true,
+      "enabled": false,
       "weight": 1.0,
       "api_url": "https://publicreporting.cftc.gov/resource/6dca-aqc2.json",
       "cache_ttl_seconds": 604800
@@ -121,20 +124,20 @@
       "cache_ttl_seconds": 3600
     },
     "news_sentiment": {
-      "enabled": true,
+      "enabled": false,
       "weight": 1.0,
       "api_key": "",
       "api_url": "https://www.alphavantage.co/query",
       "cache_ttl_seconds": 1800
     },
     "put_call_ratio": {
-      "enabled": true,
+      "enabled": false,
       "api_url": "https://cdn.cboe.com/resources/options/volume_and_call_put_ratios/indexpcarchive.csv",
       "fallback_file": "sentiment_data/put_call.json",
       "cache_ttl_seconds": 3600
     },
     "gold_etf_flows": {
-      "enabled": true,
+      "enabled": false,
       "api_url": "https://www.spdrgoldshares.com/assets/dynamic/GLD/GLD_US_archive_EN.csv",
       "fallback_file": "sentiment_data/etf_flows.json",
       "cache_ttl_seconds": 86400
