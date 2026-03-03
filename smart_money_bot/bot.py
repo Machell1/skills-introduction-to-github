@@ -162,8 +162,7 @@ class SMCBot:
 
     def _main_loop(self):
         """Main processing loop — runs until stopped."""
-        logger.info("Entering main loop. Checking for signals every %d seconds.",
-                     self.config.execution.check_interval_seconds)
+        logger.info("Entering main loop. Checking for signals every 1H bar close.")
 
         while self._running:
             try:
@@ -188,7 +187,17 @@ class SMCBot:
                         self.stop()
                         return
 
-            time.sleep(self.config.execution.check_interval_seconds)
+            # Sleep aligned to 1H bar close. If open trades exist, use shorter
+            # interval for timely trade management (trailing stops, partials).
+            now = datetime.now(timezone.utc)
+            seconds_into_hour = now.minute * 60 + now.second
+            seconds_to_next_bar = 3600 - seconds_into_hour + 5  # 5s buffer after bar close
+            has_open = (self.trade_mgr.has_open_position or self.trade_mgr.has_pending_order)
+            if has_open:
+                sleep_time = self.config.execution.check_interval_seconds  # 60s for trade mgmt
+            else:
+                sleep_time = max(5, min(seconds_to_next_bar, 3600))
+            time.sleep(sleep_time)
 
     def _tick(self):
         """Single iteration of the main loop."""
@@ -202,6 +211,12 @@ class SMCBot:
 
         if not candles or len(candles) < 50:
             logger.warning("Insufficient candle data: %d candles", len(candles) if candles else 0)
+            return
+
+        # Strip the forming (incomplete) candle — MT5 returns it as the last element.
+        # We only process fully closed bars to avoid acting on partial data.
+        candles = candles[:-1]
+        if not candles:
             return
 
         # Check for new candle
