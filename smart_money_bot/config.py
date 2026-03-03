@@ -60,8 +60,8 @@ class OrderBlockConfig:
     max_mss_candles: int = 15  # N: max candles after sweep to confirm MSS (range: 6-40)
     ob_lookback: int = 20  # How many candles back to search for the OB (range: 10-50)
     equal_level_atr_fraction: float = 0.1  # Equal highs/lows tolerance as fraction of ATR
-    require_fvg_confluence: bool = False  # FVG confluence is logged when found but not required; strong OB + displacement is sufficient for XAUUSD
-    min_ob_body_range_ratio: float = 0.3  # Min body/range ratio for OB candle quality
+    require_fvg_confluence: bool = True  # Require FVG overlapping OB for institutional confirmation
+    min_ob_body_range_ratio: float = 0.5  # Min body/range ratio for OB candle quality (0.5 = strong body)
     use_fibonacci_entry: bool = True  # Use OTE (62-79% retracement) instead of fixed fraction
     fib_entry_level: float = 0.705  # Fibonacci retracement level for OTE (70.5% = midpoint of 62-79%)
     fvg_max_age_candles: int = 30  # FVGs older than this get reduced weight
@@ -79,7 +79,7 @@ class TargetConfig:
     """Take profit / target parameters."""
     mode: TargetMode = TargetMode.LIQUIDITY
     fixed_r_multiple: float = 2.5  # R_target for fixed-R mode / fallback (range: 1.3-3.0)
-    liquidity_min_r: float = 1.5  # Minimum acceptable R for liquidity target (range: 0.8-1.8)
+    liquidity_min_r: float = 2.0  # Minimum acceptable R for liquidity target (tightened from 1.5)
     liquidity_max_r: float = 5.0  # Cap R for liquidity target (range: 3.0-6.0)
 
 
@@ -115,20 +115,20 @@ class KillZoneConfig:
         17: 0.8, 18: 0.75, 19: 0.7, 20: 0.5,
         21: 0.3, 22: 0.3, 23: 0.3,  # Late session (low quality, high-R only)
     })
-    min_quality: float = 0.5  # Skip hours below this quality
-    low_quality_min_r: float = 1.8  # Require higher R during low-quality hours; 1.8 allows solid XAUUSD setups while filtering noise
+    min_quality: float = 0.7  # Skip hours below this quality (tightened: blocks off-peak completely)
+    low_quality_min_r: float = 2.5  # Require higher R during quality 0.7-0.8 hours (tightened from 1.8)
 
 
 @dataclass
 class RiskConfig:
     """Risk management and position sizing parameters."""
     risk_per_trade_pct: float = 0.35  # r: fraction of equity risked per trade (range: 0.10-1.0%)
-    max_positions: int = 3  # Max concurrent positions
+    max_positions: int = 2  # Max concurrent positions (tightened from 3 — concentrate on best setups)
     daily_loss_limit_pct: float = 1.5  # L%: stop trading after this daily loss
     weekly_drawdown_brake_pct: float = 3.0  # Reduce risk by half after this rolling drawdown
     rolling_trade_window: int = 10  # Number of trades for rolling drawdown check
     risk_reduction_factor: float = 0.5  # Multiply risk by this when drawdown brake triggers
-    max_total_open_risk_pct: float = 1.5  # Cap on total open risk across all positions
+    max_total_open_risk_pct: float = 1.0  # Cap on total open risk across all positions (tightened from 1.5)
     max_drawdown_halt_pct: float = 4.5  # HARD HALT: stop all trading at this drawdown from peak
     hard_drawdown_resume_pct: float = 3.0  # Resume trading when drawdown recovers to this level
     multi_pair_max_total_positions: int = 8  # Max positions across ALL symbols (0 = disabled)
@@ -141,7 +141,7 @@ class BiasFilterConfig:
     ema_period: int = 20  # Daily EMA period for directional bias
     require_alignment: bool = True  # Require bias alignment for reversals (higher win rate)
     premium_discount_enabled: bool = True  # Only long in discount, short in premium
-    counter_bias_min_r: float = 2.0  # Allow counter-bias trades if sweep quality >= 0.8 and R >= this value
+    counter_bias_min_r: float = 3.0  # Allow counter-bias trades if sweep quality >= 0.90 and R >= this value (tightened from 2.0)
 
 
 @dataclass

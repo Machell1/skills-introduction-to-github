@@ -41,45 +41,52 @@ SYMBOL_MAGIC_NUMBERS: dict[str, int] = {
 SYMBOL_PROFILES: dict[str, dict] = {
 
     # ── XAUUSD (Gold) ─────────────────────────────────────────────
-    # Current production tuning — kept as-is.
-    # Explicitly listed so the profile system documents all pairs.
+    # TIGHTENED: Off-peak hours blocked (0.0), FVG required, higher OB quality.
+    # Only trades London build-up (9-12) and London/NY overlap (13-16).
     "XAUUSD": {
         "mt5": {"magic_number": 20240101},
         "displacement": {"body_atr_multiplier": 0.3},
         "order_block": {
             "min_sweep_depth_atr": 0.10,
-            "max_mss_candles": 15,
-            "entry_expiry_candles": 36,
+            "max_mss_candles": 10,
+            "entry_expiry_candles": 24,
+            "require_fvg_confluence": True,
+            "min_ob_body_range_ratio": 0.5,
         },
         "stop": {"atr_buffer_multiplier": 0.25},
         "execution": {"max_spread_points": 50.0, "paper_spread_points": 30.0},
         "kill_zone": {
             "hourly_quality": {
-                0: 0.5, 1: 0.5, 2: 0.5, 3: 0.5, 4: 0.5, 5: 0.5, 6: 0.5,
-                7: 0.5, 8: 0.6, 9: 0.7, 10: 0.8, 11: 0.8, 12: 0.85,
-                13: 1.0, 14: 1.0, 15: 1.0, 16: 0.9,   # London/NY overlap
-                17: 0.8, 18: 0.75, 19: 0.7, 20: 0.5,
-                21: 0.5, 22: 0.5, 23: 0.5,
+                0: 0.0, 1: 0.0, 2: 0.0, 3: 0.0, 4: 0.0, 5: 0.0,   # Asian — BLOCKED
+                6: 0.0, 7: 0.0, 8: 0.0,                              # pre-London — BLOCKED
+                9: 0.7, 10: 0.7, 11: 0.7,                            # London building
+                12: 0.8,                                               # pre-overlap
+                13: 1.0, 14: 1.0, 15: 1.0,                           # London/NY overlap — PEAK
+                16: 0.9,                                               # NY afternoon
+                17: 0.7, 18: 0.7,                                     # NY wind-down
+                19: 0.0, 20: 0.0, 21: 0.0, 22: 0.0, 23: 0.0,       # off-hours — BLOCKED
             },
-            "low_quality_min_r": 1.8,
+            "min_quality": 0.7,
+            "low_quality_min_r": 2.5,
         },
         "trade_mgmt": {"max_hold_candles": 72, "urgency_candles": 24},
-        "bias_filter": {"counter_bias_min_r": 2.0},
+        "bias_filter": {"counter_bias_min_r": 3.0},
         "swing": {"swing_length": 2},
         "sentiment": {"enabled": False},
     },
 
     # ── EURUSD ────────────────────────────────────────────────────
-    # #1 ICT pair — highest liquidity, cleanest OBs, reliable sweeps.
-    # Tighter spreads on Deriv (~0.5 pips). Needs larger body for
-    # displacement detection (forex bodies proportionally larger vs ATR).
+    # TIGHTENED: Only London open (8-10) and London/NY overlap (13-15).
+    # Asian/late-NY fully blocked. FVG required, higher OB quality.
     "EURUSD": {
         "mt5": {"magic_number": 20240102},
         "displacement": {"body_atr_multiplier": 0.5},
         "order_block": {
             "min_sweep_depth_atr": 0.08,
-            "max_mss_candles": 12,
-            "entry_expiry_candles": 24,
+            "max_mss_candles": 8,
+            "entry_expiry_candles": 16,
+            "require_fvg_confluence": True,
+            "min_ob_body_range_ratio": 0.5,
         },
         "stop": {"atr_buffer_multiplier": 0.40},
         "execution": {
@@ -90,31 +97,36 @@ SYMBOL_PROFILES: dict[str, dict] = {
         },
         "kill_zone": {
             "hourly_quality": {
-                0: 0.3, 1: 0.3, 2: 0.3, 3: 0.3, 4: 0.3, 5: 0.3, 6: 0.5,
-                7: 0.8, 8: 0.9, 9: 1.0, 10: 1.0, 11: 0.9, 12: 0.85,
-                13: 1.0, 14: 1.0, 15: 1.0, 16: 0.9,   # London/NY overlap
-                17: 0.7, 18: 0.6, 19: 0.5, 20: 0.5,
-                21: 0.3, 22: 0.3, 23: 0.3,
+                0: 0.0, 1: 0.0, 2: 0.0, 3: 0.0, 4: 0.0, 5: 0.0, 6: 0.0,  # Asian — BLOCKED
+                7: 0.7,                                                # London pre-open
+                8: 1.0, 9: 1.0, 10: 1.0,                             # London PEAK
+                11: 0.8,
+                12: 0.7,
+                13: 1.0, 14: 1.0, 15: 1.0,                           # London/NY overlap — PEAK
+                16: 0.8,
+                17: 0.0, 18: 0.0, 19: 0.0, 20: 0.0,                 # off-hours — BLOCKED
+                21: 0.0, 22: 0.0, 23: 0.0,
             },
-            "low_quality_min_r": 2.0,
+            "min_quality": 0.7,
+            "low_quality_min_r": 2.5,
         },
         "trade_mgmt": {"max_hold_candles": 48, "urgency_candles": 16},
-        "bias_filter": {"counter_bias_min_r": 2.5},
+        "bias_filter": {"counter_bias_min_r": 3.0},
         "swing": {"swing_length": 2},
         "sentiment": {"enabled": False},
     },
 
     # ── GBPUSD ────────────────────────────────────────────────────
-    # #2 ICT pair — volatile "Cable", explosive London session moves.
-    # Slightly easier displacement detection than EURUSD.
-    # Wider spreads on Deriv (~1.0-1.5 pips).
+    # TIGHTENED: Same structure as EURUSD but London open peaks at 7-9.
     "GBPUSD": {
         "mt5": {"magic_number": 20240103},
         "displacement": {"body_atr_multiplier": 0.45},
         "order_block": {
             "min_sweep_depth_atr": 0.08,
-            "max_mss_candles": 12,
-            "entry_expiry_candles": 24,
+            "max_mss_candles": 8,
+            "entry_expiry_candles": 16,
+            "require_fvg_confluence": True,
+            "min_ob_body_range_ratio": 0.5,
         },
         "stop": {"atr_buffer_multiplier": 0.35},
         "execution": {
@@ -125,31 +137,36 @@ SYMBOL_PROFILES: dict[str, dict] = {
         },
         "kill_zone": {
             "hourly_quality": {
-                0: 0.3, 1: 0.3, 2: 0.3, 3: 0.3, 4: 0.3, 5: 0.3, 6: 0.5,
-                7: 0.9, 8: 1.0, 9: 1.0, 10: 0.9, 11: 0.85, 12: 0.8,
-                13: 1.0, 14: 1.0, 15: 1.0, 16: 0.9,   # London/NY overlap
-                17: 0.7, 18: 0.6, 19: 0.5, 20: 0.5,
-                21: 0.3, 22: 0.3, 23: 0.3,
+                0: 0.0, 1: 0.0, 2: 0.0, 3: 0.0, 4: 0.0, 5: 0.0, 6: 0.0,  # Asian — BLOCKED
+                7: 0.7,
+                8: 1.0, 9: 1.0, 10: 1.0,                             # London PEAK
+                11: 0.8,
+                12: 0.7,
+                13: 1.0, 14: 1.0, 15: 1.0,                           # London/NY overlap — PEAK
+                16: 0.8,
+                17: 0.0, 18: 0.0, 19: 0.0, 20: 0.0,                 # off-hours — BLOCKED
+                21: 0.0, 22: 0.0, 23: 0.0,
             },
-            "low_quality_min_r": 2.0,
+            "min_quality": 0.7,
+            "low_quality_min_r": 2.5,
         },
         "trade_mgmt": {"max_hold_candles": 48, "urgency_candles": 16},
-        "bias_filter": {"counter_bias_min_r": 2.5},
+        "bias_filter": {"counter_bias_min_r": 3.0},
         "swing": {"swing_length": 2},
         "sentiment": {"enabled": False},
     },
 
     # ── USDJPY ────────────────────────────────────────────────────
-    # #3 ICT pair — clean structure, respects daily/weekly levels.
-    # Dual session peaks: Tokyo (00-03 UTC) + NY (13-16 UTC).
-    # Tight spreads on Deriv (~0.5-1.0 pips).
+    # TIGHTENED: Only Tokyo peak (0-2) and NY peak (13-15). Dead zone blocked.
     "USDJPY": {
         "mt5": {"magic_number": 20240104},
         "displacement": {"body_atr_multiplier": 0.5},
         "order_block": {
             "min_sweep_depth_atr": 0.08,
-            "max_mss_candles": 12,
-            "entry_expiry_candles": 24,
+            "max_mss_candles": 8,
+            "entry_expiry_candles": 16,
+            "require_fvg_confluence": True,
+            "min_ob_body_range_ratio": 0.5,
         },
         "stop": {"atr_buffer_multiplier": 0.40},
         "execution": {
@@ -160,34 +177,36 @@ SYMBOL_PROFILES: dict[str, dict] = {
         },
         "kill_zone": {
             "hourly_quality": {
-                0: 0.9, 1: 1.0, 2: 1.0, 3: 0.9,      # Tokyo session
-                4: 0.7, 5: 0.5, 6: 0.5,
-                7: 0.7, 8: 0.7, 9: 0.6, 10: 0.5, 11: 0.5, 12: 0.6,
-                13: 1.0, 14: 1.0, 15: 1.0, 16: 0.9,   # NY session
-                17: 0.7, 18: 0.6, 19: 0.5, 20: 0.5,
-                21: 0.5, 22: 0.5, 23: 0.7,
+                0: 1.0, 1: 1.0, 2: 1.0,                             # Tokyo PEAK
+                3: 0.8,
+                4: 0.0, 5: 0.0, 6: 0.0,                              # dead zone — BLOCKED
+                7: 0.0, 8: 0.0, 9: 0.0, 10: 0.0, 11: 0.0, 12: 0.0, # London — BLOCKED for JPY
+                13: 1.0, 14: 1.0, 15: 1.0,                           # NY PEAK
+                16: 0.8,
+                17: 0.0, 18: 0.0, 19: 0.0, 20: 0.0,                 # off-hours — BLOCKED
+                21: 0.0, 22: 0.0, 23: 0.0,
             },
-            "low_quality_min_r": 2.0,
+            "min_quality": 0.7,
+            "low_quality_min_r": 2.5,
         },
         "trade_mgmt": {"max_hold_candles": 48, "urgency_candles": 16},
-        "bias_filter": {"counter_bias_min_r": 2.5},
+        "bias_filter": {"counter_bias_min_r": 3.0},
         "swing": {"swing_length": 2},
         "sentiment": {"enabled": False},
     },
 
     # ── GBPJPY ────────────────────────────────────────────────────
-    # Cross pair — massive volatility, clear BOS/sweep patterns.
-    # Explosive sweeps but needs careful risk control.
-    # Wider spreads (~2-3 pips), shorter hold times.
-    # swing_length=3 filters noisy pivots from extreme volatility.
-    # Risk reduced to 0.25% per trade to compensate for wider swings.
+    # TIGHTENED: Only Tokyo (0-2) and London open (7-9). Everything else blocked.
+    # Risk reduced to 0.25% per trade for volatility protection.
     "GBPJPY": {
         "mt5": {"magic_number": 20240105},
         "displacement": {"body_atr_multiplier": 0.4},
         "order_block": {
             "min_sweep_depth_atr": 0.10,
-            "max_mss_candles": 14,
-            "entry_expiry_candles": 18,
+            "max_mss_candles": 10,
+            "entry_expiry_candles": 12,
+            "require_fvg_confluence": True,
+            "min_ob_body_range_ratio": 0.5,
         },
         "stop": {"atr_buffer_multiplier": 0.30},
         "risk": {"risk_per_trade_pct": 0.25},
@@ -199,33 +218,35 @@ SYMBOL_PROFILES: dict[str, dict] = {
         },
         "kill_zone": {
             "hourly_quality": {
-                0: 0.8, 1: 0.9, 2: 1.0, 3: 0.9,      # Tokyo session
-                4: 0.6, 5: 0.5, 6: 0.5,
-                7: 0.9, 8: 1.0, 9: 1.0, 10: 0.9,      # London open
-                11: 0.8, 12: 0.7,
-                13: 0.8, 14: 0.8, 15: 0.7, 16: 0.6,
-                17: 0.5, 18: 0.5, 19: 0.5, 20: 0.5,
-                21: 0.5, 22: 0.5, 23: 0.6,
+                0: 1.0, 1: 1.0, 2: 1.0,                             # Tokyo PEAK
+                3: 0.8,
+                4: 0.0, 5: 0.0, 6: 0.0,                              # BLOCKED
+                7: 1.0, 8: 1.0, 9: 1.0,                              # London open PEAK
+                10: 0.8,
+                11: 0.0, 12: 0.0, 13: 0.0, 14: 0.0, 15: 0.0,       # off-hours — BLOCKED
+                16: 0.0, 17: 0.0, 18: 0.0, 19: 0.0, 20: 0.0,
+                21: 0.0, 22: 0.0, 23: 0.0,
             },
-            "low_quality_min_r": 2.2,
+            "min_quality": 0.7,
+            "low_quality_min_r": 2.5,
         },
         "trade_mgmt": {"max_hold_candles": 36, "urgency_candles": 12},
-        "bias_filter": {"counter_bias_min_r": 2.5},
+        "bias_filter": {"counter_bias_min_r": 3.0},
         "swing": {"swing_length": 3},
         "sentiment": {"enabled": False},
     },
 
     # ── EURJPY ────────────────────────────────────────────────────
-    # Cross pair — Tokyo/London overlap, clear structural moves.
-    # Moderate volatility between EURUSD and GBPJPY.
-    # Spreads ~1.5-2.0 pips on Deriv.
+    # TIGHTENED: Only Tokyo (0-2) and London open (7-9). Everything else blocked.
     "EURJPY": {
         "mt5": {"magic_number": 20240106},
         "displacement": {"body_atr_multiplier": 0.45},
         "order_block": {
             "min_sweep_depth_atr": 0.09,
-            "max_mss_candles": 13,
-            "entry_expiry_candles": 20,
+            "max_mss_candles": 9,
+            "entry_expiry_candles": 14,
+            "require_fvg_confluence": True,
+            "min_ob_body_range_ratio": 0.5,
         },
         "stop": {"atr_buffer_multiplier": 0.35},
         "execution": {
@@ -236,18 +257,20 @@ SYMBOL_PROFILES: dict[str, dict] = {
         },
         "kill_zone": {
             "hourly_quality": {
-                0: 0.8, 1: 0.9, 2: 1.0, 3: 0.9,      # Tokyo session
-                4: 0.6, 5: 0.5, 6: 0.5,
-                7: 0.9, 8: 1.0, 9: 1.0, 10: 0.9,      # London open
-                11: 0.8, 12: 0.7,
-                13: 0.8, 14: 0.8, 15: 0.7, 16: 0.6,
-                17: 0.5, 18: 0.5, 19: 0.5, 20: 0.5,
-                21: 0.5, 22: 0.5, 23: 0.6,
+                0: 1.0, 1: 1.0, 2: 1.0,                             # Tokyo PEAK
+                3: 0.8,
+                4: 0.0, 5: 0.0, 6: 0.0,                              # BLOCKED
+                7: 1.0, 8: 1.0, 9: 1.0,                              # London open PEAK
+                10: 0.8,
+                11: 0.0, 12: 0.0, 13: 0.0, 14: 0.0, 15: 0.0,       # off-hours — BLOCKED
+                16: 0.0, 17: 0.0, 18: 0.0, 19: 0.0, 20: 0.0,
+                21: 0.0, 22: 0.0, 23: 0.0,
             },
-            "low_quality_min_r": 2.0,
+            "min_quality": 0.7,
+            "low_quality_min_r": 2.5,
         },
         "trade_mgmt": {"max_hold_candles": 42, "urgency_candles": 14},
-        "bias_filter": {"counter_bias_min_r": 2.5},
+        "bias_filter": {"counter_bias_min_r": 3.0},
         "swing": {"swing_length": 2},
         "sentiment": {"enabled": False},
     },
