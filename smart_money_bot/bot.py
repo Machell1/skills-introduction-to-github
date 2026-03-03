@@ -208,6 +208,9 @@ class SMCBot:
         else:
             candles = self.mt5.get_candles(timeframe=self.config.mt5.timeframe, count=500)
             daily_candles = self.mt5.get_daily_candles(count=100)
+            # Strip forming daily candle (MT5 includes the current incomplete day)
+            if daily_candles:
+                daily_candles = daily_candles[:-1]
 
         if not candles or len(candles) < 50:
             logger.warning("Insufficient candle data: %d candles", len(candles) if candles else 0)
@@ -445,32 +448,36 @@ class SMCBot:
     # ── Paper Trading Helpers ─────────────────────────────────────
 
     def _get_ltf_candles(self, timeframe: str) -> list[Candle]:
-        """Fetch lower-timeframe candles (M15 or M30)."""
+        """Fetch lower-timeframe candles (M15 or M30), excluding the forming candle."""
         if self.config.execution.paper_trading:
             try:
                 if self.mt5.is_connected():
-                    return self.mt5.get_candles(timeframe=timeframe, count=500)
+                    candles = self.mt5.get_candles(timeframe=timeframe, count=500)
+                    return candles[:-1] if candles else []
             except Exception:
                 pass
             return []
         else:
-            return self.mt5.get_candles(timeframe=timeframe, count=500)
+            candles = self.mt5.get_candles(timeframe=timeframe, count=500)
+            return candles[:-1] if candles else []
 
     def _get_paper_candles(self) -> list[Candle]:
-        """In paper mode, try to get candles from MT5 if connected, else return empty."""
+        """In paper mode, try to get candles from MT5 if connected, excluding the forming candle."""
         try:
             if self.mt5.is_connected():
-                return self.mt5.get_candles(timeframe=self.config.mt5.timeframe, count=500)
+                candles = self.mt5.get_candles(timeframe=self.config.mt5.timeframe, count=500)
+                return candles[:-1] if candles else []
         except Exception:
             pass
         logger.warning("Paper mode: no candle data available (connect MT5 for live data)")
         return []
 
     def _get_paper_daily_candles(self) -> list[Candle]:
-        """Get daily candles in paper mode."""
+        """Get daily candles in paper mode, excluding the forming candle."""
         try:
             if self.mt5.is_connected():
-                return self.mt5.get_daily_candles(count=100)
+                candles = self.mt5.get_daily_candles(count=100)
+                return candles[:-1] if candles else []
         except Exception:
             pass
         return []
