@@ -95,7 +95,7 @@
     "volatility_filter_atr_percentile": 90.0,
     "log_level": "INFO",
     "log_file": "smc_bot.log",
-    "paper_trading": true,
+    "paper_trading": false,
     "close_positions_on_shutdown": false,
     "trade_journal_path": "trade_journal.csv",
     "reconnect_attempts": 3,
