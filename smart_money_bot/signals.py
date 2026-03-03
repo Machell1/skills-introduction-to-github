@@ -86,33 +86,37 @@ class ReversalSignalGenerator:
         )
         new_sweeps = self.engine.detect_sweep(candle, liquidity_levels, current_atr=current_atr)
 
-        # Premium/discount zone check
-        zone, midpoint = "equilibrium", 0.0
-        if self.config.bias_filter.premium_discount_enabled:
-            zone, midpoint = self.engine.get_premium_discount_zone(swings, candle.close, current_index)
-
         for sweep in new_sweeps:
             # Skip if this price level was already swept (prevents duplicates from recreated objects)
             price_key = round(sweep.level.price, 5)
             if price_key in self._swept_prices:
                 continue
 
-            # Inducement filter: reject shallow sweeps
+            # Inducement filter: reject shallow sweeps (override for high-quality sweeps)
             min_depth = self.config.order_block.min_sweep_depth_atr
             if current_atr > 0 and sweep.sweep_depth < min_depth * current_atr:
-                logger.info(
-                    "Sweep REJECTED (inducement): depth %.2f < %.2f ATR at %.2f",
-                    sweep.sweep_depth, min_depth, sweep.level.price,
-                )
-                continue
+                if sweep.sweep_quality >= 0.8:
+                    logger.info(
+                        "Shallow sweep ALLOWED (high quality %.2f): depth %.2f at %.2f",
+                        sweep.sweep_quality, sweep.sweep_depth, sweep.level.price,
+                    )
+                else:
+                    logger.info(
+                        "Sweep REJECTED (inducement): depth %.2f < %.2f ATR at %.2f (quality=%.2f)",
+                        sweep.sweep_depth, min_depth, sweep.level.price, sweep.sweep_quality,
+                    )
+                    continue
 
-            # Premium/discount filter: only long in discount, short in premium
+            # Premium/discount filter: use sweep price, not current candle close
+            # (after a sell-side sweep, price bounces up into premium before MSS confirms)
             if self.config.bias_filter.premium_discount_enabled:
+                sweep_ref_price = sweep.sweep_candle.low if sweep.direction == "long" else sweep.sweep_candle.high
+                zone, midpoint = self.engine.get_premium_discount_zone(swings, sweep_ref_price, current_index)
                 if sweep.direction == "long" and zone == "premium":
-                    logger.info("Skipping long sweep at %.2f — price in premium zone", sweep.level.price)
+                    logger.info("Skipping long sweep at %.2f — sweep price in premium zone", sweep.level.price)
                     continue
                 if sweep.direction == "short" and zone == "discount":
-                    logger.info("Skipping short sweep at %.2f — price in discount zone", sweep.level.price)
+                    logger.info("Skipping short sweep at %.2f — sweep price in discount zone", sweep.level.price)
                     continue
 
             # Optional: filter by bias alignment (allow high-quality counter-bias)
@@ -761,14 +765,15 @@ class LowerTFSignalGenerator:
                     )
                     continue
 
-                # Premium/discount zone filter (using H1 swings)
+                # Premium/discount zone filter — use sweep price, not current candle close
                 if self.config.bias_filter.premium_discount_enabled:
-                    zone, _ = self.engine.get_premium_discount_zone(h1_swings, candle.close, h1_current_index)
+                    sweep_zone_price = sweep.sweep_candle.low if sweep.direction == "long" else sweep.sweep_candle.high
+                    zone, _ = self.engine.get_premium_discount_zone(h1_swings, sweep_zone_price, h1_current_index)
                     if sweep.direction == "long" and zone == "premium":
-                        logger.info("[%s] LTF REJECTED: long sweep in premium zone", self.timeframe)
+                        logger.info("[%s] LTF REJECTED: long sweep in premium zone (sweep price %.2f)", self.timeframe, sweep_zone_price)
                         continue
                     elif sweep.direction == "short" and zone == "discount":
-                        logger.info("[%s] LTF REJECTED: short sweep in discount zone", self.timeframe)
+                        logger.info("[%s] LTF REJECTED: short sweep in discount zone (sweep price %.2f)", self.timeframe, sweep_zone_price)
                         continue
 
                 # Fibonacci OTE entry

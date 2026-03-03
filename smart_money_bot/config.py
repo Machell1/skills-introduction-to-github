@@ -49,7 +49,7 @@ class SwingConfig:
 class DisplacementConfig:
     """Displacement candle detection parameters."""
     atr_period: int = 14
-    body_atr_multiplier: float = 0.4  # k: body >= k * ATR (range: 0.3-2.0); 0.4 captures multi-candle XAUUSD displacement
+    body_atr_multiplier: float = 0.3  # k: body >= k * ATR (range: 0.3-2.0); 0.3 captures XAUUSD displacement without excessive near-misses
 
 
 @dataclass

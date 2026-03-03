@@ -14,7 +14,7 @@
   },
   "displacement": {
     "atr_period": 14,
-    "body_atr_multiplier": 0.4
+    "body_atr_multiplier": 0.3
   },
   "order_block": {
     "entry_fraction": 0.50,
