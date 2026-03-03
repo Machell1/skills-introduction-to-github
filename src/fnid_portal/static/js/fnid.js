@@ -117,4 +117,39 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     };
 
+    // Navbar quick search — redirect to search page on enter
+    var navSearch = document.getElementById('nav-search-input');
+    if (navSearch) {
+        navSearch.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                var q = navSearch.value.trim();
+                if (q) {
+                    window.location.href = '/search?q=' + encodeURIComponent(q);
+                }
+            }
+        });
+    }
+
+    // Delete confirmation for destructive actions
+    document.querySelectorAll('[data-confirm]').forEach(function(el) {
+        el.addEventListener('click', function(e) {
+            if (!confirm(el.getAttribute('data-confirm'))) {
+                e.preventDefault();
+            }
+        });
+    });
+
+    // Auto-dismiss flash messages after 8 seconds
+    document.querySelectorAll('.alert[role="alert"]').forEach(function(alert) {
+        if (alert.querySelector('.btn-close')) {
+            setTimeout(function() {
+                try {
+                    var bsAlert = bootstrap.Alert.getOrCreateInstance(alert);
+                    if (bsAlert) bsAlert.close();
+                } catch(err) {}
+            }, 8000);
+        }
+    });
+
 });

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}FNID Area 3{% endblock %} | Operational Portal</title>
+    <title>{% block title %}FNID Area 3{% endblock %} | Case Management System</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <link href="https://cdn.datatables.net/1.13.7/css/dataTables.bootstrap5.min.css" rel="stylesheet">
@@ -18,7 +18,7 @@
                 <i class="bi bi-shield-shaded me-2 fs-4"></i>
                 <div>
                     <span class="fw-bold">FNID</span>
-                    <small class="d-none d-md-inline text-white-50 ms-2">Area 3 Operational Portal</small>
+                    <small class="d-none d-md-inline text-white-50 ms-2">Area 3 Case Management</small>
                 </div>
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav">
@@ -26,18 +26,19 @@
             </button>
             <div class="collapse navbar-collapse" id="mainNav">
                 <ul class="navbar-nav me-auto">
-                    {% if session.get('unit') %}
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('units.unit_home', unit=session['unit']) }}">
-                            <i class="bi bi-house-door"></i> Unit Home
+                    <!-- Cases -->
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
+                            <i class="bi bi-folder2-open"></i> Cases
                         </a>
+                        <ul class="dropdown-menu dropdown-menu-dark">
+                            <li><a class="dropdown-item" href="{{ url_for('cases.case_list') }}"><i class="bi bi-list-ul me-2"></i>All Cases</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('cases.intake') }}"><i class="bi bi-plus-circle me-2"></i>New Case Intake</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ url_for('search.advanced_search') }}"><i class="bi bi-funnel me-2"></i>Advanced Search</a></li>
+                        </ul>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('units.unit_dashboard', unit=session['unit']) }}">
-                            <i class="bi bi-graph-up"></i> Dashboard
-                        </a>
-                    </li>
-                    {% endif %}
+                    <!-- Unit Portals -->
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
                             <i class="bi bi-grid-3x3-gap"></i> Portals
@@ -51,31 +52,57 @@
                                 </a>
                             </li>
                             {% endfor %}
-                            <li><hr class="dropdown-divider"></li>
-                            <li>
-                                <a class="dropdown-item" href="{{ url_for('main.command_dashboard') }}">
-                                    <i class="bi bi-bar-chart-line me-2"></i> Command Dashboard
-                                </a>
-                            </li>
                         </ul>
                     </li>
+                    <!-- MCR -->
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('data.import_data') }}">
-                            <i class="bi bi-upload"></i> Import
+                        <a class="nav-link" href="{{ url_for('mcr.mcr_dashboard') }}">
+                            <i class="bi bi-newspaper"></i> MCR
                         </a>
                     </li>
-                </ul>
-                <div class="d-flex align-items-center">
-                    {% if session.get('officer_name') %}
-                    <span class="badge bg-fnid-gold text-dark me-3">
-                        <i class="bi bi-person-badge"></i>
-                        {{ session['officer_name'] }} ({{ session.get('officer_rank', '') }})
-                    </span>
+                    <!-- Dashboards -->
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('main.command_dashboard') }}">
+                            <i class="bi bi-bar-chart-line"></i> Command
+                        </a>
+                    </li>
+                    <!-- Admin (role-restricted visibility) -->
+                    {% if current_user.is_authenticated and current_user.role in ('admin', 'dco') %}
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
+                            <i class="bi bi-gear"></i> Admin
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-dark">
+                            <li><a class="dropdown-item" href="{{ url_for('admin.admin_dashboard') }}"><i class="bi bi-speedometer2 me-2"></i>Dashboard</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.users') }}"><i class="bi bi-people me-2"></i>Users</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.settings') }}"><i class="bi bi-sliders me-2"></i>Settings</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.backup') }}"><i class="bi bi-download me-2"></i>Backup</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.audit_log') }}"><i class="bi bi-clock-history me-2"></i>Audit Log</a></li>
+                        </ul>
+                    </li>
                     {% endif %}
-                    <a href="{{ url_for('auth.login') }}" class="btn btn-outline-light btn-sm">
-                        <i class="bi bi-box-arrow-in-right"></i>
-                        {% if session.get('officer_name') %}Switch{% else %}Sign In{% endif %}
+                </ul>
+                <!-- Search bar -->
+                <form class="d-flex me-3" action="{{ url_for('search.quick_search') }}" method="get">
+                    <div class="input-group input-group-sm">
+                        <input type="text" class="form-control" name="q" placeholder="Search cases, persons, exhibits..." style="min-width: 200px;">
+                        <button class="btn btn-outline-light" type="submit"><i class="bi bi-search"></i></button>
+                    </div>
+                </form>
+                <div class="d-flex align-items-center">
+                    {% if current_user.is_authenticated %}
+                    <span class="badge bg-fnid-gold text-dark me-2" title="Role: {{ current_user.role|upper }}">
+                        <i class="bi bi-person-badge"></i>
+                        {{ current_user.full_name }} <small>({{ current_user.role }})</small>
+                    </span>
+                    <a href="{{ url_for('auth.logout') }}" class="btn btn-outline-light btn-sm" title="Sign Out">
+                        <i class="bi bi-box-arrow-right"></i>
                     </a>
+                    {% else %}
+                    <a href="{{ url_for('auth.login') }}" class="btn btn-outline-light btn-sm">
+                        <i class="bi bi-box-arrow-in-right"></i> Sign In
+                    </a>
+                    {% endif %}
                 </div>
             </div>
         </div>

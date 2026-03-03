@@ -3,16 +3,21 @@ FNID Area 3 Operational Portal
 
 Flask application factory for the Jamaica Constabulary Force
 Firearms & Narcotics Investigation Division, Area 3.
+
+Phase 1: Core case management system with RBAC, CR forms, case lifecycle,
+file movement, MCR engine, intelligence, admin, and search modules.
 """
 
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from flask import Flask
 
 from . import models
+from .auth import login_manager
 from .config import config_by_name
 from .constants import UNIT_PORTALS
+from .rbac import ROLES, can_access
 
 
 def create_app(config_name=None):
@@ -51,20 +56,29 @@ def create_app(config_name=None):
     db_path = getattr(config_cls, "DB_PATH", None)
     if config_name == "production":
         db_path = config_obj.DB_PATH
+    app.config["DB_PATH"] = db_path
     models.configure(db_path)
 
     # Initialize database
     models.init_db()
 
+    # Initialize Flask-Login
+    login_manager.init_app(app)
+    app.config["REMEMBER_COOKIE_DURATION"] = timedelta(hours=8)
+
     # Register context processor
     @app.context_processor
     def inject_globals():
+        from flask_login import current_user as _cu
         return {
             "portals": UNIT_PORTALS,
             "now": datetime.now(),
+            "roles": ROLES,
+            "can_access": can_access,
+            "current_user": _cu,
         }
 
-    # Register blueprints
+    # Register blueprints — existing
     from .routes.api import bp as api_bp
     from .routes.auth import bp as auth_bp
     from .routes.data import bp as data_bp
@@ -77,4 +91,44 @@ def create_app(config_name=None):
     app.register_blueprint(data_bp)
     app.register_blueprint(api_bp)
 
+    # Register blueprints — Phase 1 new modules
+    from .routes.admin import bp as admin_bp
+    from .routes.cases import bp as cases_bp
+    from .routes.cr_forms import bp as cr_forms_bp
+    from .routes.file_movement import bp as file_movement_bp
+    from .routes.intel_unit import bp as intel_unit_bp
+    from .routes.mcr import bp as mcr_bp
+    from .routes.search import bp as search_bp
+
+    app.register_blueprint(cases_bp)
+    app.register_blueprint(cr_forms_bp)
+    app.register_blueprint(file_movement_bp)
+    app.register_blueprint(mcr_bp)
+    app.register_blueprint(intel_unit_bp)
+    app.register_blueprint(admin_bp)
+    app.register_blueprint(search_bp)
+
+    # Register CLI commands
+    _register_cli(app)
+
     return app
+
+
+def _register_cli(app):
+    """Register Flask CLI commands."""
+    import click
+
+    @app.cli.command("seed")
+    @click.option("--force", is_flag=True, help="Drop and re-seed even if data exists")
+    def seed_command(force):
+        """Seed the database with sample FNID Area 3 test data."""
+        from .seed import seed_database
+        seed_database(force=force)
+        click.echo("Database seeded successfully.")
+
+    @app.cli.command("check-deadlines")
+    def check_deadlines_command():
+        """Run the deadline checker to generate alerts."""
+        from .deadlines import check_all_deadlines
+        check_all_deadlines()
+        click.echo("Deadline check complete.")

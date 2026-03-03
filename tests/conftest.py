@@ -41,3 +41,34 @@ def logged_in_client(client):
         "section": "FNID Headquarters - Area 3",
     })
     return client
+
+
+@pytest.fixture()
+def admin_client(client, app):
+    """A test client logged in as admin."""
+    client.post("/login", data={
+        "badge_number": "ADMIN",
+        "password": "admin123",
+    })
+    return client
+
+
+@pytest.fixture()
+def io_client(client):
+    """A test client logged in as an IO."""
+    client.post("/login", data={
+        "badge_number": "IO-TEST",
+        "full_name": "IO Test Officer",
+        "rank": "Detective Constable",
+        "section": "FNID Headquarters - Area 3",
+    })
+    return client
+
+
+@pytest.fixture()
+def db(app):
+    """Get a database connection for direct testing."""
+    from fnid_portal.models import get_db
+    conn = get_db()
+    yield conn
+    conn.close()

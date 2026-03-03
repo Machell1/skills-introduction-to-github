@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+{% from "macros.html" import submit_controls %}
+{% block title %}{% if is_new %}New{% else %}Edit{% endif %} {{ form_def.name }} ({{ form_type }}){% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h4>
+            <i class="bi bi-pencil-square me-2" style="color: var(--fnid-navy);"></i>
+            {% if is_new %}New{% else %}Edit{% endif %} {{ form_def.name }} ({{ form_type }})
+        </h4>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0">
+                <li class="breadcrumb-item"><a href="{{ url_for('main.home') }}">Portal</a></li>
+                <li class="breadcrumb-item"><a href="{{ url_for('units.unit_home', unit='registry') }}">Registry</a></li>
+                <li class="breadcrumb-item">
+                    <a href="{{ url_for('cr_forms.form_list', case_id=case.case_id) }}">CR Forms</a>
+                </li>
+                <li class="breadcrumb-item active">{% if is_new %}New{% else %}Edit{% endif %} {{ form_type }}</li>
+            </ol>
+        </nav>
+    </div>
+    <a href="{{ url_for('cr_forms.form_list', case_id=case.case_id) }}" class="btn btn-outline-secondary btn-sm no-print">
+        <i class="bi bi-arrow-left me-1"></i> Back to Forms
+    </a>
+</div>
+
+<!-- Case Reference Bar -->
+<div class="form-section py-2 px-3 mb-3">
+    <div class="row align-items-center">
+        <div class="col-md-3">
+            <small class="text-muted d-block">Case ID</small>
+            <strong>{{ case.case_id }}</strong>
+        </div>
+        <div class="col-md-3">
+            <small class="text-muted d-block">Form Type</small>
+            <span class="badge bg-fnid-navy">{{ form_type }}</span>
+        </div>
+        <div class="col-md-3">
+            <small class="text-muted d-block">Classification</small>
+            <span>{{ case.classification or '—' }}</span>
+        </div>
+        <div class="col-md-3">
+            <small class="text-muted d-block">OIC</small>
+            <span>{{ case.oic_name or '—' }}</span>
+        </div>
+    </div>
+</div>
+
+<!-- Dynamic Form -->
+<form method="POST" id="cr-form" class="needs-validation" novalidate>
+    {% for section in form_def.sections %}
+    <div class="form-section">
+        <div class="form-section-title">
+            <i class="bi bi-list-check me-2"></i>{{ section.title }}
+        </div>
+
+        {% if section.description %}
+        <p class="text-muted small mb-3">{{ section.description }}</p>
+        {% endif %}
+
+        <div class="row">
+            {% for field in section.fields %}
+            <div class="col-md-{{ field.col_width | default(6) }} mb-3">
+                <label for="{{ field.name }}" class="form-label">
+                    {{ field.label }}
+                    {% if field.required %}<span class="required">*</span>{% endif %}
+                </label>
+
+                {% set field_value = form_data.get(field.name, '') if form_data else '' %}
+
+                {% if field.type == 'text' %}
+                    <input type="text" class="form-control" id="{{ field.name }}" name="{{ field.name }}"
+                           value="{{ field_value }}"
+                           {% if field.placeholder %}placeholder="{{ field.placeholder }}"{% endif %}
+                           {% if field.required %}required{% endif %}
+                           {% if field.readonly %}readonly{% endif %}>
+
+                {% elif field.type == 'date' %}
+                    <input type="date" class="form-control" id="{{ field.name }}" name="{{ field.name }}"
+                           value="{{ field_value }}"
+                           {% if field.required %}required{% endif %}>
+
+                {% elif field.type == 'time' %}
+                    <input type="time" class="form-control" id="{{ field.name }}" name="{{ field.name }}"
+                           value="{{ field_value }}"
+                           {% if field.required %}required{% endif %}>
+
+                {% elif field.type == 'number' %}
+                    <input type="number" class="form-control" id="{{ field.name }}" name="{{ field.name }}"
+                           value="{{ field_value }}"
+                           {% if field.min is defined %}min="{{ field.min }}"{% endif %}
+                           {% if field.max is defined %}max="{{ field.max }}"{% endif %}
+                           {% if field.step %}step="{{ field.step }}"{% endif %}
+                           {% if field.required %}required{% endif %}>
+
+                {% elif field.type == 'textarea' %}
+                    <textarea class="form-control" id="{{ field.name }}" name="{{ field.name }}"
+                              rows="{{ field.rows | default(3) }}"
+                              {% if field.placeholder %}placeholder="{{ field.placeholder }}"{% endif %}
+                              {% if field.required %}required{% endif %}>{{ field_value }}</textarea>
+
+                {% elif field.type == 'select' %}
+                    <select class="form-select" id="{{ field.name }}" name="{{ field.name }}"
+                            {% if field.required %}required{% endif %}>
+                        <option value="">-- Select --</option>
+                        {# If options is a string key, look it up from cfg; otherwise use options_list #}
+                        {% if field.options is string %}
+                            {% set option_items = cfg.get(field.options, []) if cfg else [] %}
+                        {% elif field.options_list is defined %}
+                            {% set option_items = field.options_list %}
+                        {% elif field.options is iterable %}
+                            {% set option_items = field.options %}
+                        {% else %}
+                            {% set option_items = [] %}
+                        {% endif %}
+                        {% for opt in option_items %}
+                        <option value="{{ opt }}" {% if opt == field_value %}selected{% endif %}>{{ opt }}</option>
+                        {% endfor %}
+                    </select>
+
+                {% elif field.type == 'checkbox' %}
+                    <div class="form-check mt-1">
+                        <input class="form-check-input" type="checkbox" id="{{ field.name }}" name="{{ field.name }}"
+                               value="Yes" {% if field_value == 'Yes' %}checked{% endif %}>
+                        <label class="form-check-label" for="{{ field.name }}">{{ field.check_label | default('Yes') }}</label>
+                    </div>
+
+                {% elif field.type == 'radio' %}
+                    {% if field.options_list is defined %}
+                        {% set radio_options = field.options_list %}
+                    {% elif field.options is string %}
+                        {% set radio_options = cfg.get(field.options, []) if cfg else [] %}
+                    {% else %}
+                        {% set radio_options = field.options | default([]) %}
+                    {% endif %}
+                    {% for opt in radio_options %}
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="{{ field.name }}"
+                               id="{{ field.name }}_{{ loop.index }}" value="{{ opt }}"
+                               {% if opt == field_value %}checked{% endif %}
+                               {% if field.required and loop.first %}required{% endif %}>
+                        <label class="form-check-label" for="{{ field.name }}_{{ loop.index }}">{{ opt }}</label>
+                    </div>
+                    {% endfor %}
+
+                {% else %}
+                    {# Default to text input #}
+                    <input type="text" class="form-control" id="{{ field.name }}" name="{{ field.name }}"
+                           value="{{ field_value }}"
+                           {% if field.required %}required{% endif %}>
+                {% endif %}
+
+                {% if field.help %}
+                <div class="form-text">{{ field.help }}</div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+
+    <!-- Submit Controls -->
+    <div class="form-section">
+        <div class="form-section-title">
+            <i class="bi bi-check2-circle me-2"></i>Submission
+        </div>
+        <input type="hidden" id="form_status" name="form_status" value="{{ form_data.get('form_status', 'Draft') if form_data else 'Draft' }}">
+        <div class="d-flex align-items-center gap-2">
+            <button type="submit" class="btn btn-primary" onclick="document.getElementById('form_status').value='Draft'">
+                <i class="bi bi-floppy me-1"></i> Save Draft
+            </button>
+            <button type="submit" class="btn btn-success" onclick="document.getElementById('form_status').value='Submitted'">
+                <i class="bi bi-check-lg me-1"></i> Submit
+            </button>
+            <a href="{{ url_for('cr_forms.form_list', case_id=case.case_id) }}" class="btn btn-outline-secondary">
+                Cancel
+            </a>
+        </div>
+    </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Bootstrap form validation
+    var form = document.getElementById('cr-form');
+    if (form) {
+        form.addEventListener('submit', function(event) {
+            if (!form.checkValidity()) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+            form.classList.add('was-validated');
+        });
+    }
+});
+</script>
+{% endblock %}

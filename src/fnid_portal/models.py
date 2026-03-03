@@ -38,6 +38,12 @@ VALID_TABLES = frozenset({
     "chain_of_custody", "lab_tracking", "dpp_pipeline",
     "sop_checklists", "witness_statements", "disclosure_log",
     "audit_log",
+    # Phase 1 additions
+    "case_lifecycle", "cr_forms", "dcrr", "file_movements",
+    "correspondence", "investigator_cards", "case_reviews",
+    "mcr_entries", "alerts", "system_settings",
+    "intel_targets", "transport_vehicles", "transport_trips",
+    "user_sessions",
 })
 
 
@@ -64,8 +70,15 @@ def init_db():
         full_name TEXT NOT NULL,
         rank TEXT NOT NULL,
         section TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'io',
+        password_hash TEXT,
+        email TEXT,
         unit_access TEXT NOT NULL DEFAULT 'all',
         is_active INTEGER DEFAULT 1,
+        must_change_password INTEGER DEFAULT 0,
+        last_login TEXT,
+        failed_attempts INTEGER DEFAULT 0,
+        locked_until TEXT,
         created_at TEXT DEFAULT (datetime('now'))
     )""")
 
@@ -104,6 +117,21 @@ def init_db():
         sentence TEXT,
         poca_referred TEXT DEFAULT 'No',
         poca_status TEXT DEFAULT 'Not Applicable',
+        dcrr_number TEXT,
+        station_code TEXT,
+        diary_number TEXT,
+        assigned_io_badge TEXT,
+        assigned_date TEXT,
+        crime_type TEXT DEFAULT 'major',
+        workflow_type TEXT DEFAULT 'non-uniformed',
+        current_stage TEXT DEFAULT 'intake',
+        last_review_date TEXT,
+        next_review_date TEXT,
+        suspended_date TEXT,
+        suspended_reason TEXT,
+        reopened_date TEXT,
+        closed_date TEXT,
+        closed_reason TEXT,
         record_status TEXT DEFAULT 'Draft',
         submitted_by TEXT,
         submitted_date TEXT,
@@ -503,19 +531,354 @@ def init_db():
         timestamp TEXT DEFAULT (datetime('now'))
     )""")
 
+    # --- Phase 1 new tables ---
+
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS case_lifecycle (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        case_id TEXT NOT NULL,
+        stage TEXT NOT NULL,
+        entered_at TEXT NOT NULL,
+        entered_by TEXT NOT NULL,
+        exited_at TEXT,
+        exited_by TEXT,
+        outcome TEXT,
+        notes TEXT,
+        FOREIGN KEY (case_id) REFERENCES cases(case_id)
+    )""")
+
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS cr_forms (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        form_id TEXT UNIQUE NOT NULL,
+        case_id TEXT NOT NULL,
+        form_type TEXT NOT NULL,
+        form_data TEXT NOT NULL DEFAULT '{}',
+        status TEXT DEFAULT 'Draft',
+        created_by TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        submitted_by TEXT,
+        submitted_at TEXT,
+        approved_by TEXT,
+        approved_at TEXT,
+        FOREIGN KEY (case_id) REFERENCES cases(case_id)
+    )""")
+
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS dcrr (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        dcrr_number TEXT UNIQUE NOT NULL,
+        case_id TEXT,
+        report_date TEXT NOT NULL,
+        station TEXT NOT NULL,
+        diary_number TEXT,
+        classification TEXT NOT NULL,
+        offence TEXT NOT NULL,
+        complainant_name TEXT,
+        suspect_name TEXT,
+        oic_badge TEXT,
+        oic_name TEXT,
+        status TEXT DEFAULT 'Open',
+        created_by TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (case_id) REFERENCES cases(case_id)
+    )""")
+
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS file_movements (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        case_id TEXT NOT NULL,
+        file_type TEXT NOT NULL,
+        movement_type TEXT NOT NULL,
+        moved_from TEXT,
+        moved_to TEXT NOT NULL,
+        moved_by TEXT NOT NULL,
+        moved_at TEXT DEFAULT (datetime('now')),
+        reason TEXT NOT NULL,
+        expected_return TEXT,
+        actual_return TEXT,
+        return_logged_by TEXT,
+        status TEXT DEFAULT 'Out',
+        notes TEXT,
+        FOREIGN KEY (case_id) REFERENCES cases(case_id)
+    )""")
+
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS correspondence (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        case_id TEXT,
+        direction TEXT NOT NULL,
+        date TEXT NOT NULL,
+        reference_number TEXT,
+        from_entity TEXT,
+        to_entity TEXT,
+        subject TEXT NOT NULL,
+        document_type TEXT,
+        logged_by TEXT NOT NULL,
+        logged_at TEXT DEFAULT (datetime('now')),
+        action_required TEXT,
+        action_deadline TEXT,
+        action_status TEXT DEFAULT 'Pending',
+        notes TEXT
+    )""")
+
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS investigator_cards (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        officer_badge TEXT NOT NULL,
+        case_id TEXT NOT NULL,
+        assigned_date TEXT NOT NULL,
+        assignment_type TEXT DEFAULT 'primary',
+        tasks_assigned TEXT,
+        tasks_completed TEXT,
+        next_action TEXT,
+        next_action_date TEXT,
+        supervisor_badge TEXT,
+        supervisor_notes TEXT,
+        status TEXT DEFAULT 'Active',
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (case_id) REFERENCES cases(case_id)
+    )""")
+
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS case_reviews (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        case_id TEXT NOT NULL,
+        review_type TEXT NOT NULL,
+        scheduled_date TEXT NOT NULL,
+        actual_date TEXT,
+        reviewer_badge TEXT,
+        reviewer_name TEXT,
+        outcome TEXT,
+        findings TEXT,
+        directives TEXT,
+        next_review_date TEXT,
+        status TEXT DEFAULT 'Scheduled',
+        created_by TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (case_id) REFERENCES cases(case_id)
+    )""")
+
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS mcr_entries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        mcr_date TEXT NOT NULL,
+        window_start TEXT NOT NULL,
+        window_end TEXT NOT NULL,
+        source_table TEXT NOT NULL,
+        source_id TEXT NOT NULL,
+        classification TEXT,
+        parish TEXT,
+        summary TEXT,
+        fnid_relevant INTEGER DEFAULT 0,
+        lead_suggestions TEXT,
+        compiled_by TEXT,
+        compiled_at TEXT DEFAULT (datetime('now'))
+    )""")
+
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS alerts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        alert_type TEXT NOT NULL,
+        target_type TEXT NOT NULL,
+        target_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        message TEXT,
+        severity TEXT DEFAULT 'warning',
+        target_role TEXT,
+        target_badge TEXT,
+        is_read INTEGER DEFAULT 0,
+        is_dismissed INTEGER DEFAULT 0,
+        due_date TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+    )""")
+
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS system_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        category TEXT NOT NULL,
+        description TEXT,
+        updated_by TEXT,
+        updated_at TEXT DEFAULT (datetime('now'))
+    )""")
+
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS intel_targets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        target_id TEXT UNIQUE NOT NULL,
+        target_name TEXT NOT NULL,
+        aliases TEXT,
+        description TEXT,
+        parish TEXT,
+        area TEXT,
+        linked_cases TEXT,
+        linked_intel TEXT,
+        modus_operandi TEXT,
+        threat_level TEXT DEFAULT 'Medium',
+        status TEXT DEFAULT 'Active',
+        notes TEXT,
+        created_by TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+    )""")
+
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS transport_vehicles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        vehicle_id TEXT UNIQUE NOT NULL,
+        registration TEXT NOT NULL,
+        make TEXT,
+        model TEXT,
+        year INTEGER,
+        vehicle_type TEXT,
+        assigned_unit TEXT,
+        assigned_officer TEXT,
+        status TEXT DEFAULT 'Available',
+        current_mileage INTEGER DEFAULT 0,
+        last_service_date TEXT,
+        next_service_due TEXT,
+        defects TEXT,
+        notes TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+    )""")
+
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS transport_trips (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        trip_id TEXT UNIQUE NOT NULL,
+        vehicle_id TEXT NOT NULL,
+        driver_badge TEXT NOT NULL,
+        driver_name TEXT,
+        trip_date TEXT NOT NULL,
+        purpose TEXT NOT NULL,
+        linked_case_id TEXT,
+        linked_op_id TEXT,
+        departure_location TEXT,
+        destination TEXT,
+        departure_time TEXT,
+        return_time TEXT,
+        start_mileage INTEGER,
+        end_mileage INTEGER,
+        fuel_added_litres REAL DEFAULT 0,
+        notes TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (vehicle_id) REFERENCES transport_vehicles(vehicle_id)
+    )""")
+
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS user_sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        badge_number TEXT NOT NULL,
+        login_at TEXT DEFAULT (datetime('now')),
+        logout_at TEXT,
+        ip_address TEXT,
+        user_agent TEXT
+    )""")
+
     conn.commit()
 
     # Insert default admin officer if none exist
     existing = c.execute("SELECT COUNT(*) FROM officers").fetchone()[0]
     if existing == 0:
+        from werkzeug.security import generate_password_hash
         c.execute("""
-            INSERT INTO officers (badge_number, full_name, rank, section, unit_access)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO officers (badge_number, full_name, rank, section,
+                                  role, password_hash, unit_access)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """, ("ADMIN", "System Administrator", "Superintendent of Police",
-              "FNID Headquarters - Area 3", "all"))
+              "FNID Headquarters - Area 3", "admin",
+              generate_password_hash("admin123"), "all"))
+        conn.commit()
+
+    # Seed default system settings if empty
+    settings_count = c.execute("SELECT COUNT(*) FROM system_settings").fetchone()[0]
+    if settings_count == 0:
+        _seed_default_settings(c)
         conn.commit()
 
     conn.close()
+
+
+def _seed_default_settings(cursor):
+    """Insert default configurable system settings."""
+    defaults = [
+        # Case number format — CONFIGURABLE per JCF policy
+        ("case_number_format", "{station}/{diary}/{division}/{unit}/{year}/{seq}",
+         "case_numbers", "Case reference number format template"),
+        ("default_division_code", "A3", "case_numbers", "Division code for FNID Area 3"),
+        ("default_unit_code", "FNID", "case_numbers", "Unit code for case numbers"),
+        ("default_diary_type", "SD", "case_numbers", "Default station diary type"),
+        # Deadline periods — CONFIGURABLE per policy
+        ("preliminary_vetting_hours", "24", "deadlines",
+         "Hours allowed for preliminary vetting"),
+        ("case_submission_days", "7", "deadlines",
+         "Days to submit case file after assignment"),
+        ("first_review_days", "14", "deadlines",
+         "Days after assignment for first review"),
+        ("followup_review_days", "28", "deadlines",
+         "Days between follow-up reviews"),
+        ("suspended_review_days", "90", "deadlines",
+         "Days between reviews for suspended cases"),
+        ("court_doc_days", "14", "deadlines",
+         "Days before court to prepare documents"),
+        ("file_return_hours", "48", "deadlines",
+         "Hours for file return after checkout"),
+        ("forensic_cert_overdue_weeks", "8", "deadlines",
+         "Weeks after which forensic cert is overdue"),
+        # MCR settings
+        ("mcr_window_start_time", "05:30", "mcr",
+         "Morning Crime Report window start time (HH:MM)"),
+        ("mcr_window_end_time", "05:30", "mcr",
+         "Morning Crime Report window end time (HH:MM)"),
+        # General
+        ("division_name", "FNID Area 3", "general",
+         "Full division name"),
+        ("division_parishes", "Manchester,St. Elizabeth,Clarendon", "general",
+         "Parishes covered by this division"),
+        ("session_timeout_hours", "8", "general",
+         "User session timeout in hours"),
+        ("allow_legacy_login", "true", "general",
+         "Allow badge-only login without password (for migration period)"),
+    ]
+    for key, value, category, description in defaults:
+        cursor.execute("""
+            INSERT OR IGNORE INTO system_settings (key, value, category, description)
+            VALUES (?, ?, ?, ?)
+        """, (key, value, category, description))
+
+
+def get_setting(key, default=None):
+    """Get a system setting value by key."""
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT value FROM system_settings WHERE key = ?", (key,)
+        ).fetchone()
+        return row["value"] if row else default
+    finally:
+        conn.close()
+
+
+def set_setting(key, value, category="general", description=None, updated_by=None):
+    """Set a system setting value."""
+    conn = get_db()
+    try:
+        conn.execute("""
+            INSERT INTO system_settings (key, value, category, description, updated_by, updated_at)
+            VALUES (?, ?, ?, ?, ?, datetime('now'))
+            ON CONFLICT(key) DO UPDATE SET
+                value = excluded.value,
+                updated_by = excluded.updated_by,
+                updated_at = datetime('now')
+        """, (key, value, category, description, updated_by))
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def log_audit(table_name, record_id, action, officer_badge=None,

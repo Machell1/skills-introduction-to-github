@@ -300,6 +300,109 @@ main {
     font-size: 0.82rem;
 }
 
+/* --- Case Timeline --- */
+.timeline {
+    position: relative;
+    padding-left: 2rem;
+}
+
+.timeline::before {
+    content: '';
+    position: absolute;
+    left: 0.9rem;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--fnid-border);
+}
+
+.timeline-item {
+    position: relative;
+    padding-bottom: 1.5rem;
+}
+
+.timeline-item:last-child {
+    padding-bottom: 0;
+}
+
+.timeline-dot {
+    position: absolute;
+    left: -1.65rem;
+    top: 0.15rem;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--fnid-gray);
+    border: 2px solid white;
+    z-index: 1;
+}
+
+.timeline-dot.completed { background: var(--fnid-evidence-green); }
+.timeline-dot.current   { background: var(--fnid-navy); box-shadow: 0 0 0 3px rgba(31,56,100,0.25); }
+.timeline-dot.future    { background: var(--fnid-border); }
+
+.timeline-content {
+    background: white;
+    border-radius: 6px;
+    padding: 0.75rem 1rem;
+    border-left: 3px solid var(--fnid-border);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.timeline-content.completed { border-left-color: var(--fnid-evidence-green); }
+.timeline-content.current   { border-left-color: var(--fnid-navy); background: #f0f4ff; }
+
+/* --- Alert Badges (Severity) --- */
+.alert-badge-critical { background-color: var(--fnid-ops-red); color: white; }
+.alert-badge-warning  { background-color: var(--fnid-gold); color: white; }
+.alert-badge-info     { background-color: var(--fnid-narco-teal); color: white; }
+
+/* --- Search Bar (Navbar) --- */
+.navbar .search-form {
+    max-width: 280px;
+}
+
+.navbar .search-form .form-control {
+    border-color: rgba(255,255,255,0.2);
+    background: rgba(255,255,255,0.1);
+    color: white;
+    font-size: 0.82rem;
+    border-radius: 20px;
+    padding-left: 2rem;
+}
+
+.navbar .search-form .form-control::placeholder {
+    color: rgba(255,255,255,0.5);
+}
+
+.navbar .search-form .form-control:focus {
+    background: rgba(255,255,255,0.95);
+    color: #333;
+    border-color: var(--fnid-gold);
+}
+
+/* --- Stage Badges --- */
+.badge-stage-intake         { background: #e3f2fd; color: #0d47a1; }
+.badge-stage-appreciation   { background: #f3e5f5; color: #4a148c; }
+.badge-stage-vetting        { background: #fff3e0; color: #e65100; }
+.badge-stage-assignment     { background: #e8f5e9; color: #1b5e20; }
+.badge-stage-investigation  { background: #e1f5fe; color: #01579b; }
+.badge-stage-follow_up      { background: #fce4ec; color: #880e4f; }
+.badge-stage-review         { background: #ede7f6; color: #311b92; }
+.badge-stage-court          { background: #f9fbe7; color: #827717; }
+.badge-stage-suspended      { background: #ffebee; color: #b71c1c; }
+.badge-stage-closed         { background: #eceff1; color: #37474f; }
+
+/* --- File Movement Status --- */
+.file-status-out      { color: var(--fnid-ops-red); font-weight: 600; }
+.file-status-returned { color: var(--fnid-evidence-green); }
+.file-status-overdue  { color: var(--fnid-ops-red); font-weight: 700; animation: pulse-text 1.5s infinite; }
+
+@keyframes pulse-text {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.5; }
+}
+
 /* --- Print Styles --- */
 @media print {
     .navbar, footer, .btn, .no-print { display: none !important; }
@@ -312,4 +415,5 @@ main {
     .kpi-card .kpi-value { font-size: 1.8rem; }
     .portal-card .portal-icon { font-size: 1.6rem; }
     .page-header { flex-direction: column; align-items: flex-start; gap: 0.5rem; }
+    .navbar .search-form { max-width: 100%; }
 }

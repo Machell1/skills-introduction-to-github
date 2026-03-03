@@ -1,23 +1,13 @@
-"""Main routes: home page and command dashboard."""
+"""Main routes: home page, command dashboard, and alerts."""
 
-from functools import wraps
-
-from flask import Blueprint, redirect, render_template, session, url_for
+from flask import Blueprint, render_template
+from flask_login import current_user, login_required
 
 from ..constants import UNIT_PORTALS
+from ..deadlines import get_alerts_for_user
 from ..models import get_db
 
 bp = Blueprint("main", __name__)
-
-
-def login_required(f):
-    """Decorator to require login for a route."""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if not session.get("officer_badge"):
-            return redirect(url_for("auth.login"))
-        return f(*args, **kwargs)
-    return decorated_function
 
 
 @bp.route("/")
@@ -38,8 +28,22 @@ def home():
         count = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
         stats[unit_key] = count
 
+    # Get alerts for current user
+    alerts = []
+    try:
+        badge = getattr(current_user, "badge_number", None)
+        role = getattr(current_user, "role", "viewer")
+        alerts = get_alerts_for_user(badge=badge, role=role)
+    except Exception:
+        pass
+
+    # Recent activity (last 10 audit entries)
+    recent = conn.execute("""
+        SELECT * FROM audit_log ORDER BY timestamp DESC LIMIT 10
+    """).fetchall()
+
     conn.close()
-    return render_template("home.html", stats=stats)
+    return render_template("home.html", stats=stats, alerts=alerts, recent=recent)
 
 
 @bp.route("/command")
@@ -63,6 +67,21 @@ def command_dashboard():
         "sop_compliant": conn.execute(
             "SELECT COUNT(*) FROM cases WHERE sop_compliance LIKE 'Fully%'"
         ).fetchone()[0],
+        "open_cases": conn.execute(
+            "SELECT COUNT(*) FROM cases WHERE case_status LIKE 'Open%'"
+        ).fetchone()[0],
+        "suspended_cases": conn.execute(
+            "SELECT COUNT(*) FROM cases WHERE current_stage = 'suspended'"
+        ).fetchone()[0],
+        "pending_reviews": conn.execute(
+            "SELECT COUNT(*) FROM case_reviews WHERE status = 'Scheduled'"
+        ).fetchone()[0],
+        "overdue_files": conn.execute(
+            "SELECT COUNT(*) FROM file_movements WHERE status = 'Overdue'"
+        ).fetchone()[0],
+        "active_alerts": conn.execute(
+            "SELECT COUNT(*) FROM alerts WHERE is_dismissed = 0"
+        ).fetchone()[0],
     }
 
     charts = {
@@ -74,6 +93,10 @@ def command_dashboard():
         ).fetchall(),
         "seizures_by_parish": conn.execute(
             "SELECT parish, COUNT(*) as cnt FROM firearm_seizures GROUP BY parish"
+        ).fetchall(),
+        "cases_by_stage": conn.execute(
+            "SELECT current_stage, COUNT(*) as cnt FROM cases "
+            "WHERE current_stage IS NOT NULL GROUP BY current_stage"
         ).fetchall(),
     }
     conn.close()

@@ -12,6 +12,25 @@
     </a>
 </div>
 
+{% if alerts %}
+<!-- Active Alerts -->
+<div class="mb-3">
+    {% for alert in alerts[:5] %}
+    <div class="alert alert-{{ 'danger' if alert['severity'] == 'critical' else ('warning' if alert['severity'] == 'warning' else 'info') }} py-2 mb-2 d-flex align-items-center" role="alert">
+        <i class="bi {{ 'bi-exclamation-triangle-fill' if alert['severity'] == 'critical' else 'bi-bell-fill' }} me-2"></i>
+        <div class="flex-grow-1">
+            <strong>{{ alert['title'] }}</strong>
+            {% if alert['message'] %} &mdash; {{ alert['message'][:120] }}{% endif %}
+        </div>
+        <small class="text-muted ms-2">{{ alert['created_at'][:10] if alert['created_at'] else '' }}</small>
+    </div>
+    {% endfor %}
+    {% if alerts|length > 5 %}
+    <small class="text-muted">and {{ alerts|length - 5 }} more alerts&hellip;</small>
+    {% endif %}
+</div>
+{% endif %}
+
 <!-- Unit Portal Cards -->
 <div class="row g-3">
     {% for key, portal in portals.items() %}
@@ -37,17 +56,17 @@
     {% endfor %}
 </div>
 
-<!-- Quick Actions -->
+<!-- Quick Actions + Recent Activity -->
 <div class="row mt-4">
-    <div class="col-md-6">
+    <div class="col-md-4">
         <div class="card">
             <div class="card-header bg-fnid-navy text-white">
                 <i class="bi bi-lightning-charge me-2"></i>Quick Actions
             </div>
             <div class="card-body">
                 <div class="d-grid gap-2">
-                    <a href="{{ url_for('units.new_record', unit='registry', subtype='cases') }}" class="btn btn-outline-primary btn-sm text-start">
-                        <i class="bi bi-plus-circle me-2"></i>Register New Case (Investigation)
+                    <a href="{{ url_for('cases.intake') }}" class="btn btn-outline-primary btn-sm text-start">
+                        <i class="bi bi-plus-circle me-2"></i>New Case Intake
                     </a>
                     <a href="{{ url_for('units.new_record', unit='intel') }}" class="btn btn-outline-primary btn-sm text-start">
                         <i class="bi bi-plus-circle me-2"></i>Log New Intelligence Report
@@ -68,7 +87,38 @@
             </div>
         </div>
     </div>
-    <div class="col-md-6">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header bg-fnid-navy text-white">
+                <i class="bi bi-clock-history me-2"></i>Recent Activity
+            </div>
+            <div class="card-body p-0">
+                {% if recent %}
+                <div class="list-group list-group-flush">
+                    {% for entry in recent %}
+                    <div class="list-group-item py-2 px-3">
+                        <div class="d-flex justify-content-between">
+                            <small>
+                                <span class="badge bg-{{ 'success' if entry['action'] == 'INSERT' else ('warning text-dark' if entry['action'] == 'UPDATE' else ('info' if entry['action'] == 'LOGIN' else 'secondary')) }}">
+                                    {{ entry['action'] }}
+                                </span>
+                                {{ entry['table_name'] }}
+                            </small>
+                            <small class="text-muted">{{ entry['timestamp'][:16] if entry['timestamp'] else '' }}</small>
+                        </div>
+                        <small class="text-muted">{{ entry['officer_name'] or '' }} {{ '— ' + entry['details'][:60] if entry['details'] else '' }}</small>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="text-center text-muted py-3">
+                    <small>No recent activity</small>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
         <div class="card">
             <div class="card-header bg-fnid-navy text-white">
                 <i class="bi bi-info-circle me-2"></i>System Information
@@ -89,7 +139,21 @@
                     </tr>
                     <tr>
                         <td class="text-muted fw-bold">Officer:</td>
-                        <td>{{ session.get('officer_rank', '') }} {{ session.get('officer_name', 'Not signed in') }}</td>
+                        <td>
+                            {% if current_user.is_authenticated %}
+                            {{ current_user.rank }} {{ current_user.full_name }}
+                            {% else %}
+                            Not signed in
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted fw-bold">Role:</td>
+                        <td>
+                            {% if current_user.is_authenticated %}
+                            {{ roles.get(current_user.role, current_user.role) }}
+                            {% endif %}
+                        </td>
                     </tr>
                     <tr>
                         <td class="text-muted fw-bold">Session:</td>
