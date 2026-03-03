@@ -2,17 +2,21 @@
 """
 Smart Money Concepts (SMC) Trading Bot Launcher
 
-XAU/USD | 1H Timeframe | MT5 Platform | Deriv Broker
+Multi-Pair | 1H Timeframe | MT5 Platform | Deriv Broker
+
+Supported pairs: XAUUSD, EURUSD, GBPUSD, USDJPY, GBPJPY, EURJPY
+Each pair auto-loads an ICT/SMC-tuned profile (kill zones, displacement, spreads).
 
 Usage:
-    python run_bot.py                          # Run with default settings.json
-    python run_bot.py --config my_config.json  # Run with custom config
-    python run_bot.py --paper                  # Force paper trading mode
-    python run_bot.py --live                   # Force live trading mode
+    python run_bot.py                              # Run with default settings.json
+    python run_bot.py --symbol EURUSD              # Trade EURUSD with auto-tuned profile
+    python run_bot.py --config my_config.json      # Run with custom config
+    python run_bot.py --paper                      # Force paper trading mode
+    python run_bot.py --live                       # Force live trading mode
 
 PyCharm Run Configuration:
     Script path:  run_bot.py
-    Parameters:   --config smart_money_bot/settings.json
+    Parameters:   --config smart_money_bot/settings.json --symbol EURUSD
     Working dir:  <project root>
     Python:       Python 3.9+ with MetaTrader5 package
 
@@ -20,7 +24,7 @@ Before running live:
     1. Install MT5 terminal and log in to your Deriv account
     2. Update settings.json with your MT5 login, password, server
     3. Set paper_trading to false (or use --live flag)
-    4. Ensure XAUUSD symbol is visible in MT5 Market Watch
+    4. Ensure your chosen symbol is visible in MT5 Market Watch
 """
 
 import argparse
@@ -39,14 +43,15 @@ from smart_money_bot.config import BotConfig
 from smart_money_bot.bot import SMCBot
 
 
-def setup_logging(log_level: str = "INFO", log_file: str = "smc_bot.log"):
+def setup_logging(log_level: str = "INFO", log_file: str = "smc_bot.log", symbol: str = ""):
     """Configure logging to both console and file."""
     level = getattr(logging, log_level.upper(), logging.INFO)
 
     # Create logs directory if needed
     log_dir = project_root / "logs"
     log_dir.mkdir(exist_ok=True)
-    log_path = log_dir / f"{datetime.utcnow().strftime('%Y%m%d')}_{log_file}"
+    symbol_tag = f"_{symbol}" if symbol else ""
+    log_path = log_dir / f"{datetime.utcnow().strftime('%Y%m%d')}{symbol_tag}_{log_file}"
 
     formatter = logging.Formatter(
         "%(asctime)s | %(levelname)-8s | %(name)-20s | %(message)s",
@@ -86,15 +91,34 @@ def load_config(config_path: str) -> BotConfig:
     return BotConfig.from_dict(data)
 
 
-def print_banner():
+def load_config_with_symbol(config_path: str, symbol: str) -> BotConfig:
+    """Load config and override the symbol before profile application.
+
+    This ensures the symbol profile for *symbol* is applied during
+    ``from_dict()``, not the profile for whatever symbol was in settings.json.
+    """
+    path = Path(config_path)
+    if not path.exists():
+        data = {}
+    else:
+        with open(path, "r") as f:
+            data = json.load(f)
+
+    # Inject symbol so from_dict() sees it during profile resolution
+    data.setdefault("mt5", {})["symbol"] = symbol
+    return BotConfig.from_dict(data)
+
+
+def print_banner(symbol: str = "XAU/USD"):
     """Print startup banner."""
-    banner = """
+    sym_display = symbol if symbol else "XAU/USD"
+    banner = f"""
     ╔══════════════════════════════════════════════════════════════╗
     ║         SMART MONEY CONCEPTS (SMC) TRADING BOT             ║
     ║                                                            ║
-    ║  XAU/USD  |  1H Timeframe  |  MT5  |  Deriv Broker        ║
+    ║  {sym_display:^8s}  |  1H Timeframe  |  MT5  |  Deriv Broker        ║
     ║                                                            ║
-    ║  Templates: Reversal (Sweep→MSS→OB) + Continuation (BOS)  ║
+    ║  Templates: Reversal (Sweep->MSS->OB) + Continuation (BOS)║
     ║  Risk: Fractional sizing, drawdown brakes, exposure caps   ║
     ╚══════════════════════════════════════════════════════════════╝
     """
@@ -130,11 +154,13 @@ def print_config_summary(config: BotConfig):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="SMC Trading Bot for XAU/USD on MT5 (Deriv)",
+        description="SMC Trading Bot — Multi-Pair on MT5 (Deriv)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   python run_bot.py                              # Paper mode with defaults
+  python run_bot.py --symbol EURUSD              # Trade EURUSD with auto profile
+  python run_bot.py --symbol GBPJPY --paper      # GBPJPY in paper mode
   python run_bot.py --config my_settings.json    # Custom config
   python run_bot.py --live                       # Live trading
   python run_bot.py --paper --log-level DEBUG    # Verbose paper mode
@@ -144,6 +170,11 @@ Examples:
         "--config", "-c",
         default=str(project_root / "smart_money_bot" / "settings.json"),
         help="Path to JSON configuration file (default: smart_money_bot/settings.json)",
+    )
+    parser.add_argument(
+        "--symbol", "-s",
+        default=None,
+        help="Trading symbol (overrides config). Auto-applies symbol profile.",
     )
     parser.add_argument(
         "--paper",
@@ -180,10 +211,14 @@ Examples:
 
     args = parser.parse_args()
 
-    print_banner()
+    # If --symbol is provided, inject it into the settings dict before loading
+    # so the profile system picks it up during from_dict().
+    if args.symbol:
+        config = load_config_with_symbol(args.config, args.symbol)
+    else:
+        config = load_config(args.config)
 
-    # Load config
-    config = load_config(args.config)
+    print_banner(config.mt5.symbol)
 
     # Apply CLI overrides
     if args.paper:
@@ -200,8 +235,12 @@ Examples:
     if args.server:
         config.mt5.server = args.server
 
-    # Setup logging
-    setup_logging(config.execution.log_level, config.execution.log_file)
+    # Per-symbol trade journal
+    if config.mt5.symbol != "XAUUSD":
+        config.execution.trade_journal_path = f"trade_journal_{config.mt5.symbol}.csv"
+
+    # Setup logging (per-symbol log file)
+    setup_logging(config.execution.log_level, config.execution.log_file, config.mt5.symbol)
 
     # Print config
     print_config_summary(config)

@@ -31,7 +31,8 @@ BANNER = r"""
  ╔══════════════════════════════════════════════════════════════╗
  ║         SMART MONEY CONCEPTS (SMC) TRADING BOT              ║
  ║                                                             ║
- ║  XAU/USD  |  1H Timeframe  |  MT5  |  Deriv Broker         ║
+ ║  Multi-Pair  |  1H Timeframe  |  MT5  |  Deriv Broker      ║
+ ║  XAUUSD | EURUSD | GBPUSD | USDJPY | GBPJPY | EURJPY      ║
  ║                                                             ║
  ║  One-Click Installer & Launcher                             ║
  ╚══════════════════════════════════════════════════════════════╝
@@ -214,29 +215,41 @@ def setup_credentials(settings, mt5_available):
 
 
 def configure_symbol(settings):
-    """Let user choose or confirm the trading symbol."""
+    """Let user choose trading symbol(s)."""
     current = settings.get("mt5", {}).get("symbol", "XAUUSD")
     print(f"  Current symbol: {current}")
     print()
-    print("  Common Deriv symbols:")
-    print("    1. XAUUSD  (Gold)")
-    print("    2. EURUSD")
-    print("    3. GBPUSD")
-    print("    4. USDJPY")
-    print("    5. Keep current")
-    print("    6. Custom")
+    print("  Supported Deriv symbols (ICT/SMC auto-tuned):")
+    print("    1. XAUUSD  (Gold)         — Sharp sweeps, large FVGs")
+    print("    2. EURUSD  (EUR/USD)      — #1 ICT pair, cleanest structure")
+    print("    3. GBPUSD  (GBP/USD)      — Volatile, explosive London moves")
+    print("    4. USDJPY  (USD/JPY)      — Clean technician, Tokyo+NY")
+    print("    5. GBPJPY  (GBP/JPY)      — High volatility cross")
+    print("    6. EURJPY  (EUR/JPY)      — Tokyo/London overlap")
+    print("    7. ALL 6 PAIRS            — Multi-pair mode (one bot per pair)")
+    print("    8. Keep current")
+    print("    9. Custom")
 
-    choice = input("  Select (1-6): ").strip()
-    symbol_map = {"1": "XAUUSD", "2": "EURUSD", "3": "GBPUSD", "4": "USDJPY"}
+    choice = input("  Select (1-9): ").strip()
+    symbol_map = {
+        "1": "XAUUSD", "2": "EURUSD", "3": "GBPUSD",
+        "4": "USDJPY", "5": "GBPJPY", "6": "EURJPY",
+    }
 
-    if choice in symbol_map:
+    if choice == "7":
+        settings["_multi_pair"] = True
+        save_settings(settings)
+        print("  Multi-pair mode selected — will launch all 6 pairs simultaneously.")
+        return settings
+    elif choice in symbol_map:
         settings.setdefault("mt5", {})["symbol"] = symbol_map[choice]
-    elif choice == "6":
+    elif choice == "9":
         custom = input("  Enter symbol (e.g., XAUUSD): ").strip().upper()
         if custom:
             settings.setdefault("mt5", {})["symbol"] = custom
-    # choice 5 or anything else keeps current
+    # choice 8 or anything else keeps current
 
+    settings.pop("_multi_pair", None)
     save_settings(settings)
     symbol = settings.get("mt5", {}).get("symbol", "XAUUSD")
     print(f"  Symbol set to: {symbol}")
@@ -244,22 +257,35 @@ def configure_symbol(settings):
 
 
 def launch_bot(settings):
-    """Launch the trading bot."""
+    """Launch the trading bot (single-pair or multi-pair)."""
     paper = settings.get("execution", {}).get("paper_trading", True)
     mode_str = "PAPER" if paper else "LIVE"
-    symbol = settings.get("mt5", {}).get("symbol", "XAUUSD")
+    multi_pair = settings.get("_multi_pair", False)
 
-    print(f"\n  Launching bot in {mode_str} mode for {symbol}...")
-    print("  Press Ctrl+C at any time to stop the bot.\n")
-    print("=" * 60)
+    if multi_pair:
+        print(f"\n  Launching ALL 6 pairs in {mode_str} mode...")
+        print("  Press Ctrl+C at any time to stop all bots.\n")
+        print("=" * 60)
 
-    # Launch run_bot.py as a subprocess so it inherits our environment
-    bot_script = SCRIPT_DIR / "run_bot.py"
-    cmd = [sys.executable, str(bot_script), "--config", str(SETTINGS_FILE)]
-    if paper:
-        cmd.append("--paper")
+        bot_script = SCRIPT_DIR / "run_multi.py"
+        cmd = [sys.executable, str(bot_script), "--config", str(SETTINGS_FILE)]
+        if paper:
+            cmd.append("--paper")
+        else:
+            cmd.append("--live")
     else:
-        cmd.append("--live")
+        symbol = settings.get("mt5", {}).get("symbol", "XAUUSD")
+        print(f"\n  Launching bot in {mode_str} mode for {symbol}...")
+        print("  Press Ctrl+C at any time to stop the bot.\n")
+        print("=" * 60)
+
+        bot_script = SCRIPT_DIR / "run_bot.py"
+        cmd = [sys.executable, str(bot_script), "--config", str(SETTINGS_FILE)]
+        cmd.extend(["--symbol", symbol])
+        if paper:
+            cmd.append("--paper")
+        else:
+            cmd.append("--live")
 
     try:
         process = subprocess.run(cmd, cwd=str(SCRIPT_DIR))

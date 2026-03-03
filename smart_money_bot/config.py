@@ -131,6 +131,7 @@ class RiskConfig:
     max_total_open_risk_pct: float = 1.5  # Cap on total open risk across all positions
     max_drawdown_halt_pct: float = 4.5  # HARD HALT: stop all trading at this drawdown from peak
     hard_drawdown_resume_pct: float = 3.0  # Resume trading when drawdown recovers to this level
+    multi_pair_max_total_positions: int = 8  # Max positions across ALL symbols (0 = disabled)
 
 
 @dataclass
@@ -260,8 +261,16 @@ class BotConfig:
 
     @classmethod
     def from_dict(cls, d: dict) -> "BotConfig":
-        """Build config from a flat or nested dictionary."""
+        """Build config from a flat or nested dictionary.
+
+        Priority order: config.py defaults < settings.json < symbol_profile.
+        Settings.json provides shared values (credentials, general prefs),
+        then the symbol profile layers on top with parameters specifically
+        tuned for the active symbol's ICT/SMC characteristics.
+        """
         cfg = cls()
+
+        # ── Step 1: Apply settings.json user values ──
         section_map = {
             "mt5": (cfg.mt5, MT5Config),
             "swing": (cfg.swing, SwingConfig),
@@ -311,6 +320,16 @@ class BotConfig:
                         setattr(section_obj, k, v)
         if "active_templates" in d:
             cfg.active_templates = [TemplateType(t) for t in d["active_templates"]]
+
+        # ── Step 2: Apply symbol profile on top of settings.json ──
+        # Profile overrides ensure each symbol gets its tuned parameters
+        # regardless of what's in settings.json (which may have XAUUSD values).
+        try:
+            from .symbol_profiles import apply_profile
+            apply_profile(cfg)
+        except ImportError:
+            pass  # symbol_profiles not yet available
+
         cfg.validate()
         return cfg
 
