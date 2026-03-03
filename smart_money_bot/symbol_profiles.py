@@ -41,17 +41,16 @@ SYMBOL_MAGIC_NUMBERS: dict[str, int] = {
 SYMBOL_PROFILES: dict[str, dict] = {
 
     # ── XAUUSD (Gold) ─────────────────────────────────────────────
-    # TIGHTENED: Off-peak hours blocked (0.0), FVG required, higher OB quality.
-    # Only trades London build-up (9-12) and London/NY overlap (13-16).
+    # Off-peak hours blocked. Trades London build-up (9-12) and London/NY overlap (13-16).
     "XAUUSD": {
         "mt5": {"magic_number": 20240101},
         "displacement": {"body_atr_multiplier": 0.3},
         "order_block": {
             "min_sweep_depth_atr": 0.10,
-            "max_mss_candles": 10,
-            "entry_expiry_candles": 24,
-            "require_fvg_confluence": True,
-            "min_ob_body_range_ratio": 0.5,
+            "max_mss_candles": 15,
+            "entry_expiry_candles": 36,
+            "require_fvg_confluence": False,
+            "min_ob_body_range_ratio": 0.3,
         },
         "stop": {"atr_buffer_multiplier": 0.25},
         "execution": {"max_spread_points": 50.0, "paper_spread_points": 30.0},
@@ -70,23 +69,22 @@ SYMBOL_PROFILES: dict[str, dict] = {
             "low_quality_min_r": 2.5,
         },
         "trade_mgmt": {"max_hold_candles": 72, "urgency_candles": 24},
-        "bias_filter": {"counter_bias_min_r": 3.0},
+        "bias_filter": {"counter_bias_min_r": 2.5},
         "swing": {"swing_length": 2},
         "sentiment": {"enabled": False},
     },
 
     # ── EURUSD ────────────────────────────────────────────────────
-    # TIGHTENED: Only London open (8-10) and London/NY overlap (13-15).
-    # Asian/late-NY fully blocked. FVG required, higher OB quality.
+    # Only London open (8-10) and London/NY overlap (13-15). Asian/late-NY blocked.
     "EURUSD": {
         "mt5": {"magic_number": 20240102},
         "displacement": {"body_atr_multiplier": 0.5},
         "order_block": {
             "min_sweep_depth_atr": 0.08,
-            "max_mss_candles": 8,
-            "entry_expiry_candles": 16,
-            "require_fvg_confluence": True,
-            "min_ob_body_range_ratio": 0.5,
+            "max_mss_candles": 12,
+            "entry_expiry_candles": 24,
+            "require_fvg_confluence": False,
+            "min_ob_body_range_ratio": 0.3,
         },
         "stop": {"atr_buffer_multiplier": 0.40},
         "execution": {
@@ -111,22 +109,22 @@ SYMBOL_PROFILES: dict[str, dict] = {
             "low_quality_min_r": 2.5,
         },
         "trade_mgmt": {"max_hold_candles": 48, "urgency_candles": 16},
-        "bias_filter": {"counter_bias_min_r": 3.0},
+        "bias_filter": {"counter_bias_min_r": 2.5},
         "swing": {"swing_length": 2},
         "sentiment": {"enabled": False},
     },
 
     # ── GBPUSD ────────────────────────────────────────────────────
-    # TIGHTENED: Same structure as EURUSD but London open peaks at 7-9.
+    # London open + London/NY overlap. Asian/late-NY blocked.
     "GBPUSD": {
         "mt5": {"magic_number": 20240103},
         "displacement": {"body_atr_multiplier": 0.45},
         "order_block": {
             "min_sweep_depth_atr": 0.08,
-            "max_mss_candles": 8,
-            "entry_expiry_candles": 16,
-            "require_fvg_confluence": True,
-            "min_ob_body_range_ratio": 0.5,
+            "max_mss_candles": 12,
+            "entry_expiry_candles": 24,
+            "require_fvg_confluence": False,
+            "min_ob_body_range_ratio": 0.3,
         },
         "stop": {"atr_buffer_multiplier": 0.35},
         "execution": {
@@ -151,22 +149,22 @@ SYMBOL_PROFILES: dict[str, dict] = {
             "low_quality_min_r": 2.5,
         },
         "trade_mgmt": {"max_hold_candles": 48, "urgency_candles": 16},
-        "bias_filter": {"counter_bias_min_r": 3.0},
+        "bias_filter": {"counter_bias_min_r": 2.5},
         "swing": {"swing_length": 2},
         "sentiment": {"enabled": False},
     },
 
     # ── USDJPY ────────────────────────────────────────────────────
-    # TIGHTENED: Only Tokyo peak (0-2) and NY peak (13-15). Dead zone blocked.
+    # Only Tokyo peak (0-2) and NY peak (13-15). Dead zone blocked.
     "USDJPY": {
         "mt5": {"magic_number": 20240104},
         "displacement": {"body_atr_multiplier": 0.5},
         "order_block": {
             "min_sweep_depth_atr": 0.08,
-            "max_mss_candles": 8,
-            "entry_expiry_candles": 16,
-            "require_fvg_confluence": True,
-            "min_ob_body_range_ratio": 0.5,
+            "max_mss_candles": 12,
+            "entry_expiry_candles": 24,
+            "require_fvg_confluence": False,
+            "min_ob_body_range_ratio": 0.3,
         },
         "stop": {"atr_buffer_multiplier": 0.40},
         "execution": {
@@ -190,23 +188,23 @@ SYMBOL_PROFILES: dict[str, dict] = {
             "low_quality_min_r": 2.5,
         },
         "trade_mgmt": {"max_hold_candles": 48, "urgency_candles": 16},
-        "bias_filter": {"counter_bias_min_r": 3.0},
+        "bias_filter": {"counter_bias_min_r": 2.5},
         "swing": {"swing_length": 2},
         "sentiment": {"enabled": False},
     },
 
     # ── GBPJPY ────────────────────────────────────────────────────
-    # TIGHTENED: Only Tokyo (0-2) and London open (7-9). Everything else blocked.
+    # Only Tokyo (0-2) and London open (7-9). Everything else blocked.
     # Risk reduced to 0.25% per trade for volatility protection.
     "GBPJPY": {
         "mt5": {"magic_number": 20240105},
         "displacement": {"body_atr_multiplier": 0.4},
         "order_block": {
             "min_sweep_depth_atr": 0.10,
-            "max_mss_candles": 10,
-            "entry_expiry_candles": 12,
-            "require_fvg_confluence": True,
-            "min_ob_body_range_ratio": 0.5,
+            "max_mss_candles": 14,
+            "entry_expiry_candles": 18,
+            "require_fvg_confluence": False,
+            "min_ob_body_range_ratio": 0.3,
         },
         "stop": {"atr_buffer_multiplier": 0.30},
         "risk": {"risk_per_trade_pct": 0.25},
@@ -231,22 +229,22 @@ SYMBOL_PROFILES: dict[str, dict] = {
             "low_quality_min_r": 2.5,
         },
         "trade_mgmt": {"max_hold_candles": 36, "urgency_candles": 12},
-        "bias_filter": {"counter_bias_min_r": 3.0},
+        "bias_filter": {"counter_bias_min_r": 2.5},
         "swing": {"swing_length": 3},
         "sentiment": {"enabled": False},
     },
 
     # ── EURJPY ────────────────────────────────────────────────────
-    # TIGHTENED: Only Tokyo (0-2) and London open (7-9). Everything else blocked.
+    # Only Tokyo (0-2) and London open (7-9). Everything else blocked.
     "EURJPY": {
         "mt5": {"magic_number": 20240106},
         "displacement": {"body_atr_multiplier": 0.45},
         "order_block": {
             "min_sweep_depth_atr": 0.09,
-            "max_mss_candles": 9,
-            "entry_expiry_candles": 14,
-            "require_fvg_confluence": True,
-            "min_ob_body_range_ratio": 0.5,
+            "max_mss_candles": 13,
+            "entry_expiry_candles": 20,
+            "require_fvg_confluence": False,
+            "min_ob_body_range_ratio": 0.3,
         },
         "stop": {"atr_buffer_multiplier": 0.35},
         "execution": {
@@ -270,7 +268,7 @@ SYMBOL_PROFILES: dict[str, dict] = {
             "low_quality_min_r": 2.5,
         },
         "trade_mgmt": {"max_hold_candles": 42, "urgency_candles": 14},
-        "bias_filter": {"counter_bias_min_r": 3.0},
+        "bias_filter": {"counter_bias_min_r": 2.5},
         "swing": {"swing_length": 2},
         "sentiment": {"enabled": False},
     },

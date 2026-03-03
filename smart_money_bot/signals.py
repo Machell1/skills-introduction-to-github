@@ -95,7 +95,7 @@ class ReversalSignalGenerator:
             # Inducement filter: reject shallow sweeps (override for high-quality sweeps)
             min_depth = self.config.order_block.min_sweep_depth_atr
             if current_atr > 0 and sweep.sweep_depth < min_depth * current_atr:
-                if sweep.sweep_quality >= 0.90:
+                if sweep.sweep_quality >= 0.80:
                     logger.info(
                         "Shallow sweep ALLOWED (high quality %.2f): depth %.2f at %.2f",
                         sweep.sweep_quality, sweep.sweep_depth, sweep.level.price,
@@ -126,7 +126,7 @@ class ReversalSignalGenerator:
                     or (sweep.direction == "short" and bias != "bearish")
                 )
                 if is_counter_bias:
-                    if sweep.sweep_quality >= 0.90:
+                    if sweep.sweep_quality >= 0.80:
                         logger.info(
                             "Counter-bias sweep ALLOWED at %.2f (quality=%.2f, bias=%s) — will require R >= %.1f",
                             sweep.level.price, sweep.sweep_quality, bias,
@@ -693,7 +693,7 @@ class LowerTFSignalGenerator:
                     or (sweep.direction == "short" and bias != "bearish")
                 )
                 if is_counter_bias:
-                    if sweep.sweep_quality >= 0.90:
+                    if sweep.sweep_quality >= 0.80:
                         logger.info(
                             "[%s] Counter-bias sweep ALLOWED at %.2f (quality=%.2f, bias=%s) — will require R >= %.1f",
                             self.timeframe, sweep.sweep_quality, sweep.level.price, bias,

@@ -18,12 +18,12 @@
   },
   "order_block": {
     "entry_fraction": 0.50,
-    "entry_expiry_candles": 24,
-    "max_mss_candles": 10,
+    "entry_expiry_candles": 36,
+    "max_mss_candles": 15,
     "ob_lookback": 20,
     "equal_level_atr_fraction": 0.1,
-    "require_fvg_confluence": true,
-    "min_ob_body_range_ratio": 0.5,
+    "require_fvg_confluence": false,
+    "min_ob_body_range_ratio": 0.3,
     "use_fibonacci_entry": true,
     "fib_entry_level": 0.705,
     "fvg_max_age_candles": 30,
@@ -35,7 +35,7 @@
   "target": {
     "mode": "liquidity",
     "fixed_r_multiple": 2.5,
-    "liquidity_min_r": 2.0,
+    "liquidity_min_r": 1.5,
     "liquidity_max_r": 5.0
   },
   "trade_mgmt": {
@@ -50,12 +50,12 @@
   },
   "risk": {
     "risk_per_trade_pct": 0.35,
-    "max_positions": 2,
+    "max_positions": 3,
     "daily_loss_limit_pct": 1.5,
     "weekly_drawdown_brake_pct": 3.0,
     "rolling_trade_window": 10,
     "risk_reduction_factor": 0.5,
-    "max_total_open_risk_pct": 1.0,
+    "max_total_open_risk_pct": 1.5,
     "max_drawdown_halt_pct": 4.5,
     "hard_drawdown_resume_pct": 3.0,
     "multi_pair_max_total_positions": 8
@@ -65,7 +65,7 @@
     "ema_period": 20,
     "require_alignment": true,
     "premium_discount_enabled": true,
-    "counter_bias_min_r": 3.0
+    "counter_bias_min_r": 2.5
   },
   "continuation": {
     "fixed_r_multiple": 2.5,
