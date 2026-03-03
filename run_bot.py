@@ -8,11 +8,11 @@ Supported pairs: XAUUSD, EURUSD, GBPUSD, USDJPY, GBPJPY, EURJPY
 Each pair auto-loads an ICT/SMC-tuned profile (kill zones, displacement, spreads).
 
 Usage:
-    python run_bot.py                              # Run with default settings.json
-    python run_bot.py --symbol EURUSD              # Trade EURUSD with auto-tuned profile
-    python run_bot.py --config my_config.json      # Run with custom config
-    python run_bot.py --paper                      # Force paper trading mode
-    python run_bot.py --live                       # Force live trading mode
+    python run_bot.py                              # All 6 pairs (auto multi-pair)
+    python run_bot.py --live                       # All 6 pairs, live trading
+    python run_bot.py --symbol EURUSD              # Trade EURUSD only with auto-tuned profile
+    python run_bot.py --config my_config.json      # Custom config, all pairs
+    python run_bot.py --symbol XAUUSD --paper      # Single pair, paper mode
 
 PyCharm Run Configuration:
     Script path:  run_bot.py
@@ -158,11 +158,11 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python run_bot.py                              # Paper mode with defaults
-  python run_bot.py --symbol EURUSD              # Trade EURUSD with auto profile
+  python run_bot.py                              # All 6 pairs (auto multi-pair)
+  python run_bot.py --live                       # All 6 pairs, live trading
+  python run_bot.py --symbol EURUSD              # Trade EURUSD only
   python run_bot.py --symbol GBPJPY --paper      # GBPJPY in paper mode
-  python run_bot.py --config my_settings.json    # Custom config
-  python run_bot.py --live                       # Live trading
+  python run_bot.py --config my_settings.json    # Custom config, all pairs
   python run_bot.py --paper --log-level DEBUG    # Verbose paper mode
         """,
     )
@@ -211,12 +211,21 @@ Examples:
 
     args = parser.parse_args()
 
-    # If --symbol is provided, inject it into the settings dict before loading
-    # so the profile system picks it up during from_dict().
-    if args.symbol:
-        config = load_config_with_symbol(args.config, args.symbol)
-    else:
-        config = load_config(args.config)
+    # No --symbol specified → launch all 6 pairs via run_multi.py
+    if not args.symbol:
+        import subprocess as _sp
+        multi_cmd = [sys.executable, str(project_root / "run_multi.py"),
+                     "--config", args.config]
+        if args.paper:
+            multi_cmd.append("--paper")
+        elif args.live:
+            multi_cmd.append("--live")
+        if args.log_level:
+            multi_cmd.extend(["--log-level", args.log_level])
+        print("  No --symbol specified — launching all 6 pairs automatically.")
+        sys.exit(_sp.call(multi_cmd, cwd=str(project_root)))
+
+    config = load_config_with_symbol(args.config, args.symbol)
 
     print_banner(config.mt5.symbol)
 
