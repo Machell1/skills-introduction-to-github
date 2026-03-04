@@ -76,8 +76,6 @@ ASIAN_SESSION_END_UTC: int = int(os.environ.get("ASIAN_SESSION_END_UTC", 6))    
 
 # Base risk parameters
 RISK_PER_TRADE: float = float(os.environ.get("RISK_PER_TRADE", 0.005))  # 0.5% per trade
-DAILY_RISK_LIMIT: float = float(os.environ.get("DAILY_RISK_LIMIT", 0.50))  # 50% daily loss limit
-WEEKLY_RISK_LIMIT: float = float(os.environ.get("WEEKLY_RISK_LIMIT", 0.75))  # 75% weekly loss limit
 MAX_DRAWDOWN_LIMIT: float = float(os.environ.get("MAX_DRAWDOWN_LIMIT", 0.15))  # 15% max drawdown
 
 # Stop-loss and take-profit multipliers relative to ATR (tight for scalping)
@@ -113,7 +111,7 @@ LOG_FILE: str = os.environ.get("LOG_FILE", "scalping_bot.log")
 # ---------------------------------------------------------------------------
 
 SOFT_DAILY_RISK_LIMIT: float = float(
-    os.environ.get("SOFT_DAILY_RISK_LIMIT", DAILY_RISK_LIMIT * 0.5)
+    os.environ.get("SOFT_DAILY_RISK_LIMIT", 0.25)
 )
 SOFT_RISK_FACTOR: float = float(os.environ.get("SOFT_RISK_FACTOR", 0.5))
 MAX_CONSECUTIVE_LOSSES: int = int(os.environ.get("MAX_CONSECUTIVE_LOSSES", 5))
@@ -666,44 +664,6 @@ def calculate_stop_levels(entry_price: float, atr: float, direction: str) -> Dic
         tp = entry_price - target_distance
     return {"sl": sl, "tp": tp, "stop_distance": stop_distance}
 
-
-def check_risk_limits(account_info: mt5.AccountInfo) -> bool:
-    """Check whether trading should continue based on daily and weekly losses."""
-    balance = account_info.balance
-    now = datetime.now()
-    one_day_ago = now - timedelta(days=1)
-    one_week_ago = now - timedelta(days=7)
-
-    def sum_losses(from_date: datetime) -> float:
-        deals = mt5.history_deals_get(from_date, now, group=SYMBOL)
-        if deals is None:
-            return 0.0
-        total_loss = 0.0
-        for deal in deals:
-            try:
-                profit = deal.profit
-            except AttributeError:
-                try:
-                    profit = deal._asdict().get("profit", 0)
-                except Exception:
-                    profit = 0
-            if profit < 0:
-                total_loss += -profit
-        return total_loss
-
-    daily_loss = sum_losses(one_day_ago)
-    weekly_loss = sum_losses(one_week_ago)
-    if daily_loss > balance * DAILY_RISK_LIMIT:
-        logger.warning(
-            f"Daily loss limit exceeded: {daily_loss:.2f} > {balance * DAILY_RISK_LIMIT:.2f}"
-        )
-        return False
-    if weekly_loss > balance * WEEKLY_RISK_LIMIT:
-        logger.warning(
-            f"Weekly loss limit exceeded: {weekly_loss:.2f} > {balance * WEEKLY_RISK_LIMIT:.2f}"
-        )
-        return False
-    return True
 
 
 def parse_news_events() -> List[str]:
@@ -1334,12 +1294,6 @@ def main() -> None:
             close_all_session_positions(SYMBOL)
             logger.info("Outside Asian session; waiting...")
             time.sleep(60)
-            continue
-
-        # Check hard risk limits
-        if not check_risk_limits(account_info):
-            logger.warning("Risk limits reached; skipping this cycle.")
-            time.sleep(SLEEP_INTERVAL)
             continue
 
         # Check drawdown limit
