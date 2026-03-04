@@ -1,5 +1,5 @@
 """
-Aggressive Asian session scalping bot for XAUUSD on the 1-minute timeframe.
+Aggressive Asian session scalping bot for XAUUSD on the 5-minute timeframe.
 
 This bot is a conversion of the original M15 intraday swing trading bot into
 a high-frequency scalper that exclusively trades during the Asian session
@@ -7,10 +7,10 @@ a high-frequency scalper that exclusively trades during the Asian session
 typical of the Tokyo/Sydney hours using a confluence-based signal system that
 combines RSI mean reversion, Bollinger Band bounces, EMA micro-crossovers,
 session range S/R levels, MACD histogram flips, and smart money concepts
-(order blocks, fair value gaps, liquidity sweeps) adapted for M1 data.
+(order blocks, fair value gaps, liquidity sweeps) adapted for M5 data.
 
 Key differences from the original swing bot:
-  - M1 timeframe with 15-second evaluation cycles
+  - M5 timeframe with 60-second evaluation cycles
   - Tight ATR x0.5 stops and ATR x0.75 take-profits
   - Up to 40 trades per day
   - 15-bar (15-minute) max holding time
@@ -68,7 +68,7 @@ def check_python_version() -> None:
 # ---------------------------------------------------------------------------
 
 SYMBOL: str = os.environ.get("MT5_SYMBOL", "XAUUSD")
-TIMEFRAME: int = mt5.TIMEFRAME_M1
+TIMEFRAME: int = mt5.TIMEFRAME_M5
 
 # Asian session window (UTC hours)
 ASIAN_SESSION_START_UTC: int = int(os.environ.get("ASIAN_SESSION_START_UTC", 0))   # 00:00 UTC
@@ -86,8 +86,8 @@ TP_MULTIPLIER: float = float(os.environ.get("TP_MULTIPLIER", 0.75))
 MIN_LOT: float = float(os.environ.get("MIN_LOT", 0.01))
 MAX_LOT: float = float(os.environ.get("MAX_LOT", 10.0))
 
-# Sleep interval between evaluations (15 seconds for M1 scalping)
-SLEEP_INTERVAL: int = int(os.environ.get("SLEEP_INTERVAL", 15))
+# Sleep interval between evaluations (60 seconds for M5 scalping)
+SLEEP_INTERVAL: int = int(os.environ.get("SLEEP_INTERVAL", 60))
 
 # Trailing stop multiplier (tight for scalping)
 TRAIL_MULTIPLIER: float = float(os.environ.get("TRAIL_MULTIPLIER", 0.3))
@@ -119,18 +119,18 @@ MAX_TRADES_PER_DAY: int = int(os.environ.get("MAX_TRADES_PER_DAY", 40))
 VOLATILITY_THRESHOLD: float = float(os.environ.get("VOLATILITY_THRESHOLD", 1.8))
 SPREAD_THRESHOLD_MULTIPLIER: float = float(os.environ.get("SPREAD_THRESHOLD_MULTIPLIER", 1.5))
 MAX_EXPOSURE_LIMIT: float = float(os.environ.get("MAX_EXPOSURE_LIMIT", 0.10))
-MAX_HOLDING_BARS: int = int(os.environ.get("MAX_HOLDING_BARS", 15))  # 15 bars = 15 min on M1
+MAX_HOLDING_BARS: int = int(os.environ.get("MAX_HOLDING_BARS", 12))  # 12 bars = 60 min on M5
 
 # ---------------------------------------------------------------------------
 # Scalping signal parameters
 # ---------------------------------------------------------------------------
 
-# RSI (short window for M1)
+# RSI (short window for M5)
 RSI_WINDOW: int = int(os.environ.get("RSI_WINDOW", 7))
 RSI_OVERSOLD: float = float(os.environ.get("RSI_OVERSOLD", 25))
 RSI_OVERBOUGHT: float = float(os.environ.get("RSI_OVERBOUGHT", 75))
 
-# Bollinger Bands (tighter for M1)
+# Bollinger Bands (tighter for M5)
 BB_WINDOW: int = int(os.environ.get("BB_WINDOW", 14))
 BB_STD: float = float(os.environ.get("BB_STD", 2.0))
 
@@ -138,7 +138,7 @@ BB_STD: float = float(os.environ.get("BB_STD", 2.0))
 EMA_FAST: int = int(os.environ.get("EMA_FAST", 5))
 EMA_SLOW: int = int(os.environ.get("EMA_SLOW", 13))
 
-# MACD (faster for M1)
+# MACD (faster for M5)
 MACD_FAST: int = int(os.environ.get("MACD_FAST", 8))
 MACD_SLOW: int = int(os.environ.get("MACD_SLOW", 17))
 MACD_SIGNAL: int = int(os.environ.get("MACD_SIGNAL", 9))
@@ -241,7 +241,7 @@ def get_session_range(data: pd.DataFrame, now_utc: datetime) -> Dict[str, Option
     """Compute the high/low of the current Asian session so far.
 
     These levels serve as dynamic support and resistance for mean-reversion
-    scalping entries. The session range is built from all M1 bars since the
+    scalping entries. The session range is built from all M5 bars since the
     session start.
 
     Returns:
@@ -265,16 +265,16 @@ def get_session_range(data: pd.DataFrame, now_utc: datetime) -> Dict[str, Option
 
 
 # ---------------------------------------------------------------------------
-# Market Data and Indicators (M1 scalping parameters)
+# Market Data and Indicators (M5 scalping parameters)
 # ---------------------------------------------------------------------------
 
 
 def fetch_live_market_data(
     symbol: str, timeframe: int, bars: int = 300
 ) -> Optional[pd.DataFrame]:
-    """Fetch recent M1 market data and compute technical indicators.
+    """Fetch recent M5 market data and compute technical indicators.
 
-    Indicator parameters are tuned for 1-minute scalping:
+    Indicator parameters are tuned for 5-minute scalping:
       - RSI window=7 (faster reversals)
       - MACD (8, 17, 9) (quicker signals)
       - Bollinger Bands window=14
@@ -300,9 +300,9 @@ def fetch_live_market_data(
             },
             inplace=True,
         )
-        # RSI (short window for M1)
+        # RSI (short window for M5)
         df["rsi"] = ta.momentum.RSIIndicator(df["close"], window=RSI_WINDOW).rsi()
-        # MACD (faster for M1)
+        # MACD (faster for M5)
         macd = ta.trend.MACD(
             df["close"],
             window_slow=MACD_SLOW,
@@ -331,12 +331,12 @@ def fetch_live_market_data(
 
 
 # ---------------------------------------------------------------------------
-# Pattern Detection (adapted lookback for M1)
+# Pattern Detection (adapted lookback for M5)
 # ---------------------------------------------------------------------------
 
 
 def identify_order_blocks(data: pd.DataFrame) -> List[Dict[str, float]]:
-    """Identify potential order blocks (simplified logic, M1-adapted)."""
+    """Identify potential order blocks (simplified logic, M5-adapted)."""
     order_blocks: List[Dict[str, float]] = []
     try:
         avg_volume = data["real_volume"].mean()
@@ -585,7 +585,7 @@ def filter_signals_by_context(
 ) -> List[Dict[str, int]]:
     """Filter detected pattern signals by proximity to order blocks or FVG zones.
 
-    For M1 scalping this is used as optional confluence rather than a hard gate.
+    For M5 scalping this is used as optional confluence rather than a hard gate.
     """
     if not patterns:
         return []
@@ -898,7 +898,7 @@ def calculate_open_exposure(
 
 
 def manage_time_exit(symbol: str, max_bars: int) -> None:
-    """Close positions that have been open longer than `max_bars` M1 periods."""
+    """Close positions that have been open longer than `max_bars` M5 periods."""
     positions = mt5.positions_get(symbol=symbol)
     if positions is None or max_bars <= 0:
         return
@@ -908,7 +908,7 @@ def manage_time_exit(symbol: str, max_bars: int) -> None:
             continue
         open_time = datetime.fromtimestamp(pos.time)
         elapsed_minutes = (now - open_time).total_seconds() / 60.0
-        bar_length_minutes = 1  # M1 timeframe
+        bar_length_minutes = 5  # M5 timeframe
         bars_open = elapsed_minutes / bar_length_minutes
         if bars_open >= max_bars:
             tick = mt5.symbol_info_tick(symbol)
@@ -1269,7 +1269,7 @@ def main() -> None:
         return
     connect_to_mt5(login, password, server)
     logger.info(
-        "Starting Asian session scalping bot for %s on M1 timeframe "
+        "Starting Asian session scalping bot for %s on M5 timeframe "
         "(session %02d:00-%02d:00 UTC)",
         SYMBOL,
         ASIAN_SESSION_START_UTC,
@@ -1311,7 +1311,7 @@ def main() -> None:
             time.sleep(SLEEP_INTERVAL)
             continue
 
-        # Fetch market data (300 M1 bars = 5 hours)
+        # Fetch market data (300 M5 bars = 25 hours)
         data = fetch_live_market_data(SYMBOL, TIMEFRAME, bars=300)
         if data is None or len(data) < 50:
             logger.warning("Insufficient data; retrying later.")
