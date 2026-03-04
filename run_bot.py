@@ -211,19 +211,9 @@ Examples:
 
     args = parser.parse_args()
 
-    # No --symbol specified → launch all 6 pairs via run_multi.py
+    # Default to XAUUSD when no --symbol specified
     if not args.symbol:
-        import subprocess as _sp
-        multi_cmd = [sys.executable, str(project_root / "run_multi.py"),
-                     "--config", args.config]
-        if args.paper:
-            multi_cmd.append("--paper")
-        elif args.live:
-            multi_cmd.append("--live")
-        if args.log_level:
-            multi_cmd.extend(["--log-level", args.log_level])
-        print("  No --symbol specified — launching all 6 pairs automatically.")
-        sys.exit(_sp.call(multi_cmd, cwd=str(project_root)))
+        args.symbol = "XAUUSD"
 
     config = load_config_with_symbol(args.config, args.symbol)
 
