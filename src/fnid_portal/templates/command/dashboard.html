@@ -24,10 +24,12 @@
 
 <!-- KPI Row 2 -->
 <div class="row g-3 mb-4">
-    <div class="col-lg-3 col-md-6"><div class="kpi-card kpi-success"><div class="kpi-value">{{ stats.compliant_48 or 0 }}</div><div class="kpi-label">48hr Compliant</div></div></div>
-    <div class="col-lg-3 col-md-6"><div class="kpi-card kpi-info"><div class="kpi-value">{{ stats.at_dpp or 0 }}</div><div class="kpi-label">Cases at DPP</div></div></div>
-    <div class="col-lg-3 col-md-6"><div class="kpi-card"><div class="kpi-value">{{ stats.exhibits or 0 }}</div><div class="kpi-label">Exhibits Tracked</div></div></div>
-    <div class="col-lg-3 col-md-6"><div class="kpi-card kpi-warning"><div class="kpi-value">{{ stats.sop_compliant or 0 }}</div><div class="kpi-label">SOP Compliant Cases</div></div></div>
+    <div class="col-lg-2 col-md-4"><div class="kpi-card kpi-success"><div class="kpi-value">{{ stats.compliant_48 or 0 }}</div><div class="kpi-label">48hr Compliant</div></div></div>
+    <div class="col-lg-2 col-md-4"><div class="kpi-card kpi-info"><div class="kpi-value">{{ stats.at_dpp or 0 }}</div><div class="kpi-label">Cases at DPP</div></div></div>
+    <div class="col-lg-2 col-md-4"><div class="kpi-card"><div class="kpi-value">{{ stats.exhibits or 0 }}</div><div class="kpi-label">Exhibits Tracked</div></div></div>
+    <div class="col-lg-2 col-md-4"><div class="kpi-card kpi-warning"><div class="kpi-value">{{ stats.pending_reviews or 0 }}</div><div class="kpi-label">Pending Reviews</div></div></div>
+    <div class="col-lg-2 col-md-4"><div class="kpi-card kpi-danger"><div class="kpi-value">{{ stats.overdue_files or 0 }}</div><div class="kpi-label">Overdue Files</div></div></div>
+    <div class="col-lg-2 col-md-4"><div class="kpi-card"><div class="kpi-value">{{ stats.active_alerts or 0 }}</div><div class="kpi-label">Active Alerts</div></div></div>
 </div>
 
 <!-- Charts -->
@@ -54,9 +56,28 @@
         </div>
     </div>
     <div class="col-lg-6">
+        <div class="chart-container" style="height:380px;">
+            <h6 class="text-muted mb-2">Case Lifecycle Pipeline</h6>
+            <canvas id="stageChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Monthly Trends -->
+<div class="row g-3 mb-4">
+    <div class="col-lg-12">
+        <div class="chart-container" style="height:350px;">
+            <h6 class="text-muted mb-2">Monthly Trends (Cases, Seizures, Arrests)</h6>
+            <canvas id="trendChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-lg-6">
         <div class="card">
             <div class="card-header bg-fnid-navy text-white">
-                <i class="bi bi-grid-3x3-gap me-2"></i>Unit Portal Quick Access
+                <i class="bi bi-grid-3x3-gap me-2"></i>Quick Access
             </div>
             <div class="card-body">
                 <div class="d-grid gap-2">
@@ -66,6 +87,32 @@
                         {{ portal.name }}
                     </a>
                     {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header bg-fnid-navy text-white">
+                <i class="bi bi-link-45deg me-2"></i>Analytics & Reports
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="{{ url_for('analytics.analytics_home') }}" class="btn btn-outline-primary btn-sm text-start">
+                        <i class="bi bi-graph-up-arrow me-2"></i>Performance Analytics
+                    </a>
+                    <a href="{{ url_for('analytics.io_performance') }}" class="btn btn-outline-primary btn-sm text-start">
+                        <i class="bi bi-people me-2"></i>IO Performance
+                    </a>
+                    <a href="{{ url_for('reports.reports_home') }}" class="btn btn-outline-primary btn-sm text-start">
+                        <i class="bi bi-file-earmark-bar-graph me-2"></i>Reports
+                    </a>
+                    <a href="{{ url_for('evidence.evidence_dashboard') }}" class="btn btn-outline-primary btn-sm text-start">
+                        <i class="bi bi-fingerprint me-2"></i>Evidence Manager
+                    </a>
+                    <a href="{{ url_for('transport.fleet') }}" class="btn btn-outline-primary btn-sm text-start">
+                        <i class="bi bi-truck me-2"></i>Transport Fleet
+                    </a>
                 </div>
             </div>
         </div>
@@ -137,6 +184,27 @@ document.addEventListener('DOMContentLoaded', function() {
         {{ charts.seizures_by_parish|map(attribute=0)|list|tojson }},
         [{ data: {{ charts.seizures_by_parish|map(attribute=1)|list|tojson }}, backgroundColor: ['#1F3864','#BF8F00','#C00000'] }],
         { plugins: { legend: { display: false } } });
+    {% endif %}
+
+    {% if charts.cases_by_stage %}
+    fnidChart('stageChart', 'bar',
+        {{ charts.cases_by_stage|map(attribute=0)|list|tojson }},
+        [{ label: 'Cases', data: {{ charts.cases_by_stage|map(attribute=1)|list|tojson }},
+           backgroundColor: ['#e3f2fd','#f3e5f5','#fff3e0','#e8f5e9','#e1f5fe','#fce4ec','#ede7f6','#f9fbe7','#ffebee','#eceff1'] }],
+        { plugins: { legend: { display: false } } });
+    {% endif %}
+
+    {% if charts.monthly_cases %}
+    var months = {{ charts.monthly_cases|map(attribute=0)|list|reverse|list|tojson }};
+    fnidChart('trendChart', 'line', months, [
+        { label: 'Cases', data: {{ charts.monthly_cases|map(attribute=1)|list|reverse|list|tojson }}, borderColor: '#1F3864', fill: false, tension: 0.3 },
+        {% if charts.monthly_seizures %}
+        { label: 'Seizures', data: {{ charts.monthly_seizures|map(attribute=1)|list|reverse|list|tojson }}, borderColor: '#C00000', fill: false, tension: 0.3 },
+        {% endif %}
+        {% if charts.monthly_arrests %}
+        { label: 'Arrests', data: {{ charts.monthly_arrests|map(attribute=1)|list|reverse|list|tojson }}, borderColor: '#538135', fill: false, tension: 0.3 },
+        {% endif %}
+    ]);
     {% endif %}
 });
 </script>

@@ -6,6 +6,9 @@ Firearms & Narcotics Investigation Division, Area 3.
 
 Phase 1: Core case management system with RBAC, CR forms, case lifecycle,
 file movement, MCR engine, intelligence, admin, and search modules.
+
+Phase 2: Transport, DCRR views, evidence management, analytics, batch
+operations, notifications, and report generation.
 """
 
 import os
@@ -107,6 +110,23 @@ def create_app(config_name=None):
     app.register_blueprint(intel_unit_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(search_bp)
+
+    # Register blueprints — Phase 2 modules
+    from .routes.analytics import bp as analytics_bp
+    from .routes.batch import bp as batch_bp
+    from .routes.dcrr import bp as dcrr_bp
+    from .routes.evidence import bp as evidence_bp
+    from .routes.notifications import bp as notifications_bp
+    from .routes.reports import bp as reports_bp
+    from .routes.transport import bp as transport_bp
+
+    app.register_blueprint(transport_bp)
+    app.register_blueprint(dcrr_bp)
+    app.register_blueprint(evidence_bp)
+    app.register_blueprint(analytics_bp)
+    app.register_blueprint(reports_bp)
+    app.register_blueprint(batch_bp)
+    app.register_blueprint(notifications_bp)
 
     # Register CLI commands
     _register_cli(app)

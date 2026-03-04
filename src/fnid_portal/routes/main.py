@@ -98,6 +98,21 @@ def command_dashboard():
             "SELECT current_stage, COUNT(*) as cnt FROM cases "
             "WHERE current_stage IS NOT NULL GROUP BY current_stage"
         ).fetchall(),
+        "monthly_cases": conn.execute("""
+            SELECT strftime('%Y-%m', created_at) as month, COUNT(*) as cnt
+            FROM cases WHERE created_at IS NOT NULL
+            GROUP BY month ORDER BY month DESC LIMIT 12
+        """).fetchall(),
+        "monthly_seizures": conn.execute("""
+            SELECT strftime('%Y-%m', created_at) as month, COUNT(*) as cnt
+            FROM firearm_seizures WHERE created_at IS NOT NULL
+            GROUP BY month ORDER BY month DESC LIMIT 12
+        """).fetchall(),
+        "monthly_arrests": conn.execute("""
+            SELECT strftime('%Y-%m', created_at) as month, COUNT(*) as cnt
+            FROM arrests WHERE created_at IS NOT NULL
+            GROUP BY month ORDER BY month DESC LIMIT 12
+        """).fetchall(),
     }
     conn.close()
     return render_template("command/dashboard.html", stats=stats, charts=charts)

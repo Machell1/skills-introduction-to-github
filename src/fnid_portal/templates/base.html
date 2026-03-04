@@ -34,8 +34,12 @@
                         <ul class="dropdown-menu dropdown-menu-dark">
                             <li><a class="dropdown-item" href="{{ url_for('cases.case_list') }}"><i class="bi bi-list-ul me-2"></i>All Cases</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('cases.intake') }}"><i class="bi bi-plus-circle me-2"></i>New Case Intake</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('dcrr.dcrr_register') }}"><i class="bi bi-journal-text me-2"></i>DCRR Register</a></li>
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="{{ url_for('search.advanced_search') }}"><i class="bi bi-funnel me-2"></i>Advanced Search</a></li>
+                            {% if current_user.is_authenticated and current_user.role in ('admin', 'dco', 'ddi', 'station_mgr') %}
+                            <li><a class="dropdown-item" href="{{ url_for('batch.batch_home') }}"><i class="bi bi-collection me-2"></i>Batch Operations</a></li>
+                            {% endif %}
                         </ul>
                     </li>
                     <!-- Unit Portals -->
@@ -52,6 +56,9 @@
                                 </a>
                             </li>
                             {% endfor %}
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ url_for('evidence.evidence_dashboard') }}"><i class="bi bi-fingerprint me-2"></i>Evidence Manager</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('transport.fleet') }}"><i class="bi bi-truck me-2"></i>Transport</a></li>
                         </ul>
                     </li>
                     <!-- MCR -->
@@ -60,11 +67,21 @@
                             <i class="bi bi-newspaper"></i> MCR
                         </a>
                     </li>
-                    <!-- Dashboards -->
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('main.command_dashboard') }}">
-                            <i class="bi bi-bar-chart-line"></i> Command
+                    <!-- Analytics & Reports -->
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
+                            <i class="bi bi-bar-chart-line"></i> Analytics
                         </a>
+                        <ul class="dropdown-menu dropdown-menu-dark">
+                            <li><a class="dropdown-item" href="{{ url_for('main.command_dashboard') }}"><i class="bi bi-speedometer2 me-2"></i>Command Dashboard</a></li>
+                            {% if current_user.is_authenticated and current_user.role in ('admin', 'dco', 'ddi', 'station_mgr') %}
+                            <li><a class="dropdown-item" href="{{ url_for('analytics.analytics_home') }}"><i class="bi bi-graph-up-arrow me-2"></i>Performance Analytics</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('analytics.io_performance') }}"><i class="bi bi-people me-2"></i>IO Performance</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('analytics.seizure_analytics') }}"><i class="bi bi-shield-lock me-2"></i>Seizure Analytics</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ url_for('reports.reports_home') }}"><i class="bi bi-file-earmark-bar-graph me-2"></i>Reports</a></li>
+                            {% endif %}
+                        </ul>
                     </li>
                     <!-- Admin (role-restricted visibility) -->
                     {% if current_user.is_authenticated and current_user.role in ('admin', 'dco') %}
@@ -91,6 +108,11 @@
                 </form>
                 <div class="d-flex align-items-center">
                     {% if current_user.is_authenticated %}
+                    <!-- Notification Bell -->
+                    <a href="{{ url_for('notifications.notification_center') }}" class="btn btn-link text-white position-relative me-2 p-1" title="Notifications" id="notif-bell">
+                        <i class="bi bi-bell fs-5"></i>
+                        <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger d-none" id="notif-count">0</span>
+                    </a>
                     <span class="badge bg-fnid-gold text-dark me-2" title="Role: {{ current_user.role|upper }}">
                         <i class="bi bi-person-badge"></i>
                         {{ current_user.full_name }} <small>({{ current_user.role }})</small>
@@ -153,6 +175,29 @@
     <script src="https://cdn.datatables.net/1.13.7/js/dataTables.bootstrap5.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="{{ url_for('static', filename='js/fnid.js') }}"></script>
+    {% if current_user.is_authenticated %}
+    <script>
+    // Notification bell polling
+    (function() {
+        function updateBell() {
+            fetch('/notifications/api/count')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    var badge = document.getElementById('notif-count');
+                    if (badge && data.total > 0) {
+                        badge.textContent = data.total > 99 ? '99+' : data.total;
+                        badge.classList.remove('d-none');
+                        if (data.critical > 0) badge.classList.add('bg-danger');
+                    } else if (badge) {
+                        badge.classList.add('d-none');
+                    }
+                }).catch(function() {});
+        }
+        updateBell();
+        setInterval(updateBell, 60000);
+    })();
+    </script>
+    {% endif %}
     {% block scripts %}{% endblock %}
 </body>
 </html>
