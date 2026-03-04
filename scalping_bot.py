@@ -76,8 +76,8 @@ ASIAN_SESSION_END_UTC: int = int(os.environ.get("ASIAN_SESSION_END_UTC", 6))    
 
 # Base risk parameters
 RISK_PER_TRADE: float = float(os.environ.get("RISK_PER_TRADE", 0.005))  # 0.5% per trade
-DAILY_RISK_LIMIT: float = float(os.environ.get("DAILY_RISK_LIMIT", 0.05))  # 5% daily loss limit
-WEEKLY_RISK_LIMIT: float = float(os.environ.get("WEEKLY_RISK_LIMIT", 0.08))  # 8% weekly loss limit
+DAILY_RISK_LIMIT: float = float(os.environ.get("DAILY_RISK_LIMIT", 0.50))  # 50% daily loss limit
+WEEKLY_RISK_LIMIT: float = float(os.environ.get("WEEKLY_RISK_LIMIT", 0.75))  # 75% weekly loss limit
 MAX_DRAWDOWN_LIMIT: float = float(os.environ.get("MAX_DRAWDOWN_LIMIT", 0.15))  # 15% max drawdown
 
 # Stop-loss and take-profit multipliers relative to ATR (tight for scalping)
