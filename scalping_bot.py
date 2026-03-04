@@ -177,6 +177,9 @@ def get_risk_percent_for_balance(balance: float) -> float:
 CURRENT_DAY: Optional[date] = None
 TRADES_TODAY: int = 0
 
+# Bot start time — loss history is only queried from this point forward
+BOT_START_TIME: Optional[datetime] = None
+
 
 # ---------------------------------------------------------------------------
 # Logger setup
@@ -767,10 +770,10 @@ def reset_daily_counters(now: datetime) -> None:
 
 
 def get_consecutive_losses(symbol: str) -> int:
-    """Count consecutive losing trades within the current day."""
+    """Count consecutive losing trades since bot started."""
     now = datetime.now()
-    start_of_day = datetime(now.year, now.month, now.day)
-    deals = mt5.history_deals_get(start_of_day, now, group=symbol)
+    start_time = BOT_START_TIME if BOT_START_TIME else datetime(now.year, now.month, now.day)
+    deals = mt5.history_deals_get(start_time, now, group=symbol)
     if deals is None:
         return 0
     try:
@@ -790,10 +793,10 @@ def get_consecutive_losses(symbol: str) -> int:
 
 
 def get_daily_loss_ratio(symbol: str, balance: float) -> float:
-    """Return the fraction of account balance lost today."""
+    """Return the fraction of account balance lost since bot started."""
     now = datetime.now()
-    start_of_day = datetime(now.year, now.month, now.day)
-    deals = mt5.history_deals_get(start_of_day, now, group=symbol)
+    start_time = BOT_START_TIME if BOT_START_TIME else datetime(now.year, now.month, now.day)
+    deals = mt5.history_deals_get(start_time, now, group=symbol)
     if deals is None or balance <= 0:
         return 0.0
     total_loss = 0.0
@@ -1258,7 +1261,7 @@ def execute_trade(
 
 def main() -> None:
     """Main loop for the Asian session scalping bot."""
-    global TRADES_TODAY
+    global TRADES_TODAY, BOT_START_TIME
     check_python_version()
     try:
         login = int(os.environ.get("MT5_LOGIN") or input("Enter MT5 login: "))
@@ -1268,6 +1271,8 @@ def main() -> None:
         logger.error("Invalid login provided.")
         return
     connect_to_mt5(login, password, server)
+    BOT_START_TIME = datetime.now()
+    logger.info("Loss history reset — trading fresh from %s", BOT_START_TIME.strftime("%H:%M:%S"))
     logger.info(
         "Starting Asian session scalping bot for %s on M5 timeframe "
         "(session %02d:00-%02d:00 UTC)",
