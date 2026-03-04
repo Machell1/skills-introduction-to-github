@@ -1,23 +1,24 @@
 """
-Aggressive Asian session scalping bot for XAUUSD on the 5-minute timeframe.
+Multi-session scalping bot for XAUUSD on the 5-minute timeframe.
 
-This bot is a conversion of the original M15 intraday swing trading bot into
-a high-frequency scalper that exclusively trades during the Asian session
-(00:00-06:00 UTC). It exploits the low-volatility, range-bound price action
-typical of the Tokyo/Sydney hours using a confluence-based signal system that
-combines RSI mean reversion, Bollinger Band bounces, EMA micro-crossovers,
+This bot trades across all three major forex sessions — Asian, London, and
+New York — with parameters automatically tuned to each session's volatility,
+spread, and trend characteristics. It uses a confluence-based signal system
+combining RSI mean reversion, Bollinger Band bounces, EMA micro-crossovers,
 session range S/R levels, MACD histogram flips, and smart money concepts
 (order blocks, fair value gaps, liquidity sweeps) adapted for M5 data.
 
-Key differences from the original swing bot:
+Key features:
   - M5 timeframe with 60-second evaluation cycles
-  - Tight ATR x0.5 stops and ATR x0.75 take-profits
-  - Up to 40 trades per day
-  - 15-bar (15-minute) max holding time
-  - Confluence scoring: trades require >= 2 agreeing signals
-  - Strict spread filter (critical for scalping)
+  - Session-adaptive ATR stops, take-profits, and confluence thresholds
+  - Asian: tight stops/TPs for range-bound mean-reversion
+  - London: wider stops/TPs for trending breakouts
+  - New York: widest stops/TPs, highest confluence to filter noise
+  - Automatic position closure at session transitions
+  - Confluence scoring: trades require >= 2-3 agreeing signals (session-dependent)
+  - Strict spread filter (session-adaptive)
   - Session range detection for dynamic S/R
-  - Automatic position closure at session end
+  - Off-hours (21:00-00:00 UTC): no trading
 
 Like the original, this bot is intended for educational use only. Always
 backtest strategies in a demo environment before risking real money.
@@ -70,27 +71,16 @@ def check_python_version() -> None:
 SYMBOL: str = os.environ.get("MT5_SYMBOL", "XAUUSD")
 TIMEFRAME: int = mt5.TIMEFRAME_M5
 
-# Asian session window (UTC hours)
-ASIAN_SESSION_START_UTC: int = int(os.environ.get("ASIAN_SESSION_START_UTC", 0))   # 00:00 UTC
-ASIAN_SESSION_END_UTC: int = int(os.environ.get("ASIAN_SESSION_END_UTC", 6))       # 06:00 UTC
-
 # Base risk parameters
 RISK_PER_TRADE: float = float(os.environ.get("RISK_PER_TRADE", 0.005))  # 0.5% per trade
 MAX_DRAWDOWN_LIMIT: float = float(os.environ.get("MAX_DRAWDOWN_LIMIT", 0.15))  # 15% max drawdown
-
-# Stop-loss and take-profit multipliers relative to ATR (tight for scalping)
-STOP_MULTIPLIER: float = float(os.environ.get("STOP_MULTIPLIER", 0.5))
-TP_MULTIPLIER: float = float(os.environ.get("TP_MULTIPLIER", 0.75))
 
 # Lot size limits
 MIN_LOT: float = float(os.environ.get("MIN_LOT", 0.01))
 MAX_LOT: float = float(os.environ.get("MAX_LOT", 10.0))
 
-# Sleep interval between evaluations (60 seconds for M5 scalping)
+# Sleep interval between evaluations
 SLEEP_INTERVAL: int = int(os.environ.get("SLEEP_INTERVAL", 60))
-
-# Trailing stop multiplier (tight for scalping)
-TRAIL_MULTIPLIER: float = float(os.environ.get("TRAIL_MULTIPLIER", 0.3))
 
 # News filter parameters
 NEWS_EVENTS: str = os.environ.get("NEWS_EVENTS", "")
@@ -115,42 +105,83 @@ SOFT_DAILY_RISK_LIMIT: float = float(
 )
 SOFT_RISK_FACTOR: float = float(os.environ.get("SOFT_RISK_FACTOR", 0.5))
 MAX_CONSECUTIVE_LOSSES: int = int(os.environ.get("MAX_CONSECUTIVE_LOSSES", 5))
-MAX_TRADES_PER_DAY: int = int(os.environ.get("MAX_TRADES_PER_DAY", 40))
-VOLATILITY_THRESHOLD: float = float(os.environ.get("VOLATILITY_THRESHOLD", 1.8))
-SPREAD_THRESHOLD_MULTIPLIER: float = float(os.environ.get("SPREAD_THRESHOLD_MULTIPLIER", 1.5))
 MAX_EXPOSURE_LIMIT: float = float(os.environ.get("MAX_EXPOSURE_LIMIT", 0.10))
-MAX_HOLDING_BARS: int = int(os.environ.get("MAX_HOLDING_BARS", 12))  # 12 bars = 60 min on M5
 
 # ---------------------------------------------------------------------------
-# Scalping signal parameters
+# Indicator parameters (shared across all sessions)
 # ---------------------------------------------------------------------------
 
-# RSI (short window for M5)
 RSI_WINDOW: int = int(os.environ.get("RSI_WINDOW", 7))
-RSI_OVERSOLD: float = float(os.environ.get("RSI_OVERSOLD", 25))
-RSI_OVERBOUGHT: float = float(os.environ.get("RSI_OVERBOUGHT", 75))
-
-# Bollinger Bands (tighter for M5)
 BB_WINDOW: int = int(os.environ.get("BB_WINDOW", 14))
 BB_STD: float = float(os.environ.get("BB_STD", 2.0))
-
-# EMA micro-crossover
 EMA_FAST: int = int(os.environ.get("EMA_FAST", 5))
 EMA_SLOW: int = int(os.environ.get("EMA_SLOW", 13))
-
-# MACD (faster for M5)
 MACD_FAST: int = int(os.environ.get("MACD_FAST", 8))
 MACD_SLOW: int = int(os.environ.get("MACD_SLOW", 17))
 MACD_SIGNAL: int = int(os.environ.get("MACD_SIGNAL", 9))
-
-# ATR window
 ATR_WINDOW: int = int(os.environ.get("ATR_WINDOW", 10))
-
-# Session range proximity (fraction of price)
 SESSION_RANGE_PROXIMITY: float = float(os.environ.get("SESSION_RANGE_PROXIMITY", 0.001))
 
-# Minimum confluence score to trigger a trade
-MIN_CONFLUENCE_SCORE: int = int(os.environ.get("MIN_CONFLUENCE_SCORE", 2))
+# ---------------------------------------------------------------------------
+# Session profiles — parameters auto-adapt to each trading session
+# ---------------------------------------------------------------------------
+#
+# Each session has its own stop/TP multipliers, RSI thresholds, confluence
+# requirements, trade limits, and volatility/spread tolerances tuned to that
+# session's typical XAUUSD behavior.
+#
+#   Asian  (00-06 UTC): Low vol, range-bound → tight stops, mean-reversion
+#   London (07-13 UTC): High vol, trending   → wider stops, breakout-friendly
+#   New York (13-21 UTC): Very high vol      → widest stops, strict confluence
+#   Off-hours (21-00 UTC): No trading
+#
+# During the London-NY overlap (13:00-16:00), the New York profile is used
+# because it has higher volatility tolerance.
+
+SESSION_PROFILES: Dict[str, Dict] = {
+    "asian": {
+        "start_utc": 0,
+        "end_utc": 6,
+        "stop_multiplier": 0.5,
+        "tp_multiplier": 0.75,
+        "trail_multiplier": 0.3,
+        "rsi_oversold": 25,
+        "rsi_overbought": 75,
+        "min_confluence_score": 2,
+        "max_trades_per_session": 15,
+        "max_holding_bars": 12,       # 12 × 5 min = 60 min
+        "volatility_threshold": 1.8,
+        "spread_threshold_multiplier": 1.5,
+    },
+    "london": {
+        "start_utc": 7,
+        "end_utc": 16,
+        "stop_multiplier": 0.8,
+        "tp_multiplier": 1.2,
+        "trail_multiplier": 0.5,
+        "rsi_oversold": 30,
+        "rsi_overbought": 70,
+        "min_confluence_score": 2,
+        "max_trades_per_session": 15,
+        "max_holding_bars": 15,       # 15 × 5 min = 75 min
+        "volatility_threshold": 2.5,
+        "spread_threshold_multiplier": 2.0,
+    },
+    "new_york": {
+        "start_utc": 13,
+        "end_utc": 21,
+        "stop_multiplier": 1.0,
+        "tp_multiplier": 1.5,
+        "trail_multiplier": 0.6,
+        "rsi_oversold": 30,
+        "rsi_overbought": 70,
+        "min_confluence_score": 3,
+        "max_trades_per_session": 10,
+        "max_holding_bars": 18,       # 18 × 5 min = 90 min
+        "volatility_threshold": 3.0,
+        "spread_threshold_multiplier": 2.5,
+    },
+}
 
 # ---------------------------------------------------------------------------
 # Dynamic Risk Sizing (lower per-trade risk for scalping)
@@ -179,6 +210,9 @@ TRADES_TODAY: int = 0
 
 # Bot start time — loss history is only queried from this point forward
 BOT_START_TIME: Optional[datetime] = None
+
+# Current active session (for detecting transitions)
+CURRENT_SESSION: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -227,21 +261,32 @@ def connect_to_mt5(login: int, password: str, server: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Asian Session Detection
+# Session Detection
 # ---------------------------------------------------------------------------
 
 
-def is_within_asian_session(now_utc: datetime) -> bool:
-    """Check if the current UTC time falls within the Asian session window."""
-    hour = now_utc.hour
-    if ASIAN_SESSION_START_UTC <= ASIAN_SESSION_END_UTC:
-        return ASIAN_SESSION_START_UTC <= hour < ASIAN_SESSION_END_UTC
-    # Handle wrap-around midnight (e.g., 22:00-06:00)
-    return hour >= ASIAN_SESSION_START_UTC or hour < ASIAN_SESSION_END_UTC
+def get_active_session(hour_utc: int) -> Optional[str]:
+    """Return the active session name, or None if in off-hours.
+
+    Priority: new_york > london > asian (handles 13-16 overlap by preferring
+    the New York profile which has higher volatility tolerance).
+    """
+    for name in ("new_york", "london", "asian"):
+        p = SESSION_PROFILES[name]
+        start, end = p["start_utc"], p["end_utc"]
+        if start <= end:
+            if start <= hour_utc < end:
+                return name
+        else:  # wrap around midnight
+            if hour_utc >= start or hour_utc < end:
+                return name
+    return None
 
 
-def get_session_range(data: pd.DataFrame, now_utc: datetime) -> Dict[str, Optional[float]]:
-    """Compute the high/low of the current Asian session so far.
+def get_session_range(
+    data: pd.DataFrame, now_utc: datetime, session_start_utc: int
+) -> Dict[str, Optional[float]]:
+    """Compute the high/low of the current session so far.
 
     These levels serve as dynamic support and resistance for mean-reversion
     scalping entries. The session range is built from all M5 bars since the
@@ -252,7 +297,7 @@ def get_session_range(data: pd.DataFrame, now_utc: datetime) -> Dict[str, Option
         insufficient data is available.
     """
     session_start = now_utc.replace(
-        hour=ASIAN_SESSION_START_UTC, minute=0, second=0, microsecond=0
+        hour=session_start_utc, minute=0, second=0, microsecond=0
     )
     if now_utc < session_start:
         session_start -= timedelta(days=1)
@@ -439,13 +484,15 @@ def detect_liquidity_sweeps(
 
 
 def generate_scalp_signals(
-    data: pd.DataFrame, session_range: Dict[str, Optional[float]]
+    data: pd.DataFrame,
+    session_range: Dict[str, Optional[float]],
+    profile: Dict,
 ) -> List[Dict]:
     """Generate scalping signals using a confluence scoring system.
 
     Each signal source contributes +1 (bullish) or -1 (bearish) to a running
-    score. A trade is only considered when the absolute score reaches
-    MIN_CONFLUENCE_SCORE, ensuring that at least two independent signals agree.
+    score. A trade is only considered when the absolute score reaches the
+    session's min_confluence_score, ensuring multiple independent signals agree.
 
     Signal sources:
       1. RSI mean reversion (oversold/overbought)
@@ -471,10 +518,10 @@ def generate_scalp_signals(
     # 1. RSI Mean Reversion
     rsi = last.get("rsi")
     if rsi is not None and not np.isnan(rsi):
-        if rsi < RSI_OVERSOLD:
+        if rsi < profile["rsi_oversold"]:
             bullish_score += 1
             reasons_bull.append("RSI_oversold")
-        elif rsi > RSI_OVERBOUGHT:
+        elif rsi > profile["rsi_overbought"]:
             bearish_score += 1
             reasons_bear.append("RSI_overbought")
 
@@ -545,7 +592,8 @@ def generate_scalp_signals(
             reasons_bear.append("MACD_flip_down")
 
     # Evaluate confluence
-    if bullish_score >= MIN_CONFLUENCE_SCORE:
+    min_score = profile["min_confluence_score"]
+    if bullish_score >= min_score:
         signals.append(
             {
                 "direction": "buy",
@@ -554,7 +602,7 @@ def generate_scalp_signals(
                 "index": len(data) - 1,
             }
         )
-    if bearish_score >= MIN_CONFLUENCE_SCORE:
+    if bearish_score >= min_score:
         signals.append(
             {
                 "direction": "sell",
@@ -650,15 +698,17 @@ def calculate_lot_size(
     return round(lot_size, 2)
 
 
-def calculate_stop_levels(entry_price: float, atr: float, direction: str) -> Dict[str, float]:
+def calculate_stop_levels(
+    entry_price: float, atr: float, direction: str, profile: Dict
+) -> Dict[str, float]:
     """Calculate stop-loss and take-profit levels based on ATR and direction.
 
-    Uses tight multipliers appropriate for scalping (ATR x0.5 SL, ATR x0.75 TP).
+    Uses session-adaptive multipliers for SL and TP distances.
     """
     if atr is None or np.isnan(atr) or atr <= 0:
         atr = 10 * 0.01  # default 10 pips
-    stop_distance = atr * STOP_MULTIPLIER
-    target_distance = atr * TP_MULTIPLIER
+    stop_distance = atr * profile["stop_multiplier"]
+    target_distance = atr * profile["tp_multiplier"]
     if direction == "buy":
         sl = entry_price - stop_distance
         tp = entry_price + target_distance
@@ -825,11 +875,10 @@ def get_dynamic_risk_factor(daily_loss_ratio: float, consecutive_losses: int) ->
     return max(0.1, min(1.0, factor))
 
 
-def check_volatility_and_spread(data: pd.DataFrame) -> bool:
+def check_volatility_and_spread(data: pd.DataFrame, profile: Dict) -> bool:
     """Return True if trading should be skipped due to high volatility or spread.
 
-    The spread filter is stricter for scalping (1.5x average) since tight stops
-    make the bot more sensitive to spread costs.
+    Thresholds are session-adaptive — higher tolerance for volatile sessions.
     """
     if data is None or len(data) < 50:
         return True
@@ -837,20 +886,22 @@ def check_volatility_and_spread(data: pd.DataFrame) -> bool:
     avg_atr = data["atr"].iloc[-50:].mean()
     if avg_atr == 0 or np.isnan(avg_atr):
         return False
-    if last_atr > avg_atr * VOLATILITY_THRESHOLD:
+    vol_thresh = profile["volatility_threshold"]
+    if last_atr > avg_atr * vol_thresh:
         logger.info(
             "Skipping trading due to high volatility: "
-            f"ATR {last_atr:.5f} > {avg_atr * VOLATILITY_THRESHOLD:.5f}"
+            f"ATR {last_atr:.5f} > {avg_atr * vol_thresh:.5f}"
         )
         return True
     current_spread = data["spread"].iloc[-1]
     avg_spread = data["spread"].iloc[-50:].mean()
     if avg_spread == 0 or np.isnan(avg_spread):
         return False
-    if current_spread > avg_spread * SPREAD_THRESHOLD_MULTIPLIER:
+    spread_thresh = profile["spread_threshold_multiplier"]
+    if current_spread > avg_spread * spread_thresh:
         logger.info(
             "Skipping trading due to wide spread: "
-            f"spread {current_spread} > {avg_spread * SPREAD_THRESHOLD_MULTIPLIER}"
+            f"spread {current_spread} > {avg_spread * spread_thresh}"
         )
         return True
     return False
@@ -947,7 +998,7 @@ def manage_time_exit(symbol: str, max_bars: int) -> None:
 
 
 def close_all_session_positions(symbol: str) -> None:
-    """Close all positions opened by this bot. Called at end of Asian session."""
+    """Close all positions opened by this bot. Called at session transitions."""
     positions = mt5.positions_get(symbol=symbol)
     if positions is None:
         return
@@ -1085,8 +1136,8 @@ def manage_open_positions(symbol: str) -> None:
                 )
 
 
-def update_trailing_stops(symbol: str, atr: float) -> None:
-    """Update stop-loss levels for open positions based on a tight trailing ATR stop."""
+def update_trailing_stops(symbol: str, atr: float, trail_multiplier: float) -> None:
+    """Update stop-loss levels for open positions based on a trailing ATR stop."""
     if atr is None or np.isnan(atr) or atr <= 0:
         return
     positions = mt5.positions_get(symbol=symbol)
@@ -1104,7 +1155,7 @@ def update_trailing_stops(symbol: str, atr: float) -> None:
         direction = pos.type
         if direction == mt5.ORDER_TYPE_BUY:
             current_price = tick.bid
-            new_sl_candidate = current_price - atr * TRAIL_MULTIPLIER
+            new_sl_candidate = current_price - atr * trail_multiplier
             new_sl = max(current_sl, new_sl_candidate)
             if new_sl >= current_price or new_sl >= pos.tp:
                 continue
@@ -1137,7 +1188,7 @@ def update_trailing_stops(symbol: str, atr: float) -> None:
                     )
         elif direction == mt5.ORDER_TYPE_SELL:
             current_price = tick.ask
-            new_sl_candidate = current_price + atr * TRAIL_MULTIPLIER
+            new_sl_candidate = current_price + atr * trail_multiplier
             new_sl = min(current_sl, new_sl_candidate)
             if new_sl <= current_price or new_sl <= pos.tp:
                 continue
@@ -1227,7 +1278,7 @@ def execute_trade(
         "tp": tp,
         "deviation": 20,
         "magic": MAGIC_NUMBER,
-        "comment": "Asian scalp",
+        "comment": "Scalp",
         "type_time": mt5.ORDER_TIME_GTC,
         "type_filling": mt5.ORDER_FILLING_FOK,
     }
@@ -1260,8 +1311,8 @@ def execute_trade(
 
 
 def main() -> None:
-    """Main loop for the Asian session scalping bot."""
-    global TRADES_TODAY, BOT_START_TIME
+    """Main loop for the multi-session scalping bot."""
+    global TRADES_TODAY, BOT_START_TIME, CURRENT_SESSION
     check_python_version()
     try:
         login = int(os.environ.get("MT5_LOGIN") or input("Enter MT5 login: "))
@@ -1274,11 +1325,9 @@ def main() -> None:
     BOT_START_TIME = datetime.now()
     logger.info("Loss history reset — trading fresh from %s", BOT_START_TIME.strftime("%H:%M:%S"))
     logger.info(
-        "Starting Asian session scalping bot for %s on M5 timeframe "
-        "(session %02d:00-%02d:00 UTC)",
+        "Starting multi-session scalping bot for %s on M5 timeframe "
+        "(Asian 00-06, London 07-16, New York 13-21 UTC)",
         SYMBOL,
-        ASIAN_SESSION_START_UTC,
-        ASIAN_SESSION_END_UTC,
     )
     calendar_events: List[datetime] = load_calendar_events(NEWS_EVENTS_FILE)
 
@@ -1297,13 +1346,27 @@ def main() -> None:
         # Reset daily counters at midnight
         reset_daily_counters(now)
 
-        # ---- Asian session gate ----
-        if not is_within_asian_session(now_utc):
-            # Close all positions at session end
+        # ---- Multi-session gate ----
+        session_name = get_active_session(now_utc.hour)
+
+        # Off-hours: close positions and wait
+        if session_name is None:
             close_all_session_positions(SYMBOL)
-            logger.info("Outside Asian session; waiting...")
+            logger.info("Off-hours; waiting for next session...")
             time.sleep(60)
             continue
+
+        # Session transition: close previous session's positions
+        if CURRENT_SESSION is not None and session_name != CURRENT_SESSION:
+            logger.info(
+                "Session transition: %s -> %s. Closing positions.",
+                CURRENT_SESSION,
+                session_name,
+            )
+            close_all_session_positions(SYMBOL)
+            TRADES_TODAY = 0
+        CURRENT_SESSION = session_name
+        profile = SESSION_PROFILES[session_name]
 
         # Check drawdown limit
         if not check_drawdown_limit(account_info):
@@ -1323,8 +1386,8 @@ def main() -> None:
             time.sleep(SLEEP_INTERVAL)
             continue
 
-        # Apply volatility and spread filters (stricter for scalping)
-        if check_volatility_and_spread(data):
+        # Apply session-adaptive volatility and spread filters
+        if check_volatility_and_spread(data, profile):
             time.sleep(SLEEP_INTERVAL)
             continue
 
@@ -1350,27 +1413,31 @@ def main() -> None:
             time.sleep(SLEEP_INTERVAL)
             continue
 
-        if TRADES_TODAY >= MAX_TRADES_PER_DAY:
+        if TRADES_TODAY >= profile["max_trades_per_session"]:
             if not active_positions and not active_orders:
                 TRADES_TODAY = 0
             else:
-                logger.info("Maximum trades per day reached; skipping further entries.")
+                logger.info(
+                    "Max trades for %s session reached (%d); skipping.",
+                    session_name,
+                    profile["max_trades_per_session"],
+                )
                 time.sleep(SLEEP_INTERVAL)
                 continue
 
         # Compute session range for dynamic S/R levels
-        session_range = get_session_range(data, now_utc)
+        session_range = get_session_range(data, now_utc, profile["start_utc"])
 
-        # Generate scalping signals (confluence-based)
-        scalp_signals = generate_scalp_signals(data, session_range)
+        # Generate scalping signals (session-adaptive confluence)
+        scalp_signals = generate_scalp_signals(data, session_range, profile)
 
         if not scalp_signals:
             logger.info("No scalping signals with sufficient confluence.")
             # Still manage existing positions
             last_atr = data["atr"].iloc[-1]
-            update_trailing_stops(SYMBOL, last_atr)
+            update_trailing_stops(SYMBOL, last_atr, profile["trail_multiplier"])
             manage_open_positions(SYMBOL)
-            manage_time_exit(SYMBOL, MAX_HOLDING_BARS)
+            manage_time_exit(SYMBOL, profile["max_holding_bars"])
             time.sleep(SLEEP_INTERVAL)
             continue
 
@@ -1389,7 +1456,9 @@ def main() -> None:
             idx = signal["index"]
             entry_price = float(data["close"].iloc[idx])
             direction = signal["direction"]
-            stop_levels = calculate_stop_levels(entry_price, last_atr, direction)
+            stop_levels = calculate_stop_levels(
+                entry_price, last_atr, direction, profile
+            )
             sl = stop_levels["sl"]
             tp = stop_levels["tp"]
             stop_distance = stop_levels["stop_distance"]
@@ -1437,7 +1506,8 @@ def main() -> None:
 
             reasons_str = ", ".join(signal.get("reasons", []))
             logger.info(
-                "Scalp signal: %s (score=%d, reasons: %s)",
+                "[%s] Scalp signal: %s (score=%d, reasons: %s)",
+                session_name,
                 direction,
                 signal["score"],
                 reasons_str,
@@ -1447,9 +1517,9 @@ def main() -> None:
                 current_exposure += prospective_exposure
 
         # Update trailing stops and manage existing positions
-        update_trailing_stops(SYMBOL, last_atr)
+        update_trailing_stops(SYMBOL, last_atr, profile["trail_multiplier"])
         manage_open_positions(SYMBOL)
-        manage_time_exit(SYMBOL, MAX_HOLDING_BARS)
+        manage_time_exit(SYMBOL, profile["max_holding_bars"])
         time.sleep(SLEEP_INTERVAL)
 
 
