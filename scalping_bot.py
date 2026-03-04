@@ -359,7 +359,7 @@ def detect_fvg(data: pd.DataFrame) -> List[Dict[str, float]]:
     fvg_zones: List[Dict[str, float]] = []
     try:
         for i in range(1, len(data) - 1):
-            if data["low"].iloc[i + 1] > data["high"].iloc[i - 1] * 0.97:
+            if data["low"].iloc[i + 1] > data["high"].iloc[i - 1]:
                 fvg_zones.append(
                     {
                         "start": float(data["high"].iloc[i - 1]),
@@ -779,6 +779,8 @@ def get_consecutive_losses(symbol: str) -> int:
         return 0
     loss_streak = 0
     for deal in reversed(deals_list):
+        if getattr(deal, "magic", None) != MAGIC_NUMBER:
+            continue
         if hasattr(deal, "profit"):
             if deal.profit < 0:
                 loss_streak += 1
@@ -796,6 +798,8 @@ def get_daily_loss_ratio(symbol: str, balance: float) -> float:
         return 0.0
     total_loss = 0.0
     for deal in deals:
+        if getattr(deal, "magic", None) != MAGIC_NUMBER:
+            continue
         try:
             profit = deal.profit
         except AttributeError:
@@ -813,7 +817,7 @@ def get_dynamic_risk_factor(daily_loss_ratio: float, consecutive_losses: int) ->
     factor = 1.0
     if daily_loss_ratio >= SOFT_DAILY_RISK_LIMIT:
         factor *= SOFT_RISK_FACTOR
-    if consecutive_losses >= 1:
+    if consecutive_losses >= 2:
         factor *= SOFT_RISK_FACTOR
     return max(0.1, min(1.0, factor))
 
@@ -1341,9 +1345,6 @@ def main() -> None:
             time.sleep(SLEEP_INTERVAL)
             continue
 
-        if not active_positions and not active_orders and TRADES_TODAY >= MAX_TRADES_PER_DAY:
-            TRADES_TODAY = 0
-
         if TRADES_TODAY >= MAX_TRADES_PER_DAY:
             if not active_positions and not active_orders:
                 TRADES_TODAY = 0
@@ -1357,10 +1358,6 @@ def main() -> None:
 
         # Generate scalping signals (confluence-based)
         scalp_signals = generate_scalp_signals(data, session_range)
-
-        # Also detect SMC patterns as optional confluence
-        order_blocks = identify_order_blocks(data)
-        fvg_zones = detect_fvg(data)
 
         if not scalp_signals:
             logger.info("No scalping signals with sufficient confluence.")
