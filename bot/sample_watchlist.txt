@@ -1,0 +1,13 @@
+# Sample product ASINs to track
+# Add your own Amazon product URLs or ASINs (one per line)
+# Lines starting with # are ignored
+#
+# Popular categories for deal hunting:
+# - Electronics (headphones, tablets, monitors)
+# - Home & Kitchen (robot vacuums, air fryers)
+# - Tech accessories (chargers, cables, cases)
+
+# Example ASINs (replace with real products you want to track):
+# B09V3KXJPB
+# B0BSHF7WHW
+# B0C8QJ6VK2
