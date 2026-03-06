@@ -1,4 +1,4 @@
-# FNID Portal One-Click Launcher (Windows)
+# FNID Portal One-Click Launcher (Windows PowerShell)
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
@@ -12,7 +12,7 @@ if (-not (Test-Path ".venv")) {
 & .\.venv\Scripts\Activate.ps1
 
 # Install dependencies
-pip install -e ".[dev]" --quiet
+pip install -r requirements.txt --quiet
 
 # Launch
 Write-Host "Starting FNID Portal at http://localhost:5000"

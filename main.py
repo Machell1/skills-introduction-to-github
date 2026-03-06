@@ -1,13 +1,33 @@
-"""One-click entry point for the FNID Portal."""
+"""
+FNID Portal - Main Entry Point
 
-import os
-import sys
+Right-click this file in PyCharm and select "Run 'main'" to start the server.
+Or double-click start.bat from File Explorer.
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
+Opens http://127.0.0.1:5000 in your browser automatically.
+"""
 
-from fnid_portal import create_app  # noqa: E402
+import threading
+import webbrowser
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+from fnid_portal import create_app
 
 app = create_app()
 
+
+def open_browser():
+    webbrowser.open("http://127.0.0.1:5000")
+
+
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    print("=" * 50)
+    print("  FNID Area 3 Operational Portal")
+    print("  http://127.0.0.1:5000")
+    print("  Press Ctrl+C to stop")
+    print("=" * 50)
+    threading.Timer(1.5, open_browser).start()
+    app.run(host="127.0.0.1", port=5000, debug=True, use_reloader=False)

@@ -13,7 +13,7 @@ fi
 source .venv/bin/activate
 
 # Install dependencies
-pip install -e ".[dev]" --quiet 2>/dev/null
+pip install -r requirements.txt --quiet 2>/dev/null
 
 # Launch
 echo "Starting FNID Portal at http://localhost:5000"

@@ -1,4 +1,4 @@
-FROM python:3.12-slim AS base
+FROM python:3.9-slim AS base
 
 RUN groupadd -r fnid && useradd -r -g fnid -d /app fnid
 
@@ -7,7 +7,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY src/ src/
+COPY fnid_portal/ fnid_portal/
 COPY wsgi.py gunicorn.conf.py ./
 
 RUN mkdir -p /app/data && chown -R fnid:fnid /app
@@ -18,7 +18,6 @@ ENV FLASK_ENV=production
 ENV FNID_DB_PATH=/app/data/fnid.db
 ENV FNID_UPLOAD_DIR=/app/data/uploads
 ENV FNID_EXPORT_DIR=/app/data/exports
-ENV PYTHONPATH=/app/src
 
 EXPOSE 5000
 

@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from fnid_portal import create_app  # noqa: E402
+from fnid_portal import create_app
 
 app = create_app()
 

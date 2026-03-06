@@ -27,10 +27,10 @@ env/
 Thumbs.db
 
 # Application data (generated at runtime)
-src/fnid_portal/data/
+fnid_portal/data/
 instance/
 
-# Old fnid_web directory (superseded by src/fnid_portal)
+# Old fnid_web directory (superseded by fnid_portal)
 fnid_web/
 
 # Generated Excel files
