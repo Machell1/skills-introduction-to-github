@@ -621,14 +621,15 @@ CR_FORM_TYPES = {
     "CR5": "Exhibit Chain of Custody Schedule",
     "CR6": "Investigator Index Card",
     "CR7": "Morning Crime Report",
-    "CR8": "Question and Answer Suspect Form",
-    "CR9": "Question and Answer Accused Form",
+    "CR8": "Question & Answer (Suspect/Witness Interview) Form",
+    "CR9": "Question & Answer (Accused Written Interview) Form",
     "CR10": "Customer Reference Form",
-    "CR11": "Confession Statement Form",
+    "CR11": "Confession Statement of Suspect/Accused",
     "CR12": "Major and Minor Case Report Form",
     "CR13": "Court Case File Checklist",
     "CR14": "JCF Profile Form",
     "CR15": "Application for Remand of Accused or Bail Conditions",
+    "CFSR": "Case File Submission Register for Court",
 }
 
 # --- Case Lifecycle Stages per Policy ---
