@@ -156,6 +156,11 @@ def create_app(config_name=None):
     app.register_blueprint(reviews_bp)
     app.register_blueprint(targets_bp)
 
+    # Register blueprints — Policy & Forms module
+    from .routes.policy import bp as policy_bp
+
+    app.register_blueprint(policy_bp)
+
     # Register CLI commands
     _register_cli(app)
 

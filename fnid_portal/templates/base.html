@@ -71,6 +71,20 @@
                             <li><a class="dropdown-item" href="{{ url_for('targets.target_list') }}"><i class="bi bi-crosshair me-2"></i>Intel Targets</a></li>
                         </ul>
                     </li>
+                    <!-- Policy & Forms -->
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
+                            <i class="bi bi-book"></i> Policy
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-dark">
+                            <li><a class="dropdown-item" href="{{ url_for('policy.policy_home') }}"><i class="bi bi-book me-2"></i>Case Management Policy</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('policy.definitions') }}"><i class="bi bi-journal-text me-2"></i>Definitions</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('policy.responsibilities') }}"><i class="bi bi-people me-2"></i>Roles & Responsibilities</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('policy.sops') }}"><i class="bi bi-clipboard-check me-2"></i>Standard Operating Procedures</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ url_for('policy.forms_library') }}"><i class="bi bi-file-earmark-text me-2"></i>Case Reference Forms</a></li>
+                        </ul>
+                    </li>
                     <!-- MCR -->
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('mcr.mcr_dashboard') }}">

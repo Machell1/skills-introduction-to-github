@@ -318,24 +318,53 @@ DPP_FILE_STATUS = [
     "Nolle Prosequi Entered",
 ]
 
+# --- Case Status per JCF Case Management Policy Section 6.3 ---
+# (JCF/FW/PL/C&S/0001/2024)
 CASE_STATUS = [
-    "Open - Active Investigation",
-    "Open - Pending Forensic Results",
-    "Open - Pending Witness Statements",
-    "Open - Pending ID Parade",
-    "Open - Surveillance Phase",
-    "Open - Pending DPP File Submission",
+    # 6.3.1 Case Open — actively under investigation
+    "Case Open - Active Investigation",
+    "Case Open - Pending Forensic Results",
+    "Case Open - Pending Witness Statements",
+    "Case Open - Pending ID Parade",
+    "Case Open - Surveillance Phase",
+    "Case Open - Pending DPP File Submission",
     "Referred to DPP - Awaiting Ruling",
     "Before Court - Preliminary Enquiry",
+    "Before Court - Committal Proceedings",
     "Before Court - Trial Pending",
     "Before Court - Trial in Progress",
-    "Closed - Convicted (sentence imposed)",
-    "Closed - Acquitted (verdict of not guilty)",
-    "Closed - No Charge (DPP ruling)",
-    "Closed - Withdrawn by Prosecution",
-    "Closed - Dismissed by Court",
+    # 6.3.2 Case Suspended — all investigative leads exhausted
+    "Case Suspended - Leads Exhausted",
+    # 6.3.3 Case Cleared (per policy Section 6.3.3 a-i)
+    "Case Cleared - Charge(s) Laid",
+    "Case Cleared - Suspect Dead",
+    "Case Cleared - Warrant Issued (Life Sentence Abroad)",
+    "Case Cleared - Extradition Denied",
+    "Case Cleared - Victim Will Not Prosecute",
+    "Case Cleared - Submitted to Coroners Court",
+    "Case Cleared - Child Diversion",
+    "Case Cleared - Suspect Summoned",
+    "Case Cleared - Report Contrived",
+    # 6.3.4 Case Closed (per policy Section 6.3.4 a-i)
+    "Case Closed - Charge(s) Preferred, No Other Suspect",
+    "Case Closed - Suspect Dead, No Other Suspect",
+    "Case Closed - Life Sentence Abroad (No Parole/Deported)",
+    "Case Closed - Extradition Denied",
+    "Case Closed - Victim Will Not Prosecute",
+    "Case Closed - Coroners Court (No Criminal Liability)",
+    "Case Closed - Child Diversion Completed",
+    "Case Closed - Report Contrived",
+    "Case Closed - ACP CIB Direction",
+    "Case Closed - Convicted (Sentence Imposed)",
+    "Case Closed - Acquitted (Not Guilty)",
+    "Case Closed - No Charge (DPP Ruling)",
+    "Case Closed - Withdrawn by Prosecution",
+    "Case Closed - Dismissed by Court",
+    # 6.3.5 Cold Case — suspended for 3+ years
     "Cold Case - Under Periodic Review",
     "Cold Case - Dormant",
+    # Other
+    "Case Reopened",
     "Merged - See Linked Case",
 ]
 
@@ -546,6 +575,106 @@ ALL_PARISHES = [
 YES_NO = ["Yes", "No"]
 YES_NO_NA = ["Yes", "No", "N/A"]
 RECORD_STATUS = ["Draft", "Submitted", "Edited", "Approved", "Rejected"]
+
+# --- JCF Case Management Policy Abbreviations & Acronyms ---
+# Per JCF/FW/PL/C&S/0001/2024 Section 5.0
+JCF_ABBREVIATIONS = {
+    "ACO": "Area Crime Officer",
+    "ACP": "Assistant Commissioner of Police",
+    "CIB": "Criminal Investigation Branch",
+    "CMS": "Case Management System",
+    "CR": "Case Reference",
+    "C-TOC": "Counter Terrorism and Organized Crime Investigation Branch",
+    "DCR": "Division Case Registry",
+    "DCRR": "Divisional Case Report Register",
+    "DDI": "Divisional Detective Inspector",
+    "DI": "Detective Inspector",
+    "DIM": "Division Intelligence Manager",
+    "DIU": "Division Intelligence Unit",
+    "DPP": "Director of Public Prosecutions",
+    "IB": "Intelligence Branch",
+    "IO": "Investigating Officer",
+    "LO": "Legal Officer",
+    "MCR": "Morning Crime Report",
+    "MID": "Major Investigation Division",
+    "ODPP": "Office of the Director of Public Prosecutions",
+    "PLO": "Prosecution Liaison Officer",
+    "SIO": "Senior Investigation Officer",
+    "SOP": "Standard Operating Procedures",
+    "SRMS": "Station Records Management System",
+    "CISOCA": "Centre for Investigation of Sexual Offences and Child Abuse",
+    "IFSLM": "Institute of Forensic Science and Legal Medicine",
+    "INDECOM": "Independent Commission of Investigations",
+    "FID": "Financial Investigations Division",
+    "PSTEB": "Public Safety and Traffic Enforcement Branch",
+    "SIMU": "Statistics and Information Management Unit",
+    "CRO": "Criminal Records Office",
+}
+
+# --- Case Reference (CR) Forms per JCF Case Management Policy Section 11.0 ---
+# NB: All related forms must be referred to as Case Reference Form (not Crime Reference Form)
+CR_FORM_TYPES = {
+    "CR1": "Investigator's Worksheet",
+    "CR2": "Action Sheet",
+    "CR3": "Witness Bio-Data Form",
+    "CR4": "Stolen Property Form",
+    "CR5": "Exhibit Chain of Custody Schedule",
+    "CR6": "Investigator Index Card",
+    "CR7": "Morning Crime Report",
+    "CR8": "Question and Answer Suspect Form",
+    "CR9": "Question and Answer Accused Form",
+    "CR10": "Customer Reference Form",
+    "CR11": "Confession Statement Form",
+    "CR12": "Major and Minor Case Report Form",
+    "CR13": "Court Case File Checklist",
+    "CR14": "JCF Profile Form",
+    "CR15": "Application for Remand of Accused or Bail Conditions",
+}
+
+# --- Case Lifecycle Stages per Policy ---
+CASE_LIFECYCLE_STAGES = [
+    "intake",
+    "appreciation",       # Section 9.1 - Appreciating Customer's Report
+    "vetting",            # Section 9.2.1 - Preliminary Vetting
+    "assignment",         # Section 9.2.2 - Assignment of Cases
+    "investigation",      # Section 9.3 - Management of Cases
+    "follow_up",          # Section 9.3.1 - Ongoing vetting and follow-up
+    "review",             # Section 9.3.3 - Case Reviews and Conferences
+    "court_preparation",  # Section 9.3.6 - Submission of Cases
+    "before_court",       # Before court proceedings
+    "suspended",          # Section 9.3.9 - Case Suspended
+    "reopened",           # Case reopened with new leads
+    "cold_case",          # Section 9.3.10 - Cold Case (suspended 3+ years)
+    "cleared",            # Section 6.3.3 - Case Cleared
+    "closed",             # Section 6.3.4 - Case Closed
+]
+
+# --- Crime Types per Policy ---
+CRIME_TYPE_INVESTIGATORS = {
+    "major_non_uniformed": "Major crimes to be investigated by non-uniformed personnel",
+    "major_uniformed": "Major crimes to be investigated by uniformed personnel",
+    "minor_uniformed": "Minor crimes investigated by uniformed personnel",
+}
+
+# --- Case Review Timeline per Policy Section 9.3.3 ---
+REVIEW_TIMELINES = {
+    "homicide_preliminary": "24 hours",
+    "homicide_first_review": "72 hours",
+    "major_crime_first_review": "7 days",
+    "minor_crime_first_review": "7 days",
+    "follow_up_review": "14 days after first review",
+    "subsequent_reviews": "Every 28 days",
+    "suspended_case_review": "Every 90 days",
+}
+
+# --- Vetting Submission Timelines per Policy Section 9.1.12 ---
+VETTING_TIMELINES = {
+    "non_uniformed_to_dcr": "72 hours",
+    "uniformed_to_station_mgr": "48 hours",
+    "station_mgr_to_dcr": "48 hours (major crimes)",
+    "documents_to_dcr": "48 hours upon receipt",
+    "court_file_receipt": "48 hours prior to court deadline",
+}
 
 # --- Unit Portal Definitions ---
 UNIT_PORTALS = {

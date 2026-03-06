@@ -19,21 +19,23 @@ from . import _cfg_module
 
 bp = Blueprint("cases", __name__, url_prefix="/cases")
 
-# Valid case lifecycle transitions — CONFIGURABLE
+# Valid case lifecycle transitions per JCF Case Management Policy
+# JCF/FW/PL/C&S/0001/2024 Sections 6.3, 9.1-9.3
 VALID_TRANSITIONS = {
     "intake": {"appreciation", "vetting", "assignment"},
-    "appreciation": {"vetting", "assignment"},
-    "vetting": {"assignment", "suspended"},
-    "assignment": {"investigation"},
-    "investigation": {"follow_up", "review", "court_preparation", "suspended", "cold_case"},
-    "follow_up": {"review", "investigation", "court_preparation", "suspended"},
-    "review": {"investigation", "follow_up", "court_preparation", "suspended", "closed"},
-    "court_preparation": {"before_court", "investigation"},
-    "before_court": {"closed", "investigation"},
-    "suspended": {"reopened", "closed"},
-    "reopened": {"investigation"},
-    "cold_case": {"reopened", "closed"},
-    "closed": set(),  # Terminal state
+    "appreciation": {"vetting", "assignment"},         # Section 9.1 - Appreciating Report
+    "vetting": {"assignment", "suspended"},             # Section 9.2.1 - Preliminary Vetting
+    "assignment": {"investigation"},                    # Section 9.2.2 - Case Assignment
+    "investigation": {"follow_up", "review", "court_preparation", "suspended", "cleared"},
+    "follow_up": {"review", "investigation", "court_preparation", "suspended", "cleared"},
+    "review": {"investigation", "follow_up", "court_preparation", "suspended", "cleared", "closed"},
+    "court_preparation": {"before_court", "investigation"},  # Section 9.3.6
+    "before_court": {"cleared", "closed", "investigation"},
+    "suspended": {"reopened", "closed", "cold_case"},   # Section 9.3.9 - reviewed every 90 days
+    "reopened": {"investigation"},                      # Case reopened with new leads
+    "cold_case": {"reopened", "closed"},                # Section 9.3.10 - suspended 3+ years
+    "cleared": {"closed"},                              # Section 6.3.3 -> 6.3.4
+    "closed": set(),                                    # Section 6.3.4 - Terminal state
 }
 
 

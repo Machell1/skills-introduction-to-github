@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}{{ form_type }} - {{ form_def.name }}{% endblock %}
+
+{% block content %}
+<div class="page-header no-print">
+    <div>
+        <h4><i class="bi bi-file-earmark-text me-2"></i>{{ form_type }} - {{ form_def.name }}</h4>
+        <small class="text-muted">{{ form_def.description }} | Case Reference Form</small>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('policy.forms_library') }}" class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-arrow-left me-1"></i> Forms Library
+        </a>
+        <a href="{{ url_for('policy.download_form', form_type=form_type) }}" class="btn btn-outline-success btn-sm">
+            <i class="bi bi-download me-1"></i> Download
+        </a>
+        <button onclick="window.print()" class="btn btn-outline-dark btn-sm">
+            <i class="bi bi-printer me-1"></i> Print
+        </button>
+    </div>
+</div>
+
+<!-- Printable Form -->
+<div class="card" id="printableForm">
+    <div class="card-body">
+        <!-- Header -->
+        <div class="text-center border-bottom pb-3 mb-3">
+            <h5 class="mb-1">JAMAICA CONSTABULARY FORCE</h5>
+            <h6 class="text-muted">{{ form_type }} - {{ form_def.name }}</h6>
+            <small class="text-muted">JCF/FW/PL/C&S/0001/2024 | Case Reference Form</small>
+        </div>
+
+        <!-- Case Reference Header -->
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <label class="form-label fw-bold small">Case Reference Number</label>
+                <input type="text" class="form-control form-control-sm" placeholder="Enter CR#">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label fw-bold small">Date</label>
+                <input type="date" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label fw-bold small">Division/Station</label>
+                <input type="text" class="form-control form-control-sm" placeholder="">
+            </div>
+        </div>
+
+        <!-- Form Sections -->
+        {% for section in form_def.sections %}
+        <div class="mb-4">
+            <h6 class="bg-fnid-navy text-white p-2 rounded-top mb-0">{{ section.title }}</h6>
+            <div class="border border-top-0 rounded-bottom p-3">
+                <div class="row g-3">
+                    {% for field in section.fields %}
+                    <div class="{% if field.type == 'textarea' %}col-12{% else %}col-md-6{% endif %}">
+                        <label class="form-label fw-bold small mb-1">
+                            {{ field.label }}
+                            {% if field.required %}<span class="text-danger">*</span>{% endif %}
+                        </label>
+
+                        {% if field.type == 'textarea' %}
+                        <textarea class="form-control form-control-sm" rows="3" placeholder=""></textarea>
+
+                        {% elif field.type == 'select' %}
+                        <select class="form-select form-select-sm">
+                            <option value="">-- Select --</option>
+                            {% if field.options_list is defined %}
+                                {% for opt in field.options_list %}
+                                <option value="{{ opt }}">{{ opt }}</option>
+                                {% endfor %}
+                            {% endif %}
+                        </select>
+
+                        {% elif field.type == 'date' %}
+                        <input type="date" class="form-control form-control-sm">
+
+                        {% elif field.type == 'time' %}
+                        <input type="time" class="form-control form-control-sm">
+
+                        {% elif field.type == 'number' %}
+                        <input type="number" class="form-control form-control-sm">
+
+                        {% else %}
+                        <input type="text" class="form-control form-control-sm" placeholder="">
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+
+        <!-- Signature Block -->
+        <div class="row mt-4 pt-3 border-top">
+            <div class="col-md-4">
+                <label class="form-label fw-bold small">Signature of Officer</label>
+                <div class="border-bottom border-dark" style="height: 40px;"></div>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label fw-bold small">Rank & Badge No.</label>
+                <input type="text" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label fw-bold small">Date</label>
+                <input type="date" class="form-control form-control-sm">
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="text-center mt-4 pt-3 border-top small text-muted">
+            <p class="mb-0">Jamaica Constabulary Force | Case Management Policy & Standard Operating Procedures</p>
+            <p class="mb-0">JCF/FW/PL/C&S/0001/2024 | NB: This is a Case Reference Form (not Crime Reference Form)</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+@media print {
+    .no-print, .navbar, footer, .page-header .d-flex { display: none !important; }
+    .card { border: none !important; box-shadow: none !important; }
+    .form-control, .form-select { border: none !important; border-bottom: 1px solid #999 !important; }
+}
+</style>
+{% endblock %}

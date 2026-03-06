@@ -1,11 +1,19 @@
 """
 FNID Case Reference Number Engine
 
-Generates case reference numbers and DCRR numbers per JCF policy.
-Format and components are CONFIGURABLE via system_settings.
+Generates case reference numbers and DCRR numbers per JCF Case Management
+Policy (JCF/FW/PL/C&S/0001/2024 Section 9.1.13).
 
-Default format: {station}/{diary_type}/{division}/{unit}/{YYYY}/{sequence}
+Internal format: {station}/{diary_type}/{division}/{unit}/{YYYY}/{sequence}
 Example: MAND/SD/A3/FNID/2026/0042
+
+Policy DCRR format (Section 9.1.13.1):
+  {DCRR_seq}_{yyyy/mm/dd}/{station_initial}/{SD or CD}{entry#}/{division_code}
+  Example: 32_2014/03/05/LT/SD45/M
+
+Policy Station Manager format (Section 9.1.13.2):
+  {register_seq}_/{diary_entry#}/{yyyy/mm/dd}/{station_abbreviation}
+  Example: 1_/12/2023/10/03/HWT
 """
 
 from datetime import datetime
@@ -168,3 +176,42 @@ def parse_case_reference(case_ref):
             "sequence": parts[5],
         }
     return {"raw": case_ref}
+
+
+def generate_policy_dcrr_reference(dcrr_seq, report_date, station_initial,
+                                    diary_type, diary_entry, division_code,
+                                    unit_code=None):
+    """Generate a Case Reference Number per JCF Policy Section 9.1.13.1.
+
+    Format: {DCRR_seq}_{yyyy/mm/dd}/{station}/{diary_type}{entry#}/{division}
+    Optionally append /{unit} for specialist units.
+
+    Example: 32_2014/03/05/LT/SD45/M
+    Example: 43_2017/06/10/HWT/CD52/SAC
+    """
+    # Format date as yyyy/mm/dd
+    if isinstance(report_date, str):
+        date_str = report_date.replace("-", "/")
+    else:
+        date_str = report_date.strftime("%Y/%m/%d")
+
+    cr_num = f"{dcrr_seq}_{date_str}/{station_initial}/{diary_type}{diary_entry}/{division_code}"
+    if unit_code:
+        cr_num += f"/{unit_code}"
+    return cr_num
+
+
+def generate_station_manager_reference(register_seq, diary_entry, report_date,
+                                        station_abbreviation):
+    """Generate a Case Reference Number per JCF Policy Section 9.1.13.2.
+
+    Format: {register_seq}_/{diary_entry}/{yyyy/mm/dd}/{station}
+
+    Example: 1_/12/2023/10/03/HWT
+    """
+    if isinstance(report_date, str):
+        date_str = report_date.replace("-", "/")
+    else:
+        date_str = report_date.strftime("%Y/%m/%d")
+
+    return f"{register_seq}_/{diary_entry}/{date_str}/{station_abbreviation}"
