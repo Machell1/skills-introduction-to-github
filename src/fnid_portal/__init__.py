@@ -9,6 +9,12 @@ file movement, MCR engine, intelligence, admin, and search modules.
 
 Phase 2: Transport, DCRR views, evidence management, analytics, batch
 operations, notifications, and report generation.
+
+Phase 3: DPP prosecution pipeline, SOP compliance checklists, witness
+statement management, and disclosure log.
+
+Phase 4: Correspondence tracking, investigator cards, case review
+scheduling, and intelligence target profiles.
 """
 
 import os
@@ -127,6 +133,28 @@ def create_app(config_name=None):
     app.register_blueprint(reports_bp)
     app.register_blueprint(batch_bp)
     app.register_blueprint(notifications_bp)
+
+    # Register blueprints — Phase 3 modules
+    from .routes.dpp import bp as dpp_bp
+    from .routes.sop import bp as sop_bp
+    from .routes.witnesses import bp as witnesses_bp
+    from .routes.disclosure import bp as disclosure_bp
+
+    app.register_blueprint(dpp_bp)
+    app.register_blueprint(sop_bp)
+    app.register_blueprint(witnesses_bp)
+    app.register_blueprint(disclosure_bp)
+
+    # Register blueprints — Phase 4 modules
+    from .routes.correspondence import bp as correspondence_bp
+    from .routes.inv_cards import bp as inv_cards_bp
+    from .routes.reviews import bp as reviews_bp
+    from .routes.targets import bp as targets_bp
+
+    app.register_blueprint(correspondence_bp)
+    app.register_blueprint(inv_cards_bp)
+    app.register_blueprint(reviews_bp)
+    app.register_blueprint(targets_bp)
 
     # Register CLI commands
     _register_cli(app)

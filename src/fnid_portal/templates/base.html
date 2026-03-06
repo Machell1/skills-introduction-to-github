@@ -37,7 +37,14 @@
                             <li><a class="dropdown-item" href="{{ url_for('dcrr.dcrr_register') }}"><i class="bi bi-journal-text me-2"></i>DCRR Register</a></li>
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="{{ url_for('search.advanced_search') }}"><i class="bi bi-funnel me-2"></i>Advanced Search</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ url_for('dpp.dpp_home') }}"><i class="bi bi-briefcase me-2"></i>DPP Pipeline</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('sop.sop_list') }}"><i class="bi bi-clipboard-check me-2"></i>SOP Checklists</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('witnesses.witness_list') }}"><i class="bi bi-person-lines-fill me-2"></i>Witnesses</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('disclosure.disclosure_list') }}"><i class="bi bi-file-earmark-lock me-2"></i>Disclosure</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('reviews.review_list') }}"><i class="bi bi-calendar-check me-2"></i>Case Reviews</a></li>
                             {% if current_user.is_authenticated and current_user.role in ('admin', 'dco', 'ddi', 'station_mgr') %}
+                            <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="{{ url_for('batch.batch_home') }}"><i class="bi bi-collection me-2"></i>Batch Operations</a></li>
                             {% endif %}
                         </ul>
@@ -59,6 +66,9 @@
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="{{ url_for('evidence.evidence_dashboard') }}"><i class="bi bi-fingerprint me-2"></i>Evidence Manager</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('transport.fleet') }}"><i class="bi bi-truck me-2"></i>Transport</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('correspondence.correspondence_list') }}"><i class="bi bi-envelope me-2"></i>Correspondence</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('inv_cards.card_list') }}"><i class="bi bi-card-checklist me-2"></i>Investigator Cards</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('targets.target_list') }}"><i class="bi bi-crosshair me-2"></i>Intel Targets</a></li>
                         </ul>
                     </li>
                     <!-- MCR -->
