@@ -1,6 +1,6 @@
 # Deal Alert Bot
 
-Multi-site price drop monitor that sends deal alerts to your Telegram channel with affiliate links. Scans **Amazon, Best Buy, Walmart, Target, eBay** for price drops and **Slickdeals + DealNews** for hot curated deals.
+Multi-site price drop monitor that sends deal alerts to your Telegram channel with affiliate links. Scans **Amazon, Best Buy, Walmart, Target, eBay** for price drops, **Slickdeals + DealNews** for curated deals, and **Groupon, Skyscanner, Expedia** for flights, holiday packages, birthday gifts, wedding deals, baby shower gifts, and party deals.
 
 ## Supported Sites
 
@@ -13,6 +13,9 @@ Multi-site price drop monitor that sends deal alerts to your Telegram channel wi
 | **eBay** | Product tracking + deals | [eBay Partner Network](https://partnernetwork.ebay.com) |
 | **Slickdeals** | Deal aggregator | Uses store affiliate links |
 | **DealNews** | Deal aggregator | Uses store affiliate links |
+| **Groupon** | Gifts, parties, events | [Impact Radius](https://impact.com) |
+| **Skyscanner** | Flight deals | [Impact Radius](https://impact.com) |
+| **Expedia** | Holiday packages | [CJ Affiliate](https://cj.com) |
 
 ## Quick Setup (PyCharm)
 
@@ -32,6 +35,8 @@ pip install -r requirements.txt
 - **Amazon**: [affiliate-program.amazon.com](https://affiliate-program.amazon.com) → tag like `yourtag-20`
 - **Walmart/Best Buy/Target**: [impact.com](https://impact.com) → search for each store's program
 - **eBay**: [partnernetwork.ebay.com](https://partnernetwork.ebay.com) → get your campaign ID
+- **Groupon/Skyscanner**: [impact.com](https://impact.com) → search for each program
+- **Expedia**: [cj.com](https://cj.com) → search for Expedia program
 
 ### 4. Configure
 ```bash
@@ -77,6 +82,13 @@ Control the bot directly from Telegram (the primary way to use it):
 | `/status` | Show all tracked products by site |
 | `/check` | Check all prices immediately |
 | `/deals` | Scan Slickdeals & DealNews now |
+| `/lifestyle` | Scan flights, gifts, events, packages |
+| `/flights` | Flight deals (Skyscanner) |
+| `/birthday` | Birthday gift deals (Groupon) |
+| `/wedding` | Wedding package deals (Groupon) |
+| `/babyshower` | Baby shower deals (Groupon) |
+| `/party` | Party deals (Groupon) |
+| `/holidays` | Holiday packages (Expedia) |
 | `/sites` | List supported sites |
 
 ## CLI Commands (Local Development)
@@ -105,6 +117,12 @@ Control the bot directly from Telegram (the primary way to use it):
 1. Bot scrapes deal aggregator front pages every 2 hours
 2. New deals are sent to your Telegram channel automatically
 3. Covers deals from hundreds of stores (aggregators curate the best deals)
+
+### Lifestyle & Travel Deals (Groupon, Skyscanner, Expedia)
+1. Bot scans lifestyle deal sites every 3 hours automatically
+2. Categories: flights, holiday packages, birthday gifts, wedding packages, baby shower gifts, party deals
+3. Each deal includes your affiliate link for commission
+4. Use category commands (/flights, /birthday, /wedding, etc.) for on-demand scans
 
 ## Deploy to Railway (24/7 Hosting)
 
@@ -150,6 +168,9 @@ The CLI entry point (`main.py`) is also still available for local debugging.
 | Walmart | 1-4% | 3 days |
 | Target | 1-8% | 7 days |
 | eBay | 1-6% | 24 hours |
+| Groupon | 6-12% | 1 day |
+| Skyscanner | CPA (per booking) | Session |
+| Expedia | 2-6% | 7 days |
 
 ### How to Maximize Revenue
 1. **Track 50-100+ products** across all 5 stores
@@ -157,6 +178,8 @@ The CLI entry point (`main.py`) is also still available for local debugging.
 3. **Promote your Telegram channel** on Reddit, Twitter, deal forums
 4. **Run during deal events** (Prime Day, Black Friday) — set interval to 15 mins
 5. **Use scan-deals** regularly — aggregator deals get the most engagement
+6. **Use /lifestyle** to find flight, gift, and event deals — high commission categories
+7. **Target seasonal events** — wedding season, holidays, baby showers drive big commissions
 
 ### Revenue Potential
 | Channel Subscribers | Monthly Clicks | Estimated Commission |
@@ -189,6 +212,9 @@ bot/
     ├── walmart.py       # Walmart scraper
     ├── target.py        # Target scraper
     ├── ebay.py          # eBay scraper
+    ├── groupon.py       # Groupon (gifts, parties, events)
+    ├── skyscanner.py    # Skyscanner (flight deals)
+    ├── expedia.py       # Expedia (holiday packages)
     ├── slickdeals.py    # Slickdeals aggregator
     └── dealnews.py      # DealNews aggregator
 ```

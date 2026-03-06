@@ -7,6 +7,9 @@ from scrapers.target import TargetScraper
 from scrapers.slickdeals import SlickdealsScraper
 from scrapers.dealnews import DealNewsScraper
 from scrapers.ebay import EbayScraper
+from scrapers.groupon import GrouponScraper
+from scrapers.skyscanner import SkyscannerScraper
+from scrapers.expedia import ExpediaScraper
 from scrapers.base import BaseScraper
 
 # All available scrapers
@@ -22,6 +25,24 @@ ALL_SCRAPERS = {
 DEAL_AGGREGATORS = {
     "slickdeals": SlickdealsScraper,
     "dealnews": DealNewsScraper,
+}
+
+# Lifestyle & travel deal scrapers (events, gifts, flights, packages)
+LIFESTYLE_SCRAPERS = {
+    "groupon": GrouponScraper,
+    "skyscanner": SkyscannerScraper,
+    "expedia": ExpediaScraper,
+}
+
+# Deal categories for lifestyle scrapers
+DEAL_CATEGORIES = {
+    "flights": "Flights",
+    "holiday_packages": "Holiday Packages",
+    "birthday": "Birthday Gifts",
+    "party": "Party Deals",
+    "wedding": "Wedding Packages",
+    "baby_shower": "Baby Shower Gifts",
+    "gifts": "Gift Ideas",
 }
 
 
@@ -42,6 +63,12 @@ def get_scraper_for_url(url):
         return SlickdealsScraper()
     elif "dealnews.com" in url_lower:
         return DealNewsScraper()
+    elif "groupon.com" in url_lower:
+        return GrouponScraper()
+    elif "skyscanner.com" in url_lower:
+        return SkyscannerScraper()
+    elif "expedia.com" in url_lower:
+        return ExpediaScraper()
     return None
 
 
@@ -58,4 +85,10 @@ def detect_site(url):
         return "target"
     elif "ebay.com" in url_lower:
         return "ebay"
+    elif "groupon.com" in url_lower:
+        return "groupon"
+    elif "skyscanner.com" in url_lower:
+        return "skyscanner"
+    elif "expedia.com" in url_lower:
+        return "expedia"
     return "unknown"

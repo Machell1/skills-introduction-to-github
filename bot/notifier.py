@@ -13,6 +13,19 @@ SITE_LABELS = {
     "slickdeals": "Slickdeals",
     "dealnews": "DealNews",
     "ebay": "eBay",
+    "groupon": "Groupon",
+    "skyscanner": "Skyscanner",
+    "expedia": "Expedia",
+}
+
+CATEGORY_EMOJI = {
+    "flights": "✈️",
+    "holiday_packages": "🏖️",
+    "birthday": "🎂",
+    "party": "🎉",
+    "wedding": "💍",
+    "baby_shower": "👶",
+    "gifts": "🎁",
 }
 
 
@@ -77,15 +90,17 @@ def format_new_product_message(product):
 
 
 def format_aggregator_deal(deal):
-    """Format a deal found by an aggregator (Slickdeals, DealNews)."""
+    """Format a deal found by an aggregator or lifestyle scraper."""
     title = deal.get("title", "Deal")
     price = deal.get("price")
     original_price = deal.get("original_price")
     store = deal.get("store", "")
     source = _site_label(deal.get("site", ""))
     url = deal.get("url", "#")
+    category = deal.get("category", "")
 
-    message = f"🏷️ <b>HOT DEAL</b>\n\n"
+    cat_emoji = CATEGORY_EMOJI.get(category, "🏷️")
+    message = f"{cat_emoji} <b>HOT DEAL</b>\n\n"
     message += f"<b>{title}</b>\n"
 
     if store:

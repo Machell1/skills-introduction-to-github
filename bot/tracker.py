@@ -1,6 +1,6 @@
 """Price tracker - monitors products across multiple sites and detects deals."""
 
-from scraper import scrape_product, scrape_deal_aggregators, scrape_all_deals
+from scraper import scrape_product, scrape_deal_aggregators, scrape_all_deals, scrape_lifestyle_deals, scrape_category_deals
 from scrapers import get_scraper_for_url, detect_site
 from database import (
     get_active_products, update_price, add_product,
@@ -105,6 +105,53 @@ def scan_all_deals():
             new_deals += 1
 
     print(f"[Tracker] Full scan done. {new_deals} new deal(s) sent, {len(deals)} total found.")
+
+
+def scan_lifestyle():
+    """Scan lifestyle deal sites (Groupon, Skyscanner, Expedia) for deals."""
+    print("[Tracker] Scanning lifestyle deal sites (flights, gifts, events)...")
+    deals = scrape_lifestyle_deals()
+    new_deals = 0
+
+    for deal in deals:
+        title = deal.get("title", "")
+        price = deal.get("price")
+        original_price = deal.get("original_price")
+        store = deal.get("store", deal.get("site", ""))
+        url = deal.get("url", "")
+        source = deal.get("site", "unknown")
+
+        is_new = save_aggregator_deal(source, title, price, original_price, store, url)
+        if is_new and (price or title):
+            send_aggregator_deal(deal)
+            new_deals += 1
+
+    print(f"[Tracker] Lifestyle scan done. {new_deals} new deal(s) sent, {len(deals)} total found.")
+
+
+def scan_category(category):
+    """Scan deals for a specific category (flights, birthday, wedding, etc.)."""
+    from scrapers import DEAL_CATEGORIES
+    label = DEAL_CATEGORIES.get(category, category.title())
+    print(f"[Tracker] Scanning {label} deals...")
+    deals = scrape_category_deals(category)
+    new_deals = 0
+
+    for deal in deals:
+        title = deal.get("title", "")
+        price = deal.get("price")
+        original_price = deal.get("original_price")
+        store = deal.get("store", deal.get("site", ""))
+        url = deal.get("url", "")
+        source = deal.get("site", "unknown")
+
+        is_new = save_aggregator_deal(source, title, price, original_price, store, url)
+        if is_new and (price or title):
+            send_aggregator_deal(deal)
+            new_deals += 1
+
+    print(f"[Tracker] {label} scan done. {new_deals} new deal(s) sent, {len(deals)} total found.")
+    return new_deals
 
 
 def add_new_product(url_or_id):
