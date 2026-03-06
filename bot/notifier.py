@@ -12,6 +12,7 @@ SITE_LABELS = {
     "target": "Target",
     "slickdeals": "Slickdeals",
     "dealnews": "DealNews",
+    "ebay": "eBay",
 }
 
 

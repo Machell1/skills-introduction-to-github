@@ -7,6 +7,7 @@
 # - Best Buy (bestbuy.com)
 # - Walmart (walmart.com)
 # - Target (target.com)
+# - eBay (ebay.com)
 
 # === Amazon Examples ===
 # https://www.amazon.com/dp/B09V3KXJPB
@@ -19,6 +20,9 @@
 # === Walmart Examples ===
 # https://www.walmart.com/ip/Apple-AirPods-Pro-2nd-Generation/1752657021
 # https://www.walmart.com/ip/PlayStation-5-Console/363472942
+
+# === eBay Examples ===
+# https://www.ebay.com/itm/123456789
 
 # === Target Examples ===
 # https://www.target.com/p/apple-ipad-10-9-inch/-/A-87710636

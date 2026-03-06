@@ -1,7 +1,7 @@
 """
 Deal Alert Bot - Multi-Site Price Monitor with Telegram Alerts
 
-Monitors prices across Amazon, Best Buy, Walmart, and Target.
+Monitors prices across Amazon, Best Buy, Walmart, Target, and eBay.
 Also scans deal aggregators (Slickdeals, DealNews) for hot deals.
 
 Usage:
@@ -15,7 +15,7 @@ Usage:
     python main.py remove <id>      Stop tracking a product
 
 Supported sites:
-    Amazon, Best Buy, Walmart, Target (product tracking)
+    Amazon, Best Buy, Walmart, Target, eBay (product tracking)
     Slickdeals, DealNews (deal scanning)
 
 Run from PyCharm:
@@ -121,6 +121,7 @@ def main():
         print("  - Best Buy  (bestbuy.com)")
         print("  - Walmart   (walmart.com)")
         print("  - Target    (target.com)")
+        print("  - eBay      (ebay.com)")
         print("\nDeal aggregators (scanned for hot deals):")
         print("  - Slickdeals (slickdeals.net)")
         print("  - DealNews   (dealnews.com)\n")

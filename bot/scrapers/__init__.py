@@ -6,6 +6,7 @@ from scrapers.walmart import WalmartScraper
 from scrapers.target import TargetScraper
 from scrapers.slickdeals import SlickdealsScraper
 from scrapers.dealnews import DealNewsScraper
+from scrapers.ebay import EbayScraper
 from scrapers.base import BaseScraper
 
 # All available scrapers
@@ -14,6 +15,7 @@ ALL_SCRAPERS = {
     "bestbuy": BestBuyScraper,
     "walmart": WalmartScraper,
     "target": TargetScraper,
+    "ebay": EbayScraper,
 }
 
 # Deal aggregators (scrape curated deal feeds)
@@ -34,6 +36,8 @@ def get_scraper_for_url(url):
         return WalmartScraper()
     elif "target.com" in url_lower:
         return TargetScraper()
+    elif "ebay.com" in url_lower:
+        return EbayScraper()
     elif "slickdeals.net" in url_lower:
         return SlickdealsScraper()
     elif "dealnews.com" in url_lower:
@@ -52,4 +56,6 @@ def detect_site(url):
         return "walmart"
     elif "target.com" in url_lower:
         return "target"
+    elif "ebay.com" in url_lower:
+        return "ebay"
     return "unknown"

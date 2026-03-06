@@ -1,6 +1,6 @@
 # Deal Alert Bot
 
-Multi-site price drop monitor that sends deal alerts to your Telegram channel with affiliate links. Scans **Amazon, Best Buy, Walmart, Target** for price drops and **Slickdeals + DealNews** for hot curated deals.
+Multi-site price drop monitor that sends deal alerts to your Telegram channel with affiliate links. Scans **Amazon, Best Buy, Walmart, Target, eBay** for price drops and **Slickdeals + DealNews** for hot curated deals.
 
 ## Supported Sites
 
@@ -10,6 +10,7 @@ Multi-site price drop monitor that sends deal alerts to your Telegram channel wi
 | **Best Buy** | Product tracking + deals | [Impact Radius](https://impact.com) |
 | **Walmart** | Product tracking + deals | [Impact Radius](https://impact.com) |
 | **Target** | Product tracking + deals | [Impact Radius](https://impact.com) |
+| **eBay** | Product tracking + deals | [eBay Partner Network](https://partnernetwork.ebay.com) |
 | **Slickdeals** | Deal aggregator | Uses store affiliate links |
 | **DealNews** | Deal aggregator | Uses store affiliate links |
 
@@ -30,6 +31,7 @@ pip install -r requirements.txt
 ### 3. Sign Up for Affiliate Programs
 - **Amazon**: [affiliate-program.amazon.com](https://affiliate-program.amazon.com) → tag like `yourtag-20`
 - **Walmart/Best Buy/Target**: [impact.com](https://impact.com) → search for each store's program
+- **eBay**: [partnernetwork.ebay.com](https://partnernetwork.ebay.com) → get your campaign ID
 
 ### 4. Configure
 ```bash
@@ -50,6 +52,9 @@ python main.py add https://www.walmart.com/ip/some-product/123456789
 
 # Target
 python main.py add https://www.target.com/p/some-product/-/A-12345678
+
+# eBay
+python main.py add https://www.ebay.com/itm/123456789
 
 # Bulk add from file (one URL per line, any site)
 python main.py add-bulk watchlist.txt
@@ -76,7 +81,7 @@ python main.py run
 
 ## How It Works
 
-### Product Tracking (Amazon, Best Buy, Walmart, Target)
+### Product Tracking (Amazon, Best Buy, Walmart, Target, eBay)
 1. You add product URLs from any supported store
 2. Bot checks prices on a schedule (default: every 60 minutes)
 3. When a price drops 15%+ and $5+ (configurable), it sends a Telegram alert
@@ -106,9 +111,10 @@ python main.py run
 | Best Buy | 1-7% | 1 day |
 | Walmart | 1-4% | 3 days |
 | Target | 1-8% | 7 days |
+| eBay | 1-6% | 24 hours |
 
 ### How to Maximize Revenue
-1. **Track 50-100+ products** across all 4 stores
+1. **Track 50-100+ products** across all 5 stores
 2. **Focus on high-ticket items** ($100+) for bigger commissions
 3. **Promote your Telegram channel** on Reddit, Twitter, deal forums
 4. **Run during deal events** (Prime Day, Black Friday) — set interval to 15 mins
@@ -141,6 +147,7 @@ bot/
     ├── bestbuy.py       # Best Buy scraper
     ├── walmart.py       # Walmart scraper
     ├── target.py        # Target scraper
+    ├── ebay.py          # eBay scraper
     ├── slickdeals.py    # Slickdeals aggregator
     └── dealnews.py      # DealNews aggregator
 ```
