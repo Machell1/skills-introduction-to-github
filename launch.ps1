@@ -2,10 +2,18 @@
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
-# Install dependencies
-pip install -e ".[dev]" --quiet 2>$null
+# Create venv if it doesn't exist
+if (-not (Test-Path ".venv")) {
+    Write-Host "Creating virtual environment..."
+    python -m venv .venv
+}
 
-# Set PYTHONPATH and launch
-$env:PYTHONPATH = "src"
+# Activate venv
+& .\.venv\Scripts\Activate.ps1
+
+# Install dependencies
+pip install -e ".[dev]" --quiet
+
+# Launch
 Write-Host "Starting FNID Portal at http://localhost:5000"
-flask --app fnid_portal run --debug --host 0.0.0.0 --port 5000
+python main.py
