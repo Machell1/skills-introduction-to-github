@@ -50,7 +50,10 @@ def admin_only(func):
     """Restrict command to authorized admin users."""
     @functools.wraps(func)
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if ADMIN_USER_IDS and update.effective_user.id not in ADMIN_USER_IDS:
+        user = update.effective_user
+        if not user or not update.message:
+            return
+        if ADMIN_USER_IDS and user.id not in ADMIN_USER_IDS:
             await update.message.reply_text("Not authorized.")
             return
         return await func(update, context)

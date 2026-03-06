@@ -77,7 +77,8 @@ def scan_deals():
         url = deal.get("url", "")
         source = deal.get("site", "unknown")
 
-        is_new = save_aggregator_deal(source, title, price, original_price, store, url)
+        category = deal.get("category")
+        is_new = save_aggregator_deal(source, title, price, original_price, store, url, category)
         if is_new and price:
             send_aggregator_deal(deal)
             new_deals += 1
@@ -99,7 +100,8 @@ def scan_all_deals():
         url = deal.get("url", "")
         source = deal.get("site", "unknown")
 
-        is_new = save_aggregator_deal(source, title, price, original_price, store, url)
+        category = deal.get("category")
+        is_new = save_aggregator_deal(source, title, price, original_price, store, url, category)
         if is_new and price:
             send_aggregator_deal(deal)
             new_deals += 1
@@ -121,7 +123,8 @@ def scan_lifestyle():
         url = deal.get("url", "")
         source = deal.get("site", "unknown")
 
-        is_new = save_aggregator_deal(source, title, price, original_price, store, url)
+        category = deal.get("category")
+        is_new = save_aggregator_deal(source, title, price, original_price, store, url, category)
         if is_new and (price or title):
             send_aggregator_deal(deal)
             new_deals += 1
@@ -145,7 +148,8 @@ def scan_category(category):
         url = deal.get("url", "")
         source = deal.get("site", "unknown")
 
-        is_new = save_aggregator_deal(source, title, price, original_price, store, url)
+        category = deal.get("category")
+        is_new = save_aggregator_deal(source, title, price, original_price, store, url, category)
         if is_new and (price or title):
             send_aggregator_deal(deal)
             new_deals += 1

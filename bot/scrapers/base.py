@@ -57,6 +57,10 @@ class BaseScraper:
         """
         return []
 
+    def scrape_category(self, category):
+        """Scrape deals for a specific category. Override in subclasses that support categories."""
+        return []
+
     def build_affiliate_url(self, url):
         """Build an affiliate URL. Override per site."""
         return url

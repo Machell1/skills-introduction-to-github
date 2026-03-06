@@ -85,6 +85,10 @@ def detect_site(url):
         return "target"
     elif "ebay.com" in url_lower:
         return "ebay"
+    elif "slickdeals.net" in url_lower:
+        return "slickdeals"
+    elif "dealnews.com" in url_lower:
+        return "dealnews"
     elif "groupon.com" in url_lower:
         return "groupon"
     elif "skyscanner.com" in url_lower:

@@ -7,6 +7,9 @@ Lifestyle deals: Groupon, Skyscanner, Expedia
 """
 
 from scrapers import get_scraper_for_url, detect_site, ALL_SCRAPERS, DEAL_AGGREGATORS, LIFESTYLE_SCRAPERS
+from scrapers.groupon import GrouponScraper
+from scrapers.skyscanner import SkyscannerScraper
+from scrapers.expedia import ExpediaScraper
 
 
 def scrape_product(url_or_id):
@@ -98,19 +101,16 @@ def scrape_category_deals(category):
 
     # Groupon handles event/gift categories
     if category in ("birthday", "party", "wedding", "baby_shower", "gifts"):
-        from scrapers.groupon import GrouponScraper
         scraper = GrouponScraper()
         all_deals.extend(scraper.scrape_category(category))
 
     # Skyscanner handles flights
     if category == "flights":
-        from scrapers.skyscanner import SkyscannerScraper
         scraper = SkyscannerScraper()
         all_deals.extend(scraper.scrape_deals())
 
     # Expedia handles holiday packages
     if category == "holiday_packages":
-        from scrapers.expedia import ExpediaScraper
         scraper = ExpediaScraper()
         all_deals.extend(scraper.scrape_deals())
 
