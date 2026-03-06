@@ -192,3 +192,37 @@ def show_status():
         print(f"  Last checked: {checked}")
 
     print(f"\n{'='*65}\n")
+
+
+def get_status_text():
+    """Return tracking status as an HTML-formatted string for Telegram."""
+    products = get_active_products()
+    count = len(products)
+    site_counts = get_site_counts()
+
+    lines = [f"<b>Tracking {count} product(s)</b>"]
+    if site_counts:
+        breakdown = ", ".join(f"{s.capitalize()}: {c}" for s, c in site_counts.items())
+        lines.append(breakdown)
+
+    if not products:
+        lines.append("\nNo products tracked yet.")
+        lines.append("Use /add &lt;url&gt; to start tracking.")
+        return "\n".join(lines)
+
+    current_site = None
+    for p in products:
+        site = p.get("site", "unknown")
+        if site != current_site:
+            current_site = site
+            lines.append(f"\n<b>--- {site.upper()} ---</b>")
+
+        price = f"${p['current_price']:.2f}" if p["current_price"] else "N/A"
+        lowest = f"${p['lowest_price']:.2f}" if p["lowest_price"] else "N/A"
+
+        title = p["title"][:50]
+        lines.append(f"\n{title}")
+        lines.append(f"Price: {price} | Low: {lowest}")
+        lines.append(f"ID: <code>{p['product_id'][:15]}</code>")
+
+    return "\n".join(lines)

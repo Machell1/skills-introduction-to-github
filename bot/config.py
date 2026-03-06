@@ -9,6 +9,13 @@ load_dotenv()
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID", "")
 
+# Admin user IDs (comma-separated Telegram user IDs allowed to control the bot)
+ADMIN_USER_IDS = [
+    int(uid.strip())
+    for uid in os.getenv("ADMIN_USER_IDS", "").split(",")
+    if uid.strip().isdigit()
+]
+
 # Affiliate Tags
 AMAZON_AFFILIATE_TAG = os.getenv("AMAZON_AFFILIATE_TAG", "yourtag-20")
 WALMART_AFFILIATE_TAG = os.getenv("WALMART_AFFILIATE_TAG", "")
@@ -24,7 +31,7 @@ MIN_DROP_PERCENT = float(os.getenv("MIN_DROP_PERCENT", "15"))
 MIN_DROP_DOLLARS = float(os.getenv("MIN_DROP_DOLLARS", "5"))
 
 # Database
-DB_PATH = os.path.join(os.path.dirname(__file__), "deals.db")
+DB_PATH = os.getenv("DB_PATH", os.path.join(os.path.dirname(__file__), "deals.db"))
 
 # Scraper settings
 USER_AGENT = (

@@ -25,6 +25,14 @@
 *.log
 *.sql
 *.sqlite
+*.db
+
+# Python #
+###########
+__pycache__/
+*.pyc
+*.pyo
+.env
 
 # OS generated files #
 ######################

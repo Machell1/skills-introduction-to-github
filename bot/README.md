@@ -65,7 +65,21 @@ python main.py add-bulk watchlist.txt
 python main.py run
 ```
 
-## Commands
+## Telegram Bot Commands
+
+Control the bot directly from Telegram (the primary way to use it):
+
+| Command | Description |
+|---|---|
+| `/start`, `/help` | Show help and tracking stats |
+| `/add <url>` | Track a product from any supported site |
+| `/remove <id>` | Stop tracking a product |
+| `/status` | Show all tracked products by site |
+| `/check` | Check all prices immediately |
+| `/deals` | Scan Slickdeals & DealNews now |
+| `/sites` | List supported sites |
+
+## CLI Commands (Local Development)
 
 | Command | Description |
 |---|---|
@@ -92,15 +106,39 @@ python main.py run
 2. New deals are sent to your Telegram channel automatically
 3. Covers deals from hundreds of stores (aggregators curate the best deals)
 
-## Running in PyCharm
+## Deploy to Railway (24/7 Hosting)
 
+1. Push this repo to GitHub
+2. Go to [railway.app](https://railway.app) and create a new project
+3. Connect your GitHub repo, set the root directory to `bot/`
+4. Add environment variables in Railway's dashboard:
+   - `TELEGRAM_BOT_TOKEN` — your bot token
+   - `TELEGRAM_CHANNEL_ID` — your channel ID
+   - `ADMIN_USER_IDS` — your Telegram user ID (get it from @userinfobot)
+   - `DB_PATH` — `/data/deals.db`
+   - Plus any affiliate tags you want
+5. Add a **Volume** in Railway, mount it at `/data`
+6. Deploy — the bot starts automatically and runs 24/7
+
+The bot uses a `worker` process (not a web server), so it stays running continuously.
+
+## Running Locally
+
+### PyCharm
 1. Open the `bot` folder as a project
 2. Set up a Python interpreter and install requirements
 3. Create a Run Configuration:
-   - Script: `main.py`
-   - Parameters: `run`
+   - Script: `telegram_bot.py`
    - Working directory: `bot/`
 4. Click Run
+
+### Command Line
+```bash
+cd bot
+python telegram_bot.py
+```
+
+The CLI entry point (`main.py`) is also still available for local debugging.
 
 ## Revenue Strategy
 
@@ -131,13 +169,16 @@ python main.py run
 
 ```
 bot/
-├── main.py              # CLI entry point and scheduler
+├── telegram_bot.py      # Telegram bot entry point (primary)
+├── main.py              # CLI entry point and scheduler (local dev)
 ├── scraper.py           # Multi-site scraper router
 ├── tracker.py           # Deal detection and product management
 ├── notifier.py          # Telegram alert formatting and sending
 ├── database.py          # SQLite storage for prices and deals
 ├── config.py            # Configuration loader
 ├── requirements.txt     # Python dependencies
+├── Dockerfile           # Docker container config (Railway)
+├── Procfile             # Process type for Railway
 ├── .env.example         # Config template
 ├── sample_watchlist.txt # Example product list
 └── scrapers/
