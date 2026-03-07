@@ -398,6 +398,66 @@ async def scheduled_api_poll(context: ContextTypes.DEFAULT_TYPE):
         logger.warning("Affiliate API polling failed: %s", e)
 
 
+async def scheduled_tool_spotlight(context: ContextTypes.DEFAULT_TYPE):
+    """Scheduled job: post daily AI tool spotlight to Telegram and X."""
+    logger.info("Posting daily tool spotlight...")
+    try:
+        from x_poster import post_daily_tool_spotlight, get_daily_spotlight_telegram
+        from notifier import send_custom_message
+
+        # Post to Telegram channel
+        loop = asyncio.get_event_loop()
+        tg_message = await loop.run_in_executor(None, get_daily_spotlight_telegram)
+        await loop.run_in_executor(None, send_custom_message, tg_message)
+
+        # Post to X
+        await loop.run_in_executor(None, post_daily_tool_spotlight)
+        logger.info("Daily tool spotlight posted.")
+    except Exception as e:
+        logger.warning("Tool spotlight failed: %s", e)
+
+
+async def scheduled_weekly_roundup(context: ContextTypes.DEFAULT_TYPE):
+    """Scheduled job: post weekly top deals roundup to Telegram and X (Sundays)."""
+    logger.info("Generating weekly deals roundup...")
+    try:
+        from database import get_top_deals_by_savings
+        from x_poster import post_weekly_roundup_to_x
+        from notifier import send_custom_message
+
+        loop = asyncio.get_event_loop()
+        deals = await loop.run_in_executor(None, get_top_deals_by_savings, 7, 5)
+
+        if not deals:
+            logger.info("No deals this week for roundup.")
+            return
+
+        # Post to X
+        await loop.run_in_executor(None, post_weekly_roundup_to_x, deals)
+
+        # Post to Telegram
+        tg_msg = "🏆 <b>This Week's Best Deals</b> 🏆\n\n"
+        for i, d in enumerate(deals[:5], 1):
+            title = d.get("title", "Deal")[:50]
+            pct = d.get("savings_pct", 0)
+            store = d.get("store", "")
+            tg_msg += f"{i}. <b>{title}</b>"
+            if store:
+                tg_msg += f" ({store})"
+            if pct:
+                tg_msg += f" — {pct:.0f}% off"
+            tg_msg += "\n"
+
+        tg_msg += (
+            f"\n📢 <b>@dailydeals</b> — Follow for daily deal alerts!\n"
+            f"💬 Forward this to a friend who loves good deals!"
+        )
+        await loop.run_in_executor(None, send_custom_message, tg_msg)
+        logger.info("Weekly roundup posted.")
+    except Exception as e:
+        logger.warning("Weekly roundup failed: %s", e)
+
+
 # --- Main ---
 
 def run_bot():
@@ -465,6 +525,15 @@ def run_bot():
         scheduled_api_poll,
         time=datetime.time(hour=8, minute=0),
     )
+    job_queue.run_daily(
+        scheduled_tool_spotlight,
+        time=datetime.time(hour=12, minute=0),
+    )
+    job_queue.run_daily(
+        scheduled_weekly_roundup,
+        time=datetime.time(hour=16, minute=0),
+        days=(6,),  # Sunday only
+    )
 
     logger.info(
         "Bot started. Prices every %d min, deals every %d min, lifestyle every %d min.",
@@ -478,7 +547,9 @@ def run_bot():
         f"📊 Price checks: every {CHECK_INTERVAL_MINUTES} min\n"
         f"🔍 Deal scans: every {CHECK_INTERVAL_MINUTES * 2} min\n"
         f"✈️ Lifestyle scans: every {CHECK_INTERVAL_MINUTES * 3} min\n"
+        f"🌟 Tool spotlight: 12:00 PM UTC daily\n"
         f"🏆 Daily summary: 6:00 PM UTC\n"
+        f"📋 Weekly roundup: Sundays 4:00 PM UTC\n"
         f"💰 Earnings report: 9:00 PM UTC\n"
         f"📋 Weekly report: Mondays 10:00 AM UTC"
     )

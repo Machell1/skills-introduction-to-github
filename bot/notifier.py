@@ -83,7 +83,8 @@ def format_deal_message(product, old_price, new_price, drop_percent):
         f"\n"
         f"<i>Prices may change. Act fast!</i>\n"
         f"\n"
-        f"📢 Join {TELEGRAM_CHANNEL_HANDLE} for more deals!"
+        f"📢 <b>{TELEGRAM_CHANNEL_HANDLE}</b> — Daily Deal Alerts\n"
+        f"💬 Know someone who needs this? Forward this message!"
     )
 
     return message
@@ -153,7 +154,8 @@ def format_aggregator_deal(deal):
 
     message += f"\n<a href=\"{url}\">🛒 Get This Deal</a>\n"
     message += f"\n<i>via {source}</i>\n"
-    message += f"\n📢 Join {TELEGRAM_CHANNEL_HANDLE} for more deals!"
+    message += f"\n📢 <b>{TELEGRAM_CHANNEL_HANDLE}</b> — Daily Deal Alerts\n"
+    message += f"💬 Know someone who needs this? Forward this message!"
 
     return message
 

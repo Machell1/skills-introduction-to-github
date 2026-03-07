@@ -547,10 +547,54 @@ function renderSimilarTools(currentSlug) {
   `;
 }
 
+/* ===== Share Buttons ===== */
+function renderShareButtons() {
+  const container = document.getElementById('share-buttons');
+  if (!container) return;
+
+  const pageTitle = encodeURIComponent(document.title);
+  const pageUrl = encodeURIComponent(window.location.href);
+
+  container.innerHTML = `
+    <div class="share-buttons">
+      <a href="https://x.com/intent/tweet?text=${pageTitle}&url=${pageUrl}&via=MachellWil66296" target="_blank" rel="noopener" class="share-btn share-btn-x">Share on X</a>
+      <a href="https://t.me/share/url?url=${pageUrl}&text=${pageTitle}" target="_blank" rel="noopener" class="share-btn share-btn-telegram">Share on Telegram</a>
+      <button class="share-btn share-btn-copy" onclick="navigator.clipboard.writeText(window.location.href).then(()=>{this.textContent='Copied!';this.classList.add('copied');setTimeout(()=>{this.textContent='Copy Link';this.classList.remove('copied')},2000)})">Copy Link</button>
+    </div>
+  `;
+}
+
+/* ===== Floating Telegram Widget ===== */
+function renderFloatingTelegram() {
+  if (localStorage.getItem('hide_telegram_float')) return;
+
+  const el = document.createElement('a');
+  el.href = 'https://t.me/dailydeals';
+  el.target = '_blank';
+  el.rel = 'noopener';
+  el.className = 'floating-telegram';
+  el.innerHTML = 'Join @dailydeals <button class="close-btn" aria-label="Dismiss">&times;</button>';
+  document.body.appendChild(el);
+
+  el.querySelector('.close-btn').addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    localStorage.setItem('hide_telegram_float', '1');
+    el.remove();
+  });
+
+  window.addEventListener('scroll', () => {
+    if (window.scrollY > 400) el.classList.add('visible');
+    else el.classList.remove('visible');
+  }, { passive: true });
+}
+
 /* ===== Init ===== */
 document.addEventListener('DOMContentLoaded', () => {
   renderNav();
   renderFooter();
   initAds();
   initSearch();
+  renderShareButtons();
+  renderFloatingTelegram();
 });

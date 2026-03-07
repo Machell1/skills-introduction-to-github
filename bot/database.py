@@ -687,6 +687,28 @@ def get_actuals_summary(days=1):
         conn.close()
 
 
+def get_top_deals_by_savings(days=7, limit=5):
+    """Get the top deals by savings percentage from the last N days."""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT title, price AS sale_price, original_price, store, url,
+                   CASE WHEN original_price > 0
+                        THEN ((original_price - price) / original_price) * 100
+                        ELSE 0 END AS savings_pct
+            FROM aggregator_deals
+            WHERE found_at >= datetime('now', ? || ' days')
+            AND price IS NOT NULL AND original_price IS NOT NULL AND original_price > price
+            ORDER BY savings_pct DESC
+            LIMIT ?
+        """, (f"-{days}", limit))
+        rows = cursor.fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
 def get_todays_deals(limit=10):
     """Get the best deals from the last 24 hours for the daily summary."""
     conn = get_connection()
