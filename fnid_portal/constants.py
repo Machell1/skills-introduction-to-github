@@ -23,7 +23,6 @@ JCF_RANKS = [
     "Corporal",
     "District Constable",
     "Constable",
-    "Detective Superintendent",
     "Detective Inspector",
     "Detective Sergeant",
     "Detective Corporal",
