@@ -122,13 +122,13 @@ def _seed_named_admins(conn):
     pw_hash = generate_password_hash("Fnid@Admin2026!")
 
     admins = [
-        ("JCF-2001", "Cpl. Machell Williams", "Corporal of Police",
+        ("JCF-2001", "Cpl. Machell Williams", "Corporal",
          "FNID Headquarters - Area 3", "admin", 1),
-        ("JCF-2002", "Insp. Rayon Rodney", "Inspector of Police",
+        ("JCF-2002", "Insp. Rayon Rodney", "Inspector",
          "FNID Headquarters - Area 3", "dco", 2),
-        ("JCF-2003", "Sgt. Robert Barrett", "Sergeant of Police",
+        ("JCF-2003", "Sgt. Robert Barrett", "Sergeant",
          "FNID Headquarters - Area 3", "ddi", 3),
-        ("JCF-2004", "Sgt. Danette McPherson", "Sergeant of Police",
+        ("JCF-2004", "Sgt. Danette McPherson", "Sergeant",
          "FNID Headquarters - Area 3", "station_mgr", 4),
     ]
     for badge, name, rank, section, role, tier in admins:
@@ -165,11 +165,11 @@ def _seed_officers(conn):
          "FNID Headquarters - Area 3", "dco",
          "k.williams@jcf.gov.jm", "all"),
         ("JCF-1003", "Inspector Damion Brown",
-         "Inspector of Police",
+         "Inspector",
          "Intelligence Section", "ddi",
          "d.brown@jcf.gov.jm", "all"),
         ("JCF-1004", "Inspector Sandra Clarke",
-         "Inspector of Police",
+         "Inspector",
          "Case Management & Registry", "station_mgr",
          "s.clarke@jcf.gov.jm", "all"),
         ("JCF-1005", "Detective Sergeant Michael Campbell",
@@ -189,11 +189,11 @@ def _seed_officers(conn):
          "Firearms Investigation Section", "io",
          "s.reid@jcf.gov.jm", "all"),
         ("JCF-1009", "Corporal Patricia Salmon",
-         "Corporal of Police",
+         "Corporal",
          "Case Management & Registry", "registrar",
          "p.salmon@jcf.gov.jm", "all"),
         ("JCF-1010", "Sergeant Rohan Blake",
-         "Sergeant of Police",
+         "Sergeant",
          "Intelligence Section", "intel_officer",
          "r.blake@jcf.gov.jm", "all"),
     ]
@@ -382,7 +382,7 @@ def _seed_cases(conn):
             assigned_io_badge = None
             oic_badge = "JCF-1004"
             oic_name = "Inspector Sandra Clarke"
-            oic_rank = "Inspector of Police"
+            oic_rank = "Inspector"
             assigned_date = None
 
         suspect_name = _SUSPECT_NAMES[i]

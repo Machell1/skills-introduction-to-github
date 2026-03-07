@@ -16,7 +16,7 @@ from flask_login import current_user
 ROLES = {
     "admin": "System Administrator",
     "dco": "Divisional Crime Officer",
-    "ddi": "Deputy Director of Investigations",
+    "ddi": "Divisional Detective Inspector",
     "station_mgr": "Station Manager",
     "registrar": "Registrar",
     "io": "Investigating Officer",

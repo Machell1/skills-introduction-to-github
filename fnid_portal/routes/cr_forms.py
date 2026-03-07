@@ -408,7 +408,7 @@ CR_FORM_DEFINITIONS = {
                 {"name": "outstanding_task_3", "label": "Task 3", "type": "text"},
                 {"name": "outstanding_est_date_3", "label": "Estimated Date for Completion 3", "type": "date"},
             ]},
-            {"title": "Tests Post/Obligations", "fields": [
+            {"title": "Post-Charge Tests & Obligations", "fields": [
                 {"name": "forensic_certificate", "label": "Forensic Certificate", "type": "select",
                  "options_list": ["Yes", "No", "N/A"]},
                 {"name": "forensic_cert_1st_party", "label": "Forensic Cert - 1st Party (Scenes and Exhibits/Toxicology)", "type": "text"},
@@ -425,7 +425,7 @@ CR_FORM_DEFINITIONS = {
                 {"name": "medical_certificate", "label": "Medical Certificate", "type": "select",
                  "options_list": ["Yes", "No", "N/A"]},
                 {"name": "medical_institution_officer", "label": "Statement (Medical Institution/Medical Officer)", "type": "text"},
-                {"name": "documents_pub", "label": "Documents (e.g. NIC/ID, PIN, TRN, Tax Driver etc.)", "type": "text"},
+                {"name": "documents_pub", "label": "Documents (e.g. NIC/ID, PIN, TRN, Driver's Licence etc.)", "type": "text"},
                 {"name": "claim_of_records", "label": "Claim of Records (if Transported/Deceased)", "type": "text"},
                 {"name": "claim_records_party", "label": "Claim Records - Criminal Records Office", "type": "text"},
             ]},
@@ -433,7 +433,7 @@ CR_FORM_DEFINITIONS = {
                 {"name": "bio_info", "label": "Biographical Information (This section should only be used if all the persons indicated have been charged)", "type": "textarea"},
             ]},
             {"title": "Investigator's Summary", "fields": [
-                {"name": "inv_bio_rank_name_station", "label": "Bio, Rnk, Rank and Name of Investigator", "type": "text"},
+                {"name": "inv_bio_rank_name_station", "label": "Rank, Name and Station of Investigator", "type": "text"},
                 {"name": "inv_statement_deposed", "label": "Investigator's Statement (Statement Deposed)", "type": "textarea"},
                 {"name": "inv_statement_date", "label": "Date", "type": "date"},
                 {"name": "mode_of_apprehension", "label": "Mode and Conclusion of Apprehension (e.g. bail/remand/PDR)", "type": "textarea"},
@@ -737,7 +737,7 @@ CR_FORM_DEFINITIONS = {
         "sections": [
             {"title": "Accused Information", "fields": [
                 {"name": "case_ref_no", "label": "1. Case Ref. No.", "type": "text", "required": True},
-                {"name": "accused_name", "label": "2. Name & Name of Accused", "type": "text", "required": True},
+                {"name": "accused_name", "label": "2. Name of Accused", "type": "text", "required": True},
                 {"name": "accused_dob", "label": "3. Date of Birth", "type": "date"},
                 {"name": "accused_address", "label": "4. Address(es) of Accused", "type": "textarea"},
                 {"name": "offence_charged", "label": "5. Offence(s) Charged", "type": "textarea", "required": True},
