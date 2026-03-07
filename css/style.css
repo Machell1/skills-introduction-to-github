@@ -308,6 +308,9 @@ p { margin-bottom: 1rem; }
   font-size: 0.8125rem; color: rgba(255,255,255,0.5);
 }
 @media (min-width: 640px) { .footer-bottom { flex-direction: row; justify-content: space-between; } }
+.footer-social { display: flex; gap: 1rem; }
+.footer-social a { color: rgba(255,255,255,0.85); font-size: 0.875rem; font-weight: 500; }
+.footer-social a:hover { color: white; text-decoration: none; }
 
 /* ===== Utility ===== */
 .mt-1 { margin-top: 0.5rem; }

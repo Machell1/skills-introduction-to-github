@@ -421,8 +421,12 @@ function renderFooter() {
       <div class="footer-grid">
         <div>
           <h4>About</h4>
-          <p>${SITE_NAME} is a curated directory of the best AI tools. We research, review, and compare AI products to help you find the right tool for your needs.</p>
+          <p>${SITE_NAME} is a curated AI tools directory operated by <strong>Machell Deals</strong>. We research, review, and compare AI products to help you find the right tool for your needs.</p>
           <p style="margin-top:0.5rem">Some links on this site are affiliate links. We may earn a commission at no extra cost to you.</p>
+          <div class="footer-social" style="margin-top:0.75rem">
+            <a href="https://t.me/dailydeals" target="_blank" rel="noopener" aria-label="Telegram">Telegram</a>
+            <a href="https://x.com/MachellWil66296" target="_blank" rel="noopener" aria-label="X (Twitter)">X / Twitter</a>
+          </div>
         </div>
         <div>
           <h4>Categories</h4>
@@ -435,6 +439,8 @@ function renderFooter() {
         <div>
           <h4>Links</h4>
           <a href="${basePath}index.html">Home</a>
+          <a href="${basePath}about.html">About Us</a>
+          <a href="${basePath}contact.html">Contact</a>
           <a href="${basePath}privacy.html">Privacy Policy</a>
           <a href="${basePath}disclosure.html">Affiliate Disclosure</a>
         </div>
