@@ -40,6 +40,13 @@ CJ_DEVELOPER_KEY = os.getenv("CJ_DEVELOPER_KEY", "")
 CJ_WEBSITE_ID = os.getenv("CJ_WEBSITE_ID", "")
 EBAY_PARTNER_KEY = os.getenv("EBAY_PARTNER_KEY", "")
 
+# X (Twitter)
+X_API_KEY = os.getenv("X_API_KEY", "")
+X_API_SECRET = os.getenv("X_API_SECRET", "")
+X_ACCESS_TOKEN = os.getenv("X_ACCESS_TOKEN", "")
+X_ACCESS_TOKEN_SECRET = os.getenv("X_ACCESS_TOKEN_SECRET", "")
+X_POST_ENABLED = os.getenv("X_POST_ENABLED", "false").lower() == "true"
+
 # Scheduling
 CHECK_INTERVAL_MINUTES = int(os.getenv("CHECK_INTERVAL_MINUTES", "60"))
 

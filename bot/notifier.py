@@ -10,6 +10,7 @@ from config import (
     TELEGRAM_CHANNEL_HANDLE, ADMIN_USER_IDS,
 )
 from url_safety import validate_deal, validate_product, sanitize_url
+from x_poster import post_deal_to_x, post_aggregator_deal_to_x
 
 logger = logging.getLogger("DealBot.Notifier")
 
@@ -217,13 +218,16 @@ def send_admin_message(text):
 
 
 def send_deal_alert(product, old_price, new_price, drop_percent, deal_id=None):
-    """Send a price drop alert to the Telegram channel. Blocks unsafe links."""
+    """Send a price drop alert to Telegram and X. Blocks unsafe links."""
     message = format_deal_message(product, old_price, new_price, drop_percent)
     if not message:
         return False
     url = product.get("affiliate_url") or product.get("url", "")
     keyboard = _deal_keyboard(url, deal_id) if url else None
-    return asyncio.run(_send_message(message, reply_markup=keyboard))
+    tg_ok = asyncio.run(_send_message(message, reply_markup=keyboard))
+    # Cross-post to X
+    post_deal_to_x(product, old_price, new_price, drop_percent)
+    return tg_ok
 
 
 def send_tracking_notification(product):
@@ -235,13 +239,16 @@ def send_tracking_notification(product):
 
 
 def send_aggregator_deal(deal, deal_id=None):
-    """Send a deal found by an aggregator. Blocks unsafe links."""
+    """Send a deal found by an aggregator to Telegram and X. Blocks unsafe links."""
     message = format_aggregator_deal(deal)
     if not message:
         return False
     url = deal.get("url", "")
     keyboard = _deal_keyboard(url, deal_id) if url else None
-    return asyncio.run(_send_message(message, reply_markup=keyboard))
+    tg_ok = asyncio.run(_send_message(message, reply_markup=keyboard))
+    # Cross-post to X
+    post_aggregator_deal_to_x(deal)
+    return tg_ok
 
 
 def send_custom_message(text):
