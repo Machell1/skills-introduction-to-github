@@ -17,6 +17,7 @@
     <div class="card-body">
       <form method="post"
             action="{% if is_edit %}{{ url_for('targets.edit_target', target_id=target_id) }}{% else %}{{ url_for('targets.new_target') }}{% endif %}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
         <div class="row g-3 mb-3">
           <div class="col-md-6">

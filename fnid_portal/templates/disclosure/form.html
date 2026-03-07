@@ -14,6 +14,7 @@
     </div>
 
     <form method="post">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <!-- Case & Disclosure Info -->
         <div class="card mb-4">
             <div class="card-header"><h5 class="mb-0"><i class="bi bi-file-earmark-text me-2"></i>Disclosure Information</h5></div>

@@ -572,6 +572,32 @@ ALL_PARISHES = [
     "Hanover", "Westmoreland", "St. Catherine",
 ]
 
+# --- Evidence Act Compliance (s.31B-31CB) ---
+EVIDENCE_ACT_COMPLIANCE = {
+    "chain_of_custody": "CR5 - Exhibit Chain of Custody Schedule",
+    "computer_evidence_cert": "s.31C - Computer-Generated Evidence Certificate",
+    "expert_report_status": "s.31CB - Expert Report Admissibility",
+    "agreed_facts": "s.31CA - Admission by Agreement",
+    "live_link_approval": "Evidence (Special Measures) Act - Live Link",
+}
+
+# --- Bail Act 2023 Enhanced Workflow ---
+BAIL_STAGES = [
+    "Pre-Charge Bail (s.3 Bail Act 2023)",
+    "Post-Charge Bail",
+    "Post-Conviction Bail (exceptional circumstances)",
+]
+
+BAIL_CONDITIONS = [
+    "Surrender travel documents",
+    "Report to police station at specified times",
+    "Reside at specified address",
+    "No contact with witnesses/complainants",
+    "Electronic monitoring (s.8 Bail Act 2023)",
+    "Curfew",
+    "Surety required",
+]
+
 YES_NO = ["Yes", "No"]
 YES_NO_NA = ["Yes", "No", "N/A"]
 RECORD_STATUS = ["Draft", "Submitted", "Edited", "Approved", "Rejected"]

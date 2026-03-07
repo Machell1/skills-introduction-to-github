@@ -20,6 +20,7 @@
 </div>
 
 <form method="POST" class="needs-validation" novalidate>
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <!-- Arrest Details -->
     <div class="form-section">
         <div class="form-section-title"><i class="bi bi-person-fill-lock me-2"></i>Arrest Details</div>

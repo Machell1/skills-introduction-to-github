@@ -6,6 +6,7 @@ and strict requirements for production.
 """
 
 import os
+from datetime import timedelta
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -29,6 +30,19 @@ class Config:
     )
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16 MB upload limit
 
+    # Session security
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = "Lax"
+    SESSION_COOKIE_SECURE = False
+    PERMANENT_SESSION_LIFETIME = timedelta(hours=8)
+
+    # Account lockout
+    MAX_FAILED_ATTEMPTS = 5
+    LOCKOUT_DURATION_MINUTES = 30
+
+    # Password policy
+    MIN_PASSWORD_LENGTH = 10
+
 
 class DevelopmentConfig(Config):
     """Development configuration."""
@@ -41,6 +55,7 @@ class ProductionConfig(Config):
     """Production configuration - SECRET_KEY must be set via env var."""
 
     DEBUG = False
+    SESSION_COOKIE_SECURE = True
 
     def __init__(self):
         if not self.SECRET_KEY:
@@ -56,6 +71,7 @@ class TestingConfig(Config):
     TESTING = True
     DEBUG = True
     SECRET_KEY = "test-secret-key-not-for-production"
+    WTF_CSRF_ENABLED = False
 
 
 config_by_name = {

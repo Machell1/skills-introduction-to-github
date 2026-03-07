@@ -127,8 +127,8 @@ def new_user():
                      f"Created user {name} with role {role}")
             flash(f"User {name} ({badge}) created.", "success")
             return redirect(url_for("admin.users"))
-        except Exception as e:
-            flash(f"Error creating user: {e}", "danger")
+        except Exception:
+            flash("An error occurred creating the user. Please try again.", "danger")
 
     from ..constants import FNID_SECTIONS, JCF_RANKS
     from ..rbac import ROLES
@@ -299,3 +299,123 @@ def audit_log():
                              officer_filter=officer_filter)
     finally:
         conn.close()
+
+
+# ── Maintenance Dashboard (Tier 1 Admin) ─────────────────────────
+
+@bp.route("/maintenance")
+@login_required
+@role_required("admin")
+def maintenance():
+    """Tier 1 maintenance dashboard."""
+    admin_tier = getattr(current_user, "admin_tier", None)
+    if admin_tier is None or admin_tier > 1:
+        flash("Tier 1 access required.", "danger")
+        return redirect(url_for("admin.admin_dashboard"))
+
+    conn = get_db()
+    try:
+        pending_users = conn.execute(
+            "SELECT * FROM officers WHERE verification_status = 'pending' ORDER BY registered_at DESC"
+        ).fetchall()
+        locked_users = conn.execute(
+            "SELECT * FROM officers WHERE locked_at IS NOT NULL ORDER BY locked_at DESC"
+        ).fetchall()
+        db_path = current_app.config.get("DB_PATH", "")
+        db_size = 0
+        if db_path and os.path.exists(db_path):
+            db_size = round(os.path.getsize(db_path) / (1024 * 1024), 2)
+
+        stats = {
+            "total_officers": conn.execute("SELECT COUNT(*) FROM officers").fetchone()[0],
+            "active_officers": conn.execute("SELECT COUNT(*) FROM officers WHERE is_active = 1").fetchone()[0],
+            "pending_count": len(pending_users),
+            "locked_count": len(locked_users),
+            "total_cases": conn.execute("SELECT COUNT(*) FROM cases").fetchone()[0],
+            "db_size_mb": db_size,
+        }
+
+        return render_template("admin/maintenance.html",
+                             stats=stats, pending_users=pending_users,
+                             locked_users=locked_users)
+    finally:
+        conn.close()
+
+
+@bp.route("/maintenance/approve-user/<badge>", methods=["POST"])
+@login_required
+@role_required("admin")
+def approve_user(badge):
+    """Manually approve a pending user."""
+    conn = get_db()
+    try:
+        conn.execute(
+            "UPDATE officers SET verification_status = 'active' WHERE badge_number = ?",
+            (badge,)
+        )
+        conn.commit()
+        log_audit("officers", badge, "VERIFICATION_APPROVED",
+                 current_user.badge_number, current_user.full_name)
+        flash(f"User {badge} approved.", "success")
+    finally:
+        conn.close()
+    return redirect(url_for("admin.maintenance"))
+
+
+@bp.route("/maintenance/deactivate-user/<badge>", methods=["POST"])
+@login_required
+@role_required("admin")
+def deactivate_user(badge):
+    """Deactivate a user account."""
+    if badge == current_user.badge_number:
+        flash("Cannot deactivate your own account.", "danger")
+        return redirect(url_for("admin.maintenance"))
+    conn = get_db()
+    try:
+        conn.execute(
+            "UPDATE officers SET is_active = 0 WHERE badge_number = ?",
+            (badge,)
+        )
+        conn.commit()
+        log_audit("officers", badge, "DEACTIVATED",
+                 current_user.badge_number, current_user.full_name)
+        flash(f"User {badge} deactivated.", "success")
+    finally:
+        conn.close()
+    return redirect(url_for("admin.maintenance"))
+
+
+@bp.route("/maintenance/unlock-user/<badge>", methods=["POST"])
+@login_required
+@role_required("admin")
+def unlock_user(badge):
+    """Unlock a locked user account."""
+    conn = get_db()
+    try:
+        conn.execute(
+            "UPDATE officers SET locked_at = NULL, failed_attempts = 0 WHERE badge_number = ?",
+            (badge,)
+        )
+        conn.commit()
+        log_audit("officers", badge, "ACCOUNT_UNLOCKED",
+                 current_user.badge_number, current_user.full_name)
+        flash(f"User {badge} unlocked.", "success")
+    finally:
+        conn.close()
+    return redirect(url_for("admin.maintenance"))
+
+
+@bp.route("/maintenance/vacuum", methods=["POST"])
+@login_required
+@role_required("admin")
+def vacuum_db():
+    """Run SQLite VACUUM to optimize database."""
+    conn = get_db()
+    try:
+        conn.execute("VACUUM")
+        log_audit("system", "database", "VACUUM",
+                 current_user.badge_number, current_user.full_name)
+        flash("Database optimized.", "success")
+    finally:
+        conn.close()
+    return redirect(url_for("admin.maintenance"))

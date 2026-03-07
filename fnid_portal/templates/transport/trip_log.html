@@ -130,6 +130,7 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <form method="POST" action="{{ url_for('transport.return_trip', trip_id=t.trip_id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="modal-header bg-fnid-navy text-white">
                     <h5 class="modal-title">Return Trip {{ t.trip_id }}</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>

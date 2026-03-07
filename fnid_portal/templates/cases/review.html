@@ -97,6 +97,7 @@
         <i class="bi bi-pencil-square me-2"></i>Record Review
     </div>
     <form method="POST" action="{{ url_for('cases.case_review', case_id=case.case_id) }}" class="needs-validation" novalidate>
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" id="review_id" name="review_id"
                value="{% if pending_reviews %}{{ pending_reviews[0].id }}{% endif %}">
 

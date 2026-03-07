@@ -40,6 +40,14 @@ ROLE_HIERARCHY = {
     "viewer": 10,
 }
 
+# Admin tier definitions
+ADMIN_TIERS = {
+    1: "Tier 1 - Full System Administration",
+    2: "Tier 2 - Operational Administration",
+    3: "Tier 3 - Unit Administration",
+    4: "Tier 4 - View-Only Administration",
+}
+
 # ---------------------------------------------------------------------------
 # Permission matrix: {resource: {action: set_of_allowed_roles}}
 # CONFIGURABLE — adjust per policy when FO 4032 field layouts are confirmed
@@ -123,6 +131,22 @@ PERMISSIONS = {
         "read": {"admin", "dco", "ddi", "station_mgr", "transport_officer", "viewer"},
         "update": {"admin", "dco", "transport_officer"},
     },
+    "documents": {
+        "upload": {"admin", "dco", "ddi", "station_mgr", "registrar", "io", "intel_officer", "plo", "transport_officer"},
+        "read": {"admin", "dco", "ddi", "station_mgr", "registrar", "io", "intel_officer", "plo", "transport_officer", "viewer"},
+        "delete": {"admin", "dco"},
+    },
+    "kpis": {
+        "read": {"admin", "dco", "ddi", "station_mgr", "registrar", "io", "intel_officer", "plo", "transport_officer", "viewer"},
+        "manage": {"admin"},
+    },
+    "workflow": {
+        "read": {"admin", "dco", "ddi", "station_mgr", "registrar", "io", "intel_officer"},
+        "advance": {"admin", "dco", "ddi", "station_mgr", "registrar", "io"},
+    },
+    "maintenance": {
+        "access": {"admin"},
+    },
 }
 
 
@@ -174,6 +198,35 @@ def permission_required(resource, action):
             return f(*args, **kwargs)
         return decorated_function
     return decorator
+
+
+def admin_tier_required(max_tier):
+    """Decorator: restrict route to admins at or below the specified tier."""
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if not current_user.is_authenticated:
+                return redirect(url_for("auth.login"))
+            tier = getattr(current_user, "admin_tier", None)
+            if tier is None or tier > max_tier:
+                flash("Insufficient admin privileges.", "danger")
+                return redirect(url_for("main.home"))
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
+
+def verification_required(f):
+    """Decorator: block unverified users from accessing a route."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return redirect(url_for("auth.login"))
+        if not current_user.is_verified():
+            flash("Your account is pending verification.", "warning")
+            return redirect(url_for("auth.pending_verification"))
+        return f(*args, **kwargs)
+    return decorated_function
 
 
 def is_supervisor(user):

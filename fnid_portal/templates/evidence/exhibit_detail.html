@@ -254,6 +254,7 @@
             </div>
             <div class="card-body">
                 <form method="post" action="{{ url_for('evidence.transfer_exhibit', exhibit_tag=exhibit.exhibit_tag) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <div class="mb-3">
                         <label class="form-label">New Location <span class="text-danger">*</span></label>
                         <input type="text" name="new_location" class="form-control" required

@@ -275,19 +275,40 @@ def record_ruling(id):
         ruling_outcome = request.form.get("ruling_outcome", "")
         ruling_notes = request.form.get("ruling_notes", "")
 
+        # Validate sufficiency before approving charge
+        if "Charge Approved" in ruling_outcome:
+            if entry["evidential_sufficiency"] != "Yes":
+                flash("Cannot approve charge: evidential sufficiency not met.", "danger")
+                return redirect(url_for("dpp.dpp_detail", id=id))
+            if entry["public_interest_met"] != "Yes":
+                flash("Cannot approve charge: public interest test not met.", "danger")
+                return redirect(url_for("dpp.dpp_detail", id=id))
+
+        # Determine if returned for investigation
+        returned = "Yes" if "Returned" in ruling_outcome or "Further Investigation" in ruling_outcome else "No"
+
         conn.execute("""
             UPDATE dpp_pipeline SET
                 ruling_date = ?, ruling_outcome = ?, ruling_notes = ?,
-                dpp_status = ?, updated_at = ?
+                dpp_status = ?, returned_for_investigation = ?, updated_at = ?
             WHERE id = ?
         """, (
             ruling_date,
             ruling_outcome,
             ruling_notes,
             ruling_outcome,
+            returned,
             now,
             id,
         ))
+
+        # Auto-transition case back to investigation if returned
+        if returned == "Yes" and entry["linked_case_id"]:
+            conn.execute("""
+                UPDATE cases SET current_stage = 'investigation', updated_at = ?
+                WHERE case_id = ? AND current_stage != 'investigation'
+            """, (now, entry["linked_case_id"]))
+
         conn.commit()
 
         log_audit("dpp_pipeline", str(id), "RULING",

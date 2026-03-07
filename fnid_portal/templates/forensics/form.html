@@ -26,6 +26,7 @@
 {% if subtype == 'lab' %}
 <!-- LAB TRACKING FORM -->
 <form method="POST" class="needs-validation" novalidate>
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <!-- Submission Details -->
     <div class="form-section">
         <div class="form-section-title"><i class="bi bi-flask me-2"></i>Lab Submission Details (IFSLM)</div>
@@ -126,6 +127,7 @@
 {% else %}
 <!-- CHAIN OF CUSTODY FORM -->
 <form method="POST" class="needs-validation" novalidate>
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <!-- Exhibit Details -->
     <div class="form-section">
         <div class="form-section-title"><i class="bi bi-box-seam me-2"></i>Exhibit Details</div>

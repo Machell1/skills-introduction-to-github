@@ -24,6 +24,7 @@
     </div>
     <div class="card-body">
         <form method="POST" action="{{ url_for('file_movement.add_correspondence', case_id=case.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="row g-3">
                 <div class="col-md-3">
                     <label for="direction" class="form-label">Direction <span class="required">*</span></label>

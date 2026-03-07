@@ -127,6 +127,7 @@
                     {% else %}
                     <p class="text-muted mb-3">No ruling recorded yet.</p>
                     <form method="post" action="{{ url_for('dpp.record_ruling', id=entry.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <div class="row g-3">
                             <div class="col-md-4">
                                 <label class="form-label">Ruling Date <span class="text-danger">*</span></label>

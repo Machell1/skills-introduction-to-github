@@ -15,18 +15,25 @@ statement management, and disclosure log.
 
 Phase 4: Correspondence tracking, investigator cards, case review
 scheduling, and intelligence target profiles.
+
+Phase 5: Security hardening, legal compliance, workflow engine,
+member features (registration, documents, KPIs, maintenance).
 """
 
 import os
 from datetime import datetime, timedelta
 
-from flask import Flask
+from flask import Flask, flash, redirect, request, session, url_for
+from flask_login import current_user
+from flask_wtf.csrf import CSRFProtect
 
 from . import models
 from .auth import login_manager
 from .config import config_by_name
 from .constants import UNIT_PORTALS
 from .rbac import ROLES, can_access
+
+csrf = CSRFProtect()
 
 
 def create_app(config_name=None):
@@ -71,9 +78,42 @@ def create_app(config_name=None):
     # Initialize database
     models.init_db()
 
+    # Initialize CSRF protection
+    csrf.init_app(app)
+
     # Initialize Flask-Login
     login_manager.init_app(app)
     app.config["REMEMBER_COOKIE_DURATION"] = timedelta(hours=8)
+
+    # Security headers
+    @app.after_request
+    def set_security_headers(response):
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        if not app.debug:
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        return response
+
+    # Verification gate: block pending users from main routes
+    ALLOWED_UNVERIFIED = {
+        "auth.login", "auth.register", "auth.pending_verification",
+        "auth.logout", "static",
+    }
+
+    @app.before_request
+    def check_verification():
+        if not current_user.is_authenticated:
+            return
+        endpoint = request.endpoint or ""
+        if endpoint in ALLOWED_UNVERIFIED or endpoint.startswith("static"):
+            return
+        if hasattr(current_user, "is_verified") and not current_user.is_verified():
+            if endpoint != "auth.pending_verification":
+                return redirect(url_for("auth.pending_verification"))
 
     # Register context processor
     @app.context_processor
@@ -160,6 +200,15 @@ def create_app(config_name=None):
     from .routes.policy import bp as policy_bp
 
     app.register_blueprint(policy_bp)
+
+    # Register blueprints — Phase 5 modules
+    from .routes.documents import bp as documents_bp
+    from .routes.kpis import bp as kpis_bp
+    from .routes.workflow_routes import bp as workflow_bp
+
+    app.register_blueprint(documents_bp)
+    app.register_blueprint(kpis_bp)
+    app.register_blueprint(workflow_bp)
 
     # Register CLI commands
     _register_cli(app)

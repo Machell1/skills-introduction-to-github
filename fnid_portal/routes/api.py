@@ -1,6 +1,7 @@
 """JSON API routes for AJAX chart data."""
 
 from flask import Blueprint, jsonify
+from flask_login import login_required
 
 from ..models import get_db
 
@@ -8,6 +9,7 @@ bp = Blueprint("api", __name__, url_prefix="/api")
 
 
 @bp.route("/stats/<unit>")
+@login_required
 def api_stats(unit):
     conn = get_db()
     result = {}

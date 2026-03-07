@@ -29,6 +29,7 @@
         {% endwith %}
 
         <form method="POST" action="{{ url_for('auth.login') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="mb-3">
                 <label for="badge_number" class="form-label">
                     <i class="bi bi-person-badge me-1"></i> Badge / Regimental Number
@@ -87,9 +88,9 @@
         </form>
 
         <div class="text-center mt-3">
-            <small class="text-muted">
-                Default admin: Badge <code>ADMIN</code> / Password <code>admin123</code>
-            </small>
+            <a href="{{ url_for('auth.register') }}">
+                <i class="bi bi-person-plus me-1"></i> Register New Account
+            </a>
         </div>
 
         <div class="text-center mt-4">

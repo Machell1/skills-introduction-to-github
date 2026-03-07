@@ -13,6 +13,7 @@
 </div>
 
 <form method="POST" action="{{ url_for('admin.settings') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {% for category_name, settings in categories.items() %}
     <div class="card mb-4">
         <div class="card-header" style="background-color: #1F3864; color: #fff;">

@@ -30,4 +30,6 @@ if __name__ == "__main__":
     print("  Press Ctrl+C to stop")
     print("=" * 50)
     threading.Timer(1.5, open_browser).start()
-    app.run(host="127.0.0.1", port=5000, debug=True, use_reloader=False)
+    import os
+    debug = os.environ.get("FLASK_ENV", "development") == "development"
+    app.run(host="127.0.0.1", port=5000, debug=debug, use_reloader=False)

@@ -86,6 +86,7 @@ def seed_database(force=False):
     _seed_alerts(conn)
     _seed_intel_targets(conn)
     _seed_dcrr(conn)
+    _seed_named_admins(conn)
 
     conn.commit()
     conn.close()
@@ -113,6 +114,35 @@ def _clear_all(conn):
         conn.execute(f"DELETE FROM {table}")
     conn.commit()
     print("  All tables cleared.")
+
+
+def _seed_named_admins(conn):
+    """Seed four named admin officers with tiered access."""
+    print("Seeding named admin officers ...")
+    pw_hash = generate_password_hash("Fnid@Admin2026!")
+
+    admins = [
+        ("JCF-2001", "Cpl. Machell Williams", "Corporal of Police",
+         "FNID Headquarters - Area 3", "admin", 1),
+        ("JCF-2002", "Insp. Rayon Rodney", "Inspector of Police",
+         "FNID Headquarters - Area 3", "dco", 2),
+        ("JCF-2003", "Sgt. Robert Barrett", "Sergeant of Police",
+         "FNID Headquarters - Area 3", "ddi", 3),
+        ("JCF-2004", "Sgt. Danette McPherson", "Sergeant of Police",
+         "FNID Headquarters - Area 3", "station_mgr", 4),
+    ]
+    for badge, name, rank, section, role, tier in admins:
+        existing = conn.execute(
+            "SELECT badge_number FROM officers WHERE badge_number = ?", (badge,)
+        ).fetchone()
+        if not existing:
+            conn.execute("""
+                INSERT INTO officers (badge_number, full_name, rank, section, role,
+                    password_hash, unit_access, must_change_password, admin_tier,
+                    verification_status)
+                VALUES (?, ?, ?, ?, ?, ?, 'all', 1, ?, 'active')
+            """, (badge, name, rank, section, role, pw_hash, tier))
+            print(f"  Created admin: {badge} ({name}) - Tier {tier}")
 
 
 # ---------------------------------------------------------------------------

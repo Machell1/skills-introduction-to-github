@@ -31,6 +31,7 @@
     </div>
     <div class="card-body">
         <form method="post" action="{{ url_for('evidence.new_exhibit') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="form-section">
                 <h6 class="text-muted mb-3">Recovery Details</h6>
                 <div class="row g-3">

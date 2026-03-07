@@ -18,6 +18,7 @@
 </div>
 
 <form method="POST" class="needs-validation" novalidate>
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <!-- Basic Information -->
     <div class="card mb-4">
         <div class="card-header" style="background-color: #1F3864; color: #fff;">

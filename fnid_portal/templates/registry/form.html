@@ -32,6 +32,7 @@
 {% if subtype == 'sop' %}
 <!-- SOP CHECKLIST FORM -->
 <form method="POST" id="sop-checklist-form" class="needs-validation" novalidate>
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-section">
         <div class="form-section-title"><i class="bi bi-link-45deg me-2"></i>Case Reference</div>
         <div class="row">
@@ -96,6 +97,7 @@
 {% elif subtype == 'dpp' %}
 <!-- DPP PIPELINE FORM -->
 <form method="POST" class="needs-validation" novalidate>
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-section">
         <div class="form-section-title"><i class="bi bi-file-earmark-text me-2"></i>DPP File Details (Prosecution Protocol 2012)</div>
         <div class="row">
@@ -187,6 +189,7 @@
 {% else %}
 <!-- CASE REGISTRATION FORM (Main) -->
 <form method="POST" class="needs-validation" novalidate>
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-section">
         <div class="form-section-title"><i class="bi bi-folder2-open me-2"></i>Case Registration</div>
         <div class="row">

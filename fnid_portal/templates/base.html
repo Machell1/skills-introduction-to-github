@@ -107,6 +107,19 @@
                             {% endif %}
                         </ul>
                     </li>
+                    <!-- Member Features -->
+                    {% if current_user.is_authenticated %}
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
+                            <i class="bi bi-person-workspace"></i> Member
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-dark">
+                            <li><a class="dropdown-item" href="{{ url_for('documents.doc_list') }}"><i class="bi bi-file-earmark-text me-2"></i>Documents</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('kpis.my_kpis') }}"><i class="bi bi-graph-up me-2"></i>My KPIs</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('workflow.overview') }}"><i class="bi bi-diagram-3 me-2"></i>Workflow</a></li>
+                        </ul>
+                    </li>
+                    {% endif %}
                     <!-- Admin (role-restricted visibility) -->
                     {% if current_user.is_authenticated and current_user.role in ('admin', 'dco') %}
                     <li class="nav-item dropdown">
@@ -119,6 +132,10 @@
                             <li><a class="dropdown-item" href="{{ url_for('admin.settings') }}"><i class="bi bi-sliders me-2"></i>Settings</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('admin.backup') }}"><i class="bi bi-download me-2"></i>Backup</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('admin.audit_log') }}"><i class="bi bi-clock-history me-2"></i>Audit Log</a></li>
+                            {% if current_user.admin_tier is not none and current_user.admin_tier <= 1 %}
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.maintenance') }}"><i class="bi bi-wrench me-2"></i>Maintenance</a></li>
+                            {% endif %}
                         </ul>
                     </li>
                     {% endif %}

@@ -591,6 +591,7 @@
                 <i class="bi bi-person-plus me-2"></i>Assign Officer
             </div>
             <form method="POST" action="{{ url_for('cases.assign_case', case_id=case.case_id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="mb-2">
                     <label for="io_badge" class="form-label">Investigating Officer</label>
                     <select class="form-select form-select-sm" id="io_badge" name="io_badge" required>
@@ -635,6 +636,7 @@
 
             {% if valid_next %}
             <form method="POST" action="{{ url_for('cases.transition_case', case_id=case.case_id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="mb-2">
                     <label class="form-label">Current: <strong>{{ current_stage|replace('_', ' ')|title }}</strong></label>
                     <select class="form-select form-select-sm" name="target_stage" required>

@@ -114,6 +114,7 @@
           </div>
           <hr>
           <form method="post" action="{{ url_for('inv_cards.add_supervisor_note', id=card.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <label class="form-label"><strong>Add Supervisor Note</strong></label>
             <textarea name="supervisor_notes" class="form-control mb-2" rows="3"
                       placeholder="Enter supervisor review note..."></textarea>

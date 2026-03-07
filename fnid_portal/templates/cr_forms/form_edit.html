@@ -49,6 +49,7 @@
 
 <!-- Dynamic Form -->
 <form method="POST" id="cr-form" class="needs-validation" novalidate>
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {% for section in form_def.sections %}
     <div class="form-section">
         <div class="form-section-title">

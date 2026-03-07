@@ -581,4 +581,6 @@ if __name__ == "__main__":
     print(f"Database: {cfg.DB_PATH}")
     print(f"Starting server on http://127.0.0.1:5000")
     print("=" * 60)
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    import os as _os
+    _debug = _os.environ.get("FLASK_ENV", "development") == "development"
+    app.run(debug=_debug, host="127.0.0.1", port=5000)

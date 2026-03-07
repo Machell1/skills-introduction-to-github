@@ -15,14 +15,9 @@ def test_home_redirects_when_not_logged_in(client):
     assert "/login" in response.headers["Location"]
 
 
-def test_login_creates_session(client):
+def test_login_creates_session(logged_in_client):
     """Posting valid credentials should create a session and redirect."""
-    response = client.post("/login", data={
-        "badge_number": "TEST001",
-        "full_name": "Test Officer",
-        "rank": "Inspector of Police",
-        "section": "Intelligence Section",
-    }, follow_redirects=True)
+    response = logged_in_client.get("/")
     assert response.status_code == 200
     assert b"Test Officer" in response.data
 

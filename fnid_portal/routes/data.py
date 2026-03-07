@@ -41,12 +41,14 @@ def import_data():
             flash("Only .docx and .xlsx files are supported.", "danger")
             return redirect(url_for("data.import_data"))
 
+        from werkzeug.utils import secure_filename
         upload_dir = current_app.config.get("UPLOAD_DIR", "data/uploads")
         os.makedirs(upload_dir, exist_ok=True)
-        filepath = os.path.join(upload_dir, file.filename)
+        safe_name = secure_filename(file.filename)
+        filepath = os.path.join(upload_dir, safe_name)
         file.save(filepath)
 
-        flash(f"File '{file.filename}' uploaded successfully.", "info")
+        flash(f"File '{safe_name}' uploaded successfully.", "info")
         return redirect(url_for("data.import_data"))
 
     return render_template("import.html")

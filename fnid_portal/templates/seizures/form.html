@@ -26,6 +26,7 @@
 {% if subtype == 'narcotics' %}
 <!-- NARCOTICS SEIZURE FORM -->
 <form method="POST" class="needs-validation" novalidate>
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <!-- Seizure Details -->
     <div class="form-section">
         <div class="form-section-title"><i class="bi bi-capsule me-2"></i>Narcotics Seizure Details (per Dangerous Drugs Act)</div>
@@ -126,6 +127,7 @@
 {% else %}
 <!-- FIREARMS SEIZURE FORM -->
 <form method="POST" class="needs-validation" novalidate>
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <!-- Seizure Details -->
     <div class="form-section">
         <div class="form-section-title"><i class="bi bi-crosshair me-2"></i>Firearm Seizure Details (per Firearms Act 2022)</div>

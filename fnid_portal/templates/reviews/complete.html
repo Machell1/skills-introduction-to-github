@@ -46,6 +46,7 @@
     <div class="card-header"><h5 class="mb-0"><i class="bi bi-check-circle me-2"></i>Record Review Outcome</h5></div>
     <div class="card-body">
       <form method="post" action="{{ url_for('reviews.complete_review', id=review.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
         <div class="row g-3 mb-3">
           <div class="col-md-6">

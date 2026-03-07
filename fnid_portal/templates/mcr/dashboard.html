@@ -23,6 +23,7 @@
         <i class="bi bi-gear me-2"></i>Compile Report
     </div>
     <form method="POST" action="{{ url_for('mcr.compile') }}" class="row align-items-end g-3">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="col-md-4">
             <label for="report_date" class="form-label">Report Date</label>
             <input type="date" class="form-control" id="report_date" name="report_date"

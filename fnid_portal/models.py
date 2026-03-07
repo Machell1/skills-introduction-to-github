@@ -44,6 +44,8 @@ VALID_TABLES = frozenset({
     "mcr_entries", "alerts", "system_settings",
     "intel_targets", "transport_vehicles", "transport_trips",
     "user_sessions",
+    # Phase 5 additions
+    "member_documents", "member_kpis",
 })
 
 
@@ -79,6 +81,10 @@ def init_db():
         last_login TEXT,
         failed_attempts INTEGER DEFAULT 0,
         locked_until TEXT,
+        admin_tier INTEGER DEFAULT NULL,
+        verification_status TEXT DEFAULT 'active',
+        registered_at TEXT,
+        locked_at TEXT,
         created_at TEXT DEFAULT (datetime('now'))
     )""")
 
@@ -780,20 +786,54 @@ def init_db():
         user_agent TEXT
     )""")
 
+    # Phase 5: Member documents table
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS member_documents (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        original_filename TEXT NOT NULL,
+        stored_filename TEXT NOT NULL,
+        file_size INTEGER,
+        file_type TEXT,
+        category TEXT DEFAULT 'General',
+        description TEXT,
+        uploaded_by TEXT NOT NULL,
+        uploaded_at TEXT DEFAULT (datetime('now'))
+    )""")
+
+    # Phase 5: Member KPIs table
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS member_kpis (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        officer_badge TEXT NOT NULL,
+        period TEXT NOT NULL,
+        metric_name TEXT NOT NULL,
+        metric_value TEXT,
+        target_value TEXT,
+        notes TEXT,
+        entered_by TEXT NOT NULL,
+        entered_at TEXT DEFAULT (datetime('now'))
+    )""")
+
     conn.commit()
 
     # Insert default admin officer if none exist
     existing = c.execute("SELECT COUNT(*) FROM officers").fetchone()[0]
     if existing == 0:
+        import secrets
         from werkzeug.security import generate_password_hash
+        default_pw = secrets.token_urlsafe(16)
         c.execute("""
             INSERT INTO officers (badge_number, full_name, rank, section,
-                                  role, password_hash, unit_access)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                                  role, password_hash, unit_access,
+                                  must_change_password, admin_tier)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, ("ADMIN", "System Administrator", "Superintendent of Police",
               "FNID Headquarters - Area 3", "admin",
-              generate_password_hash("admin123"), "all"))
+              generate_password_hash(default_pw), "all", 1, 1))
         conn.commit()
+        print(f"[FNID] Default admin created. Badge: ADMIN / Password: {default_pw}")
+        print("[FNID] You MUST change this password on first login.")
 
     # Seed default system settings if empty
     settings_count = c.execute("SELECT COUNT(*) FROM system_settings").fetchone()[0]
@@ -842,8 +882,15 @@ def _seed_default_settings(cursor):
          "Parishes covered by this division"),
         ("session_timeout_hours", "8", "general",
          "User session timeout in hours"),
-        ("allow_legacy_login", "true", "general",
+        ("allow_legacy_login", "false", "general",
          "Allow badge-only login without password (for migration period)"),
+        # Data Protection Act 2020 compliance
+        ("data_retention_years", "7", "data_protection",
+         "Years to retain records before flagging for review"),
+        ("dsar_enabled", "true", "data_protection",
+         "Enable Data Subject Access Request tracking"),
+        ("bulk_export_requires_approval", "true", "data_protection",
+         "Require Tier1 approval for bulk data exports"),
     ]
     for key, value, category, description in defaults:
         cursor.execute("""

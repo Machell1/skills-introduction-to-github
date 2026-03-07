@@ -114,6 +114,7 @@
           </div>
           <hr>
           <form method="post" action="{{ url_for('correspondence.update_action', id=item.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <label class="form-label"><strong>Update Action Status</strong></label>
             <div class="input-group">
               <select name="action_status" class="form-select">

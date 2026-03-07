@@ -139,10 +139,15 @@ def download_form(form_type):
 @login_required
 def serve_form_upload(filename):
     """Serve uploaded form files from the forms directory."""
+    from werkzeug.utils import secure_filename as _secure
+    safe_name = _secure(filename)
+    if not safe_name:
+        from flask import abort
+        abort(400)
     forms_dir = os.path.join(current_app.config.get("UPLOAD_DIR", "data/uploads"), "forms")
     if not os.path.isdir(forms_dir):
         os.makedirs(forms_dir, exist_ok=True)
-    return send_from_directory(forms_dir, filename)
+    return send_from_directory(forms_dir, safe_name)
 
 
 def _generate_printable_form_html(form_type, form_def, form_name):

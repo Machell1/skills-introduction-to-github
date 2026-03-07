@@ -30,6 +30,7 @@
 <form method="POST"
       action="{% if is_new %}{{ url_for('transport.new_vehicle') }}{% else %}{{ url_for('transport.edit_vehicle', vehicle_id=vehicle.vehicle_id) }}{% endif %}"
       class="needs-validation" novalidate>
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
     <!-- Vehicle Identity -->
     <div class="form-section">

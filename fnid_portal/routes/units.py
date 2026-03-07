@@ -3,9 +3,11 @@
 from datetime import datetime
 
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
+from flask_login import current_user, login_required
 
 from ..constants import UNIT_PORTALS
 from ..models import VALID_TABLES, generate_id, get_db, get_table_columns, log_audit
+from ..rbac import permission_required
 from . import _cfg_module
 
 bp = Blueprint("units", __name__)
@@ -130,9 +132,9 @@ def _save_record(unit, subtype, is_new, record_id=None):
             log_audit(table, str(record_id), "UPDATE", officer_badge, officer_name)
             flash("Record updated successfully.", "success")
         conn.commit()
-    except Exception as e:
+    except Exception:
         conn.rollback()
-        flash(f"Error saving record: {str(e)}", "danger")
+        flash("An error occurred while saving. Please contact your administrator.", "danger")
     finally:
         conn.close()
 
@@ -140,6 +142,7 @@ def _save_record(unit, subtype, is_new, record_id=None):
 
 
 @bp.route("/unit/<unit>")
+@login_required
 def unit_home(unit):
     if unit not in UNIT_PORTALS:
         flash("Invalid unit.", "danger")
@@ -192,6 +195,7 @@ def unit_home(unit):
 
 
 @bp.route("/unit/<unit>/dashboard")
+@login_required
 def unit_dashboard(unit):
     if unit not in UNIT_PORTALS:
         return redirect(url_for("main.home"))
@@ -295,6 +299,7 @@ def unit_dashboard(unit):
 
 @bp.route("/unit/<unit>/new", methods=["GET", "POST"])
 @bp.route("/unit/<unit>/new/<subtype>", methods=["GET", "POST"])
+@login_required
 def new_record(unit, subtype=None):
     if unit not in UNIT_PORTALS:
         return redirect(url_for("main.home"))
@@ -311,6 +316,7 @@ def new_record(unit, subtype=None):
 
 @bp.route("/unit/<unit>/edit/<int:record_id>", methods=["GET", "POST"])
 @bp.route("/unit/<unit>/edit/<int:record_id>/<subtype>", methods=["GET", "POST"])
+@login_required
 def edit_record(unit, record_id, subtype=None):
     if unit not in UNIT_PORTALS:
         return redirect(url_for("main.home"))
