@@ -2,9 +2,13 @@
 
 import asyncio
 import logging
-from telegram import Bot
+from urllib.parse import quote
+from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
-from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHANNEL_ID
+from config import (
+    TELEGRAM_BOT_TOKEN, TELEGRAM_CHANNEL_ID,
+    TELEGRAM_CHANNEL_HANDLE, ADMIN_USER_IDS,
+)
 from url_safety import validate_deal, validate_product, sanitize_url
 
 logger = logging.getLogger("DealBot.Notifier")
@@ -76,7 +80,9 @@ def format_deal_message(product, old_price, new_price, drop_percent):
         f"\n"
         f'<a href="{buy_url}">🛒 Buy Now on {site}</a>\n'
         f"\n"
-        f"<i>Prices may change. Act fast!</i>"
+        f"<i>Prices may change. Act fast!</i>\n"
+        f"\n"
+        f"📢 Join {TELEGRAM_CHANNEL_HANDLE} for more deals!"
     )
 
     return message
@@ -145,13 +151,23 @@ def format_aggregator_deal(deal):
         message += f"👍 Score: {deal['score']}\n"
 
     message += f"\n<a href=\"{url}\">🛒 Get This Deal</a>\n"
-    message += f"\n<i>via {source}</i>"
+    message += f"\n<i>via {source}</i>\n"
+    message += f"\n📢 Join {TELEGRAM_CHANNEL_HANDLE} for more deals!"
 
     return message
 
 
-async def _send_message(text):
-    """Internal async send."""
+def _share_keyboard(url):
+    """Create an inline keyboard with a Share button for a deal URL."""
+    share_url = f"https://t.me/share/url?url={quote(url, safe='')}"
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("📤 Share This Deal", url=share_url)]
+    ])
+    return keyboard
+
+
+async def _send_message(text, reply_markup=None):
+    """Internal async send to channel."""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHANNEL_ID:
         print(f"[Notifier] Telegram not configured. Message:\n{text}\n")
         return False
@@ -163,6 +179,7 @@ async def _send_message(text):
             text=text,
             parse_mode=ParseMode.HTML,
             disable_web_page_preview=False,
+            reply_markup=reply_markup,
         )
         print(f"[Notifier] Alert sent to {TELEGRAM_CHANNEL_ID}")
         return True
@@ -171,12 +188,41 @@ async def _send_message(text):
         return False
 
 
+async def _send_admin_message(text):
+    """Send a status message to all admin users via DM."""
+    if not TELEGRAM_BOT_TOKEN or not ADMIN_USER_IDS:
+        print(f"[Notifier] Admin message (no admins configured): {text}")
+        return
+
+    bot = Bot(token=TELEGRAM_BOT_TOKEN)
+    for uid in ADMIN_USER_IDS:
+        try:
+            await bot.send_message(
+                chat_id=uid,
+                text=text,
+                parse_mode=ParseMode.HTML,
+            )
+        except Exception as e:
+            logger.warning("Failed to DM admin %s: %s", uid, e)
+
+
+def send_admin_message(text):
+    """Send a status message to all admins (sync wrapper)."""
+    try:
+        asyncio.run(_send_admin_message(text))
+    except RuntimeError:
+        # Event loop already running (called from async context)
+        pass
+
+
 def send_deal_alert(product, old_price, new_price, drop_percent):
     """Send a price drop alert to the Telegram channel. Blocks unsafe links."""
     message = format_deal_message(product, old_price, new_price, drop_percent)
     if not message:
         return False
-    return asyncio.run(_send_message(message))
+    url = product.get("affiliate_url") or product.get("url", "")
+    keyboard = _share_keyboard(url) if url else None
+    return asyncio.run(_send_message(message, reply_markup=keyboard))
 
 
 def send_tracking_notification(product):
@@ -192,7 +238,9 @@ def send_aggregator_deal(deal):
     message = format_aggregator_deal(deal)
     if not message:
         return False
-    return asyncio.run(_send_message(message))
+    url = deal.get("url", "")
+    keyboard = _share_keyboard(url) if url else None
+    return asyncio.run(_send_message(message, reply_markup=keyboard))
 
 
 def send_custom_message(text):

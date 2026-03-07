@@ -7,8 +7,8 @@ from database import (
     record_alert, get_product_count, get_site_counts,
     save_aggregator_deal,
 )
-from notifier import send_deal_alert, send_tracking_notification, send_aggregator_deal
-from config import MIN_DROP_PERCENT, MIN_DROP_DOLLARS
+from notifier import send_deal_alert, send_tracking_notification, send_aggregator_deal, send_admin_message
+from config import MIN_DROP_PERCENT, MIN_DROP_DOLLARS, TELEGRAM_CHANNEL_HANDLE
 
 
 def check_all_prices():
@@ -16,120 +16,157 @@ def check_all_prices():
     products = get_active_products()
     if not products:
         print("[Tracker] No products to track. Add some with: python main.py add <url>")
+        send_admin_message("📊 Price check: no products tracked yet.")
         return
 
     print(f"[Tracker] Checking prices for {len(products)} products...")
     deals_found = 0
 
-    for product in products:
-        pid = product["product_id"]
-        site = product.get("site", "amazon")
-        print(f"[{site.upper()}] {product['title'][:50]}... ", end="")
+    try:
+        for product in products:
+            pid = product["product_id"]
+            site = product.get("site", "amazon")
+            print(f"[{site.upper()}] {product['title'][:50]}... ", end="")
 
-        scraped = scrape_product(product["url"])
-        if not scraped or scraped.get("price") is None:
-            print("price unavailable")
-            continue
+            scraped = scrape_product(product["url"])
+            if not scraped or scraped.get("price") is None:
+                print("price unavailable")
+                continue
 
-        new_price = scraped["price"]
-        result = update_price(pid, new_price)
+            new_price = scraped["price"]
+            result = update_price(pid, new_price)
 
-        if result is None:
-            print("not in database")
-            continue
+            if result is None:
+                print("not in database")
+                continue
 
-        old_price = result[0]
+            old_price = result[0]
 
-        if old_price is None or old_price <= 0:
-            print(f"${new_price:.2f} (first price recorded)")
-            continue
+            if old_price is None or old_price <= 0:
+                print(f"${new_price:.2f} (first price recorded)")
+                continue
 
-        if new_price >= old_price:
-            print(f"${new_price:.2f} (no drop)")
-            continue
+            if new_price >= old_price:
+                print(f"${new_price:.2f} (no drop)")
+                continue
 
-        drop_dollars = old_price - new_price
-        drop_percent = (drop_dollars / old_price) * 100
+            drop_dollars = old_price - new_price
+            drop_percent = (drop_dollars / old_price) * 100
 
-        if drop_percent >= MIN_DROP_PERCENT and drop_dollars >= MIN_DROP_DOLLARS:
-            print(f"${new_price:.2f} DROP {drop_percent:.0f}%!")
-            alert_product = {**product, **scraped}
-            send_deal_alert(alert_product, old_price, new_price, drop_percent)
-            record_alert(pid, old_price, new_price, drop_percent)
-            deals_found += 1
-        else:
-            print(f"${new_price:.2f} (small drop: {drop_percent:.1f}%)")
+            if drop_percent >= MIN_DROP_PERCENT and drop_dollars >= MIN_DROP_DOLLARS:
+                print(f"${new_price:.2f} DROP {drop_percent:.0f}%!")
+                alert_product = {**product, **scraped}
+                send_deal_alert(alert_product, old_price, new_price, drop_percent)
+                record_alert(pid, old_price, new_price, drop_percent)
+                deals_found += 1
+            else:
+                print(f"${new_price:.2f} (small drop: {drop_percent:.1f}%)")
+    except Exception as e:
+        send_admin_message(f"⚠️ Price check error: {e}")
+        raise
 
     print(f"\n[Tracker] Done. {deals_found} deal(s) found from {len(products)} products.")
+    send_admin_message(
+        f"📊 <b>Price check complete</b>\n"
+        f"Products checked: {len(products)}\n"
+        f"Deals found: {deals_found}"
+    )
 
 
 def scan_deals():
     """Scan deal aggregators (Slickdeals, DealNews) for hot deals and send new ones."""
     print("[Tracker] Scanning deal aggregators for hot deals...")
-    deals = scrape_deal_aggregators()
-    new_deals = 0
+    try:
+        deals = scrape_deal_aggregators()
+        new_deals = 0
 
-    for deal in deals:
-        title = deal.get("title", "")
-        price = deal.get("price")
-        original_price = deal.get("original_price")
-        store = deal.get("store", "")
-        url = deal.get("url", "")
-        source = deal.get("site", "unknown")
+        for deal in deals:
+            title = deal.get("title", "")
+            price = deal.get("price")
+            original_price = deal.get("original_price")
+            store = deal.get("store", "")
+            url = deal.get("url", "")
+            source = deal.get("site", "unknown")
 
-        category = deal.get("category")
-        is_new = save_aggregator_deal(source, title, price, original_price, store, url, category)
-        if is_new and price:
-            send_aggregator_deal(deal)
-            new_deals += 1
+            category = deal.get("category")
+            is_new = save_aggregator_deal(source, title, price, original_price, store, url, category)
+            if is_new and price:
+                send_aggregator_deal(deal)
+                new_deals += 1
+    except Exception as e:
+        send_admin_message(f"⚠️ Deal scan error: {e}")
+        raise
 
     print(f"[Tracker] Aggregator scan done. {new_deals} new deal(s) sent, {len(deals)} total found.")
+    send_admin_message(
+        f"🔍 <b>Deal scan complete</b>\n"
+        f"Total found: {len(deals)}\n"
+        f"New deals posted: {new_deals}"
+    )
 
 
 def scan_all_deals():
     """Scan ALL sources (retailers + aggregators) for deals."""
     print("[Tracker] Full deal scan across all sites...")
-    deals = scrape_all_deals()
-    new_deals = 0
+    try:
+        deals = scrape_all_deals()
+        new_deals = 0
 
-    for deal in deals:
-        title = deal.get("title", "")
-        price = deal.get("price")
-        original_price = deal.get("original_price")
-        store = deal.get("store", deal.get("site", ""))
-        url = deal.get("url", "")
-        source = deal.get("site", "unknown")
+        for deal in deals:
+            title = deal.get("title", "")
+            price = deal.get("price")
+            original_price = deal.get("original_price")
+            store = deal.get("store", deal.get("site", ""))
+            url = deal.get("url", "")
+            source = deal.get("site", "unknown")
 
-        category = deal.get("category")
-        is_new = save_aggregator_deal(source, title, price, original_price, store, url, category)
-        if is_new and price:
-            send_aggregator_deal(deal)
-            new_deals += 1
+            category = deal.get("category")
+            is_new = save_aggregator_deal(source, title, price, original_price, store, url, category)
+            if is_new and price:
+                send_aggregator_deal(deal)
+                new_deals += 1
+    except Exception as e:
+        send_admin_message(f"⚠️ Full scan error: {e}")
+        raise
 
     print(f"[Tracker] Full scan done. {new_deals} new deal(s) sent, {len(deals)} total found.")
+    send_admin_message(
+        f"🔍 <b>Full scan complete</b>\n"
+        f"Total found: {len(deals)}\n"
+        f"New deals posted: {new_deals}"
+    )
 
 
 def scan_lifestyle():
     """Scan lifestyle deal sites (Groupon, Skyscanner, Expedia) for deals."""
     print("[Tracker] Scanning lifestyle deal sites (flights, gifts, events)...")
-    deals = scrape_lifestyle_deals()
-    new_deals = 0
+    try:
+        deals = scrape_lifestyle_deals()
+        new_deals = 0
 
-    for deal in deals:
-        title = deal.get("title", "")
-        price = deal.get("price")
-        original_price = deal.get("original_price")
-        store = deal.get("store", deal.get("site", ""))
-        url = deal.get("url", "")
-        source = deal.get("site", "unknown")
+        for deal in deals:
+            title = deal.get("title", "")
+            price = deal.get("price")
+            original_price = deal.get("original_price")
+            store = deal.get("store", deal.get("site", ""))
+            url = deal.get("url", "")
+            source = deal.get("site", "unknown")
 
-        category = deal.get("category")
-        is_new = save_aggregator_deal(source, title, price, original_price, store, url, category)
-        if is_new and (price or title):
-            send_aggregator_deal(deal)
-            new_deals += 1
+            category = deal.get("category")
+            is_new = save_aggregator_deal(source, title, price, original_price, store, url, category)
+            if is_new and (price or title):
+                send_aggregator_deal(deal)
+                new_deals += 1
+    except Exception as e:
+        send_admin_message(f"⚠️ Lifestyle scan error: {e}")
+        raise
 
     print(f"[Tracker] Lifestyle scan done. {new_deals} new deal(s) sent, {len(deals)} total found.")
+    send_admin_message(
+        f"✈️ <b>Lifestyle scan complete</b>\n"
+        f"Total found: {len(deals)}\n"
+        f"New deals posted: {new_deals}"
+    )
 
 
 def scan_category(category):
@@ -137,24 +174,33 @@ def scan_category(category):
     from scrapers import DEAL_CATEGORIES
     label = DEAL_CATEGORIES.get(category, category.title())
     print(f"[Tracker] Scanning {label} deals...")
-    deals = scrape_category_deals(category)
-    new_deals = 0
+    try:
+        deals = scrape_category_deals(category)
+        new_deals = 0
 
-    for deal in deals:
-        title = deal.get("title", "")
-        price = deal.get("price")
-        original_price = deal.get("original_price")
-        store = deal.get("store", deal.get("site", ""))
-        url = deal.get("url", "")
-        source = deal.get("site", "unknown")
+        for deal in deals:
+            title = deal.get("title", "")
+            price = deal.get("price")
+            original_price = deal.get("original_price")
+            store = deal.get("store", deal.get("site", ""))
+            url = deal.get("url", "")
+            source = deal.get("site", "unknown")
 
-        category = deal.get("category")
-        is_new = save_aggregator_deal(source, title, price, original_price, store, url, category)
-        if is_new and (price or title):
-            send_aggregator_deal(deal)
-            new_deals += 1
+            category = deal.get("category")
+            is_new = save_aggregator_deal(source, title, price, original_price, store, url, category)
+            if is_new and (price or title):
+                send_aggregator_deal(deal)
+                new_deals += 1
+    except Exception as e:
+        send_admin_message(f"⚠️ {label} scan error: {e}")
+        raise
 
     print(f"[Tracker] {label} scan done. {new_deals} new deal(s) sent, {len(deals)} total found.")
+    send_admin_message(
+        f"🏷️ <b>{label} scan complete</b>\n"
+        f"Total found: {len(deals)}\n"
+        f"New deals posted: {new_deals}"
+    )
     return new_deals
 
 
@@ -277,3 +323,30 @@ def get_status_text():
         lines.append(f"ID: <code>{p['product_id'][:15]}</code>")
 
     return "\n".join(lines)
+
+
+def generate_daily_summary():
+    """Generate and post a 'Top Deals of the Day' summary to the channel."""
+    from notifier import send_custom_message
+    from database import get_todays_deals
+
+    deals = get_todays_deals(limit=10)
+    if not deals:
+        send_admin_message("📋 Daily summary: no deals found today.")
+        return
+
+    lines = ["🏆 <b>Top Deals of the Day</b>\n"]
+    for i, deal in enumerate(deals, 1):
+        title = deal["title"][:60]
+        if deal.get("price") and deal.get("original_price") and deal["original_price"] > deal["price"]:
+            pct = ((deal["original_price"] - deal["price"]) / deal["original_price"]) * 100
+            lines.append(f"{i}. <b>{title}</b>\n   💰 ${deal['price']:.2f} ({pct:.0f}% off)")
+        elif deal.get("price"):
+            lines.append(f"{i}. <b>{title}</b>\n   💰 ${deal['price']:.2f}")
+        else:
+            lines.append(f"{i}. <b>{title}</b>")
+
+    lines.append(f"\n📢 Join {TELEGRAM_CHANNEL_HANDLE} for real-time alerts!")
+    message = "\n".join(lines)
+    send_custom_message(message)
+    send_admin_message(f"📋 Daily summary posted: {len(deals)} deals.")

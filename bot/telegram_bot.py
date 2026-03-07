@@ -21,6 +21,7 @@ Commands:
 """
 
 import asyncio
+import datetime
 import logging
 import functools
 from telegram import Update
@@ -29,12 +30,14 @@ from telegram.constants import ParseMode
 
 from config import (
     TELEGRAM_BOT_TOKEN, TELEGRAM_CHANNEL_ID,
-    CHECK_INTERVAL_MINUTES, ADMIN_USER_IDS,
+    TELEGRAM_CHANNEL_HANDLE, CHECK_INTERVAL_MINUTES, ADMIN_USER_IDS,
 )
-from database import init_db, remove_product
+from database import init_db, remove_product, record_referral
+from notifier import send_admin_message
 from tracker import (
     check_all_prices, add_new_product, scan_deals,
     scan_all_deals, scan_lifestyle, scan_category, get_status_text,
+    generate_daily_summary,
 )
 from url_safety import is_trusted_url
 
@@ -63,34 +66,49 @@ def admin_only(func):
 
 # --- Command Handlers ---
 
-@admin_only
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /start and show welcome message."""
+    """Handle /start — public for all users, with referral tracking."""
+    user = update.effective_user
+    if not user or not update.message:
+        return
+
+    # Record referral if deep link parameter provided (e.g. ?start=ref_12345)
+    if context.args:
+        ref_code = context.args[0]
+        record_referral(user.id, ref_code)
+
+    is_admin = not ADMIN_USER_IDS or user.id in ADMIN_USER_IDS
+
     text = (
         "<b>Deal Alert Bot</b>\n\n"
-        "I monitor product prices across multiple stores and send alerts "
-        "when prices drop.\n\n"
-        "<b>Commands:</b>\n"
-        "/add &lt;url&gt; - Track a product\n"
-        "/remove &lt;id&gt; - Stop tracking\n"
-        "/status - View tracked products\n"
-        "/check - Check prices now\n"
-        "/deals - Scan deal aggregators\n"
-        "/lifestyle - Flights, gifts, events, packages\n"
-        "/flights - Flight deals\n"
-        "/birthday - Birthday gift deals\n"
-        "/wedding - Wedding package deals\n"
-        "/babyshower - Baby shower deals\n"
-        "/party - Party deals\n"
-        "/holidays - Holiday packages\n"
-        "/sites - Supported sites\n"
-        "/help - Show this message\n\n"
-        f"Price checks run every {CHECK_INTERVAL_MINUTES} minutes automatically."
+        "I find the best deals across Amazon, Best Buy, Walmart, Target, "
+        "eBay, and more — and send instant alerts when prices drop!\n\n"
+        f"Join our channel {TELEGRAM_CHANNEL_HANDLE} for real-time deal alerts.\n"
     )
+
+    if is_admin:
+        text += (
+            "\n<b>Admin Commands:</b>\n"
+            "/add &lt;url&gt; - Track a product\n"
+            "/remove &lt;id&gt; - Stop tracking\n"
+            "/status - View tracked products\n"
+            "/check - Check prices now\n"
+            "/deals - Scan deal aggregators\n"
+            "/lifestyle - Flights, gifts, events, packages\n"
+            "/flights - Flight deals\n"
+            "/birthday - Birthday gift deals\n"
+            "/wedding - Wedding package deals\n"
+            "/babyshower - Baby shower deals\n"
+            "/party - Party deals\n"
+            "/holidays - Holiday packages\n"
+            "/sites - Supported sites\n"
+            "/help - Show this message\n\n"
+            f"Price checks run every {CHECK_INTERVAL_MINUTES} minutes automatically."
+        )
+
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
 
-@admin_only
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /help."""
     await start_command(update, context)
@@ -284,6 +302,14 @@ async def scheduled_lifestyle_scan(context: ContextTypes.DEFAULT_TYPE):
     logger.info("Scheduled lifestyle scan complete.")
 
 
+async def scheduled_daily_summary(context: ContextTypes.DEFAULT_TYPE):
+    """Scheduled job: post top deals of the day to the channel."""
+    logger.info("Generating daily summary...")
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, generate_daily_summary)
+    logger.info("Daily summary complete.")
+
+
 # --- Main ---
 
 def run_bot():
@@ -331,6 +357,10 @@ def run_bot():
         interval=CHECK_INTERVAL_MINUTES * 3 * 60,
         first=60,
     )
+    job_queue.run_daily(
+        scheduled_daily_summary,
+        time=datetime.time(hour=18, minute=0),
+    )
 
     logger.info(
         "Bot started. Prices every %d min, deals every %d min, lifestyle every %d min.",
@@ -338,6 +368,15 @@ def run_bot():
         CHECK_INTERVAL_MINUTES * 2,
         CHECK_INTERVAL_MINUTES * 3,
     )
+
+    send_admin_message(
+        f"🤖 <b>Deal Bot started</b>\n"
+        f"📊 Price checks: every {CHECK_INTERVAL_MINUTES} min\n"
+        f"🔍 Deal scans: every {CHECK_INTERVAL_MINUTES * 2} min\n"
+        f"✈️ Lifestyle scans: every {CHECK_INTERVAL_MINUTES * 3} min\n"
+        f"🏆 Daily summary: 6:00 PM UTC"
+    )
+
     app.run_polling(drop_pending_updates=True)
 
 

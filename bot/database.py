@@ -72,6 +72,15 @@ def init_db():
             )
         """)
 
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS referrals (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                referrer_code TEXT,
+                joined_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         # Migrate: add category column if missing
         try:
             cursor.execute("SELECT category FROM aggregator_deals LIMIT 1")
@@ -284,5 +293,47 @@ def remove_product(product_id):
         cursor = conn.cursor()
         cursor.execute("UPDATE products SET active = 0 WHERE product_id = ?", (product_id,))
         conn.commit()
+    finally:
+        conn.close()
+
+
+def record_referral(user_id, referrer_code):
+    """Record a referral when a user starts the bot via a deep link."""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        # Don't record duplicate referrals from the same user
+        cursor.execute("SELECT id FROM referrals WHERE user_id = ?", (user_id,))
+        if cursor.fetchone():
+            return False
+        cursor.execute(
+            "INSERT INTO referrals (user_id, referrer_code) VALUES (?, ?)",
+            (user_id, referrer_code),
+        )
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def get_todays_deals(limit=10):
+    """Get the best deals from the last 24 hours for the daily summary."""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT title, price, original_price, store, url, category
+            FROM aggregator_deals
+            WHERE found_at >= datetime('now', '-24 hours')
+            AND price IS NOT NULL
+            ORDER BY
+                CASE WHEN original_price > 0
+                     THEN (original_price - price) / original_price
+                     ELSE 0 END DESC,
+                price ASC
+            LIMIT ?
+        """, (limit,))
+        rows = cursor.fetchall()
+        return [dict(r) for r in rows]
     finally:
         conn.close()

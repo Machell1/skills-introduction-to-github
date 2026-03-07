@@ -8,6 +8,7 @@ load_dotenv()
 # Telegram
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID", "")
+TELEGRAM_CHANNEL_HANDLE = os.getenv("TELEGRAM_CHANNEL_HANDLE", "@dailydeals")
 
 # Admin user IDs (comma-separated Telegram user IDs allowed to control the bot)
 ADMIN_USER_IDS = [
