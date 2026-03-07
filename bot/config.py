@@ -29,6 +29,17 @@ GROUPON_AFFILIATE_TAG = os.getenv("GROUPON_AFFILIATE_TAG", "")
 SKYSCANNER_AFFILIATE_TAG = os.getenv("SKYSCANNER_AFFILIATE_TAG", "")
 EXPEDIA_AFFILIATE_TAG = os.getenv("EXPEDIA_AFFILIATE_TAG", "")
 
+# Revenue estimation defaults
+DEFAULT_CONVERSION_RATE = float(os.getenv("DEFAULT_CONVERSION_RATE", "0.02"))  # 2% of clicks buy
+DEFAULT_CTR = float(os.getenv("DEFAULT_CTR", "0.05"))  # 5% of viewers click (fallback)
+
+# Affiliate network API credentials
+IMPACT_ACCOUNT_SID = os.getenv("IMPACT_ACCOUNT_SID", "")
+IMPACT_AUTH_TOKEN = os.getenv("IMPACT_AUTH_TOKEN", "")
+CJ_DEVELOPER_KEY = os.getenv("CJ_DEVELOPER_KEY", "")
+CJ_WEBSITE_ID = os.getenv("CJ_WEBSITE_ID", "")
+EBAY_PARTNER_KEY = os.getenv("EBAY_PARTNER_KEY", "")
+
 # Scheduling
 CHECK_INTERVAL_MINUTES = int(os.getenv("CHECK_INTERVAL_MINUTES", "60"))
 

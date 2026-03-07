@@ -157,13 +157,14 @@ def format_aggregator_deal(deal):
     return message
 
 
-def _share_keyboard(url):
-    """Create an inline keyboard with a Share button for a deal URL."""
+def _deal_keyboard(url, deal_id=None):
+    """Create an inline keyboard with Buy and Share buttons for a deal."""
+    buttons = []
+    if deal_id is not None:
+        buttons.append([InlineKeyboardButton("🛒 Get This Deal", callback_data=f"buy:{deal_id}")])
     share_url = f"https://t.me/share/url?url={quote(url, safe='')}"
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("📤 Share This Deal", url=share_url)]
-    ])
-    return keyboard
+    buttons.append([InlineKeyboardButton("📤 Share This Deal", url=share_url)])
+    return InlineKeyboardMarkup(buttons)
 
 
 async def _send_message(text, reply_markup=None):
@@ -215,13 +216,13 @@ def send_admin_message(text):
         pass
 
 
-def send_deal_alert(product, old_price, new_price, drop_percent):
+def send_deal_alert(product, old_price, new_price, drop_percent, deal_id=None):
     """Send a price drop alert to the Telegram channel. Blocks unsafe links."""
     message = format_deal_message(product, old_price, new_price, drop_percent)
     if not message:
         return False
     url = product.get("affiliate_url") or product.get("url", "")
-    keyboard = _share_keyboard(url) if url else None
+    keyboard = _deal_keyboard(url, deal_id) if url else None
     return asyncio.run(_send_message(message, reply_markup=keyboard))
 
 
@@ -233,13 +234,13 @@ def send_tracking_notification(product):
     return asyncio.run(_send_message(message))
 
 
-def send_aggregator_deal(deal):
+def send_aggregator_deal(deal, deal_id=None):
     """Send a deal found by an aggregator. Blocks unsafe links."""
     message = format_aggregator_deal(deal)
     if not message:
         return False
     url = deal.get("url", "")
-    keyboard = _share_keyboard(url) if url else None
+    keyboard = _deal_keyboard(url, deal_id) if url else None
     return asyncio.run(_send_message(message, reply_markup=keyboard))
 
 

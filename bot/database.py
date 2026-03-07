@@ -139,6 +139,82 @@ def init_db():
             except sqlite3.OperationalError:
                 pass
 
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS click_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                deal_posted_id INTEGER,
+                user_id INTEGER,
+                clicked_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (deal_posted_id) REFERENCES deals_posted(id)
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS affiliate_actuals (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                network TEXT NOT NULL,
+                site TEXT NOT NULL,
+                action_date TEXT NOT NULL,
+                clicks INTEGER DEFAULT 0,
+                conversions INTEGER DEFAULT 0,
+                revenue REAL DEFAULT 0,
+                commission REAL DEFAULT 0,
+                fetched_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(network, site, action_date)
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS amazon_category_rates (
+                category TEXT PRIMARY KEY,
+                rate REAL NOT NULL
+            )
+        """)
+
+        # Seed Amazon category rates if empty
+        cursor.execute("SELECT COUNT(*) as cnt FROM amazon_category_rates")
+        if cursor.fetchone()["cnt"] == 0:
+            cat_rates = [
+                ("Electronics", 0.01),
+                ("Computers", 0.025),
+                ("Books", 0.045),
+                ("Kitchen", 0.045),
+                ("Automotive", 0.045),
+                ("Toys", 0.03),
+                ("Luxury Beauty", 0.10),
+                ("Beauty", 0.06),
+                ("Apparel", 0.04),
+                ("Shoes", 0.04),
+                ("Furniture", 0.03),
+                ("Home", 0.04),
+                ("Grocery", 0.01),
+                ("Health", 0.01),
+                ("Software", 0.05),
+                ("Video Games", 0.01),
+                ("default", 0.025),
+            ]
+            cursor.executemany(
+                "INSERT INTO amazon_category_rates (category, rate) VALUES (?, ?)",
+                cat_rates,
+            )
+
+        # Migrate: add category and message_id columns to deals_posted if missing
+        try:
+            cursor.execute("SELECT category FROM deals_posted LIMIT 1")
+        except sqlite3.OperationalError:
+            try:
+                cursor.execute("ALTER TABLE deals_posted ADD COLUMN category TEXT")
+            except sqlite3.OperationalError:
+                pass
+
+        try:
+            cursor.execute("SELECT message_id FROM deals_posted LIMIT 1")
+        except sqlite3.OperationalError:
+            try:
+                cursor.execute("ALTER TABLE deals_posted ADD COLUMN message_id TEXT")
+            except sqlite3.OperationalError:
+                pass
+
         # Migrate old 'asin' column if upgrading from v1
         try:
             cursor.execute("SELECT product_id FROM products LIMIT 1")
@@ -367,19 +443,21 @@ def record_referral(user_id, referrer_code):
 
 def log_deal_posted(site, title, sale_price, original_price, affiliate_url,
                     has_affiliate_tag, estimated_commission, deal_type="aggregator",
-                    product_id=None):
-    """Log a deal that was posted to the channel for earnings tracking."""
+                    product_id=None, category=None):
+    """Log a deal that was posted to the channel for earnings tracking. Returns the row ID."""
     conn = get_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO deals_posted
             (site, title, sale_price, original_price, affiliate_url,
-             has_affiliate_tag, estimated_commission, deal_type, product_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+             has_affiliate_tag, estimated_commission, deal_type, product_id, category)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (site, title, sale_price, original_price, affiliate_url,
-              1 if has_affiliate_tag else 0, estimated_commission, deal_type, product_id))
+              1 if has_affiliate_tag else 0, estimated_commission, deal_type,
+              product_id, category))
         conn.commit()
+        return cursor.lastrowid
     finally:
         conn.close()
 
@@ -439,6 +517,172 @@ def get_earnings_total(days=None):
             """)
         row = cursor.fetchone()
         return dict(row)
+    finally:
+        conn.close()
+
+
+def log_click(deal_posted_id, user_id):
+    """Log a click event when a user clicks a deal button."""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO click_events (deal_posted_id, user_id) VALUES (?, ?)",
+            (deal_posted_id, user_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_deal_by_id(deal_id):
+    """Look up a deals_posted row by ID."""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM deals_posted WHERE id = ?", (deal_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def get_click_counts(days=1):
+    """Get click counts grouped by site for the last N days."""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT dp.site, COUNT(ce.id) as click_count
+            FROM click_events ce
+            JOIN deals_posted dp ON ce.deal_posted_id = dp.id
+            WHERE ce.clicked_at >= datetime('now', ? || ' days')
+            GROUP BY dp.site
+            ORDER BY click_count DESC
+        """, (f"-{days}",))
+        rows = cursor.fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_top_deals_by_clicks(days=1, limit=5):
+    """Get the deals with the most clicks in the given period."""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT dp.title, dp.site, dp.sale_price, COUNT(ce.id) as click_count
+            FROM click_events ce
+            JOIN deals_posted dp ON ce.deal_posted_id = dp.id
+            WHERE ce.clicked_at >= datetime('now', ? || ' days')
+            GROUP BY ce.deal_posted_id
+            ORDER BY click_count DESC
+            LIMIT ?
+        """, (f"-{days}", limit))
+        rows = cursor.fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_earnings_comparison(days=1):
+    """Compare earnings between current period and previous period for trends."""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        # Current period
+        cursor.execute("""
+            SELECT COALESCE(SUM(estimated_commission), 0) as current_total
+            FROM deals_posted
+            WHERE posted_at >= datetime('now', ? || ' days')
+        """, (f"-{days}",))
+        current = cursor.fetchone()["current_total"]
+
+        # Previous period (same length, immediately before)
+        cursor.execute("""
+            SELECT COALESCE(SUM(estimated_commission), 0) as previous_total
+            FROM deals_posted
+            WHERE posted_at >= datetime('now', ? || ' days')
+            AND posted_at < datetime('now', ? || ' days')
+        """, (f"-{days * 2}", f"-{days}"))
+        previous = cursor.fetchone()["previous_total"]
+
+        return {"current_total": current, "previous_total": previous}
+    finally:
+        conn.close()
+
+
+def get_amazon_category_rate(category):
+    """Get Amazon commission rate for a specific product category."""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT rate FROM amazon_category_rates WHERE category = ?",
+            (category,),
+        )
+        row = cursor.fetchone()
+        if row:
+            return row["rate"]
+        # Try case-insensitive partial match
+        cursor.execute(
+            "SELECT rate FROM amazon_category_rates WHERE ? LIKE '%' || category || '%' ORDER BY LENGTH(category) DESC LIMIT 1",
+            (category,),
+        )
+        row = cursor.fetchone()
+        if row:
+            return row["rate"]
+        # Fall back to default
+        cursor.execute(
+            "SELECT rate FROM amazon_category_rates WHERE category = 'default'",
+        )
+        row = cursor.fetchone()
+        return row["rate"] if row else None
+    finally:
+        conn.close()
+
+
+def upsert_affiliate_actual(network, site, action_date, clicks=0,
+                            conversions=0, revenue=0.0, commission=0.0):
+    """Insert or update actual affiliate data from network APIs."""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO affiliate_actuals
+            (network, site, action_date, clicks, conversions, revenue, commission)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(network, site, action_date) DO UPDATE SET
+                clicks = excluded.clicks,
+                conversions = excluded.conversions,
+                revenue = excluded.revenue,
+                commission = excluded.commission,
+                fetched_at = CURRENT_TIMESTAMP
+        """, (network, site, action_date, clicks, conversions, revenue, commission))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_actuals_summary(days=1):
+    """Get actual affiliate revenue grouped by site for the last N days."""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT site,
+                   SUM(clicks) as clicks,
+                   SUM(conversions) as conversions,
+                   SUM(revenue) as revenue,
+                   SUM(commission) as commission
+            FROM affiliate_actuals
+            WHERE action_date >= date('now', ? || ' days')
+            GROUP BY site
+            ORDER BY commission DESC
+        """, (f"-{days}",))
+        rows = cursor.fetchall()
+        return [dict(r) for r in rows]
     finally:
         conn.close()
 

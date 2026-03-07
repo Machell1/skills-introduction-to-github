@@ -16,12 +16,13 @@ logger = logging.getLogger("DealBot.Tracker")
 
 
 def _log_posted_deal(deal, source, deal_type="aggregator", product_id=None):
-    """Log a posted deal for earnings tracking. Never blocks deal sending."""
+    """Log a posted deal for earnings tracking. Returns the deal_posted ID or None."""
     try:
         site_name = deal.get("site", source)
         price_val = deal.get("price") or 0
-        est, has_tag = estimate_commission(site_name, price_val)
-        log_deal_posted(
+        category = deal.get("category")
+        est, has_tag = estimate_commission(site_name, price_val, category=category)
+        return log_deal_posted(
             site=site_name,
             title=(deal.get("title") or "")[:200],
             sale_price=price_val,
@@ -31,9 +32,11 @@ def _log_posted_deal(deal, source, deal_type="aggregator", product_id=None):
             estimated_commission=est,
             deal_type=deal_type,
             product_id=product_id,
+            category=category,
         )
     except Exception as e:
         logger.warning("Failed to log deal for earnings: %s", e)
+        return None
 
 
 def check_all_prices():
@@ -81,9 +84,9 @@ def check_all_prices():
             if drop_percent >= MIN_DROP_PERCENT and drop_dollars >= MIN_DROP_DOLLARS:
                 print(f"${new_price:.2f} DROP {drop_percent:.0f}%!")
                 alert_product = {**product, **scraped}
-                send_deal_alert(alert_product, old_price, new_price, drop_percent)
+                deal_id = _log_posted_deal(alert_product, site, "price_drop", pid)
+                send_deal_alert(alert_product, old_price, new_price, drop_percent, deal_id=deal_id)
                 record_alert(pid, old_price, new_price, drop_percent)
-                _log_posted_deal(alert_product, site, "price_drop", pid)
                 deals_found += 1
             else:
                 print(f"${new_price:.2f} (small drop: {drop_percent:.1f}%)")
@@ -117,8 +120,8 @@ def scan_deals():
             category = deal.get("category")
             is_new = save_aggregator_deal(source, title, price, original_price, store, url, category)
             if is_new and price:
-                send_aggregator_deal(deal)
-                _log_posted_deal(deal, source)
+                deal_id = _log_posted_deal(deal, source)
+                send_aggregator_deal(deal, deal_id=deal_id)
                 new_deals += 1
     except Exception as e:
         send_admin_message(f"⚠️ Deal scan error: {e}")
@@ -150,7 +153,8 @@ def scan_all_deals():
             category = deal.get("category")
             is_new = save_aggregator_deal(source, title, price, original_price, store, url, category)
             if is_new and price:
-                send_aggregator_deal(deal)
+                deal_id = _log_posted_deal(deal, source)
+                send_aggregator_deal(deal, deal_id=deal_id)
                 new_deals += 1
     except Exception as e:
         send_admin_message(f"⚠️ Full scan error: {e}")
@@ -182,8 +186,8 @@ def scan_lifestyle():
             category = deal.get("category")
             is_new = save_aggregator_deal(source, title, price, original_price, store, url, category)
             if is_new and (price or title):
-                send_aggregator_deal(deal)
-                _log_posted_deal(deal, source)
+                deal_id = _log_posted_deal(deal, source)
+                send_aggregator_deal(deal, deal_id=deal_id)
                 new_deals += 1
     except Exception as e:
         send_admin_message(f"⚠️ Lifestyle scan error: {e}")
@@ -217,8 +221,8 @@ def scan_category(category):
             category = deal.get("category")
             is_new = save_aggregator_deal(source, title, price, original_price, store, url, category)
             if is_new and (price or title):
-                send_aggregator_deal(deal)
-                _log_posted_deal(deal, source)
+                deal_id = _log_posted_deal(deal, source)
+                send_aggregator_deal(deal, deal_id=deal_id)
                 new_deals += 1
     except Exception as e:
         send_admin_message(f"⚠️ {label} scan error: {e}")

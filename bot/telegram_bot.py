@@ -19,6 +19,7 @@ Commands:
     /holidays        - Holiday/vacation packages
     /sites           - List supported sites
     /earnings [days] - View estimated affiliate revenue
+    /revenue [days]  - View actual + estimated revenue
 """
 
 import asyncio
@@ -26,21 +27,21 @@ import datetime
 import logging
 import functools
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 from telegram.constants import ParseMode
 
 from config import (
     TELEGRAM_BOT_TOKEN, TELEGRAM_CHANNEL_ID,
     TELEGRAM_CHANNEL_HANDLE, CHECK_INTERVAL_MINUTES, ADMIN_USER_IDS,
 )
-from database import init_db, remove_product, record_referral
+from database import init_db, remove_product, record_referral, log_click, get_deal_by_id
 from notifier import send_admin_message
 from tracker import (
     check_all_prices, add_new_product, scan_deals,
     scan_all_deals, scan_lifestyle, scan_category, get_status_text,
     generate_daily_summary,
 )
-from earnings import format_earnings_report
+from earnings import format_earnings_report, format_revenue_report
 from url_safety import is_trusted_url
 
 logging.basicConfig(
@@ -105,6 +106,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "/holidays - Holiday packages\n"
             "/sites - Supported sites\n"
             "/earnings - Estimated revenue\n"
+            "/revenue - Actual + estimated revenue\n"
             "/help - Show this message\n\n"
             f"Price checks run every {CHECK_INTERVAL_MINUTES} minutes automatically."
         )
@@ -294,6 +296,44 @@ async def earnings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(report, parse_mode=ParseMode.HTML)
 
 
+@admin_only
+async def revenue_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /revenue [days] - show actual + estimated revenue combined."""
+    days = 7
+    if context.args:
+        try:
+            days = max(1, int(context.args[0]))
+        except ValueError:
+            pass
+
+    loop = asyncio.get_event_loop()
+    report = await loop.run_in_executor(None, format_revenue_report, days)
+    await update.message.reply_text(report, parse_mode=ParseMode.HTML)
+
+
+async def buy_button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle 'Get This Deal' button clicks — log the click and send the affiliate URL."""
+    query = update.callback_query
+    await query.answer()
+
+    try:
+        deal_id = int(query.data.split(":")[1])
+    except (IndexError, ValueError):
+        return
+
+    log_click(deal_id, query.from_user.id)
+
+    deal = get_deal_by_id(deal_id)
+    if deal and deal.get("affiliate_url"):
+        from url_safety import sanitize_url
+        safe_url = sanitize_url(deal["affiliate_url"])
+        if safe_url:
+            await query.message.reply_text(
+                f'<a href="{safe_url}">Click here to buy</a>',
+                parse_mode=ParseMode.HTML,
+            )
+
+
 # --- Scheduled Jobs ---
 
 async def scheduled_price_check(context: ContextTypes.DEFAULT_TYPE):
@@ -346,6 +386,18 @@ async def scheduled_weekly_report(context: ContextTypes.DEFAULT_TYPE):
     logger.info("Weekly earnings report sent.")
 
 
+async def scheduled_api_poll(context: ContextTypes.DEFAULT_TYPE):
+    """Scheduled job: poll affiliate network APIs for real revenue data."""
+    logger.info("Polling affiliate network APIs...")
+    try:
+        from affiliate_api import poll_all_networks
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, poll_all_networks, 2)
+        logger.info("Affiliate API polling complete.")
+    except Exception as e:
+        logger.warning("Affiliate API polling failed: %s", e)
+
+
 # --- Main ---
 
 def run_bot():
@@ -376,6 +428,8 @@ def run_bot():
     app.add_handler(CommandHandler("holidays", holidays_command))
     app.add_handler(CommandHandler("sites", sites_command))
     app.add_handler(CommandHandler("earnings", earnings_command))
+    app.add_handler(CommandHandler("revenue", revenue_command))
+    app.add_handler(CallbackQueryHandler(buy_button_callback, pattern=r"^buy:"))
 
     # Register scheduled jobs
     job_queue = app.job_queue
@@ -406,6 +460,10 @@ def run_bot():
         scheduled_weekly_report,
         time=datetime.time(hour=10, minute=0),
         days=(0,),  # Monday only
+    )
+    job_queue.run_daily(
+        scheduled_api_poll,
+        time=datetime.time(hour=8, minute=0),
     )
 
     logger.info(

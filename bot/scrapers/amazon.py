@@ -91,6 +91,19 @@ class AmazonScraper(BaseScraper):
                 image_url = img_el["src"]
                 break
 
+        # Category (from breadcrumb navigation)
+        category = None
+        breadcrumb = soup.find("div", {"id": "wayfinding-breadcrumbs_container"})
+        if breadcrumb:
+            crumbs = breadcrumb.find_all("a")
+            if crumbs:
+                category = crumbs[0].get_text(strip=True)
+        if not category:
+            # Fallback: try the department nav
+            dept = soup.find("a", {"id": "nav-subnav"})
+            if dept:
+                category = dept.get_text(strip=True)
+
         return {
             "product_id": asin,
             "title": title[:200],
@@ -99,6 +112,7 @@ class AmazonScraper(BaseScraper):
             "url": url,
             "affiliate_url": self.build_affiliate_url(asin),
             "site": "amazon",
+            "category": category,
         }
 
     def scrape_deals(self):
