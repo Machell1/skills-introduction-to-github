@@ -14,11 +14,17 @@
     <!-- Top Navigation -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-fnid-navy sticky-top">
         <div class="container-fluid">
-            <a class="navbar-brand d-flex align-items-center" href="{{ url_for('main.home') }}">
+            <a class="navbar-brand d-flex align-items-center" href="{{ url_for('units.unit_home', unit=user_single_unit) if user_single_unit else url_for('main.home') }}">
                 <i class="bi bi-shield-shaded me-2 fs-4"></i>
                 <div>
                     <span class="fw-bold">FNID</span>
+                    {% if user_single_unit %}
+                    <small class="d-none d-md-inline ms-2">
+                        <span class="badge bg-fnid-gold text-dark"><i class="bi {{ portals[user_single_unit].icon }} me-1"></i>{{ portals[user_single_unit].name }}</span>
+                    </small>
+                    {% else %}
                     <small class="d-none d-md-inline text-white-50 ms-2">Area 3 Case Management</small>
+                    {% endif %}
                 </div>
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav">
@@ -50,6 +56,18 @@
                         </ul>
                     </li>
                     <!-- Unit Portals -->
+                    {% if user_single_unit %}
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
+                            <i class="bi {{ portals[user_single_unit].icon }}"></i> My Unit
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-dark">
+                            <li><a class="dropdown-item" href="{{ url_for('units.unit_home', unit=user_single_unit) }}"><i class="bi bi-house me-2"></i>Unit Home</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('units.unit_dashboard', unit=user_single_unit) }}"><i class="bi bi-speedometer2 me-2"></i>Unit Dashboard</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('units.new_record', unit=user_single_unit) }}"><i class="bi bi-plus-circle me-2"></i>New Record</a></li>
+                        </ul>
+                    </li>
+                    {% else %}
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
                             <i class="bi bi-grid-3x3-gap"></i> Portals
@@ -71,6 +89,7 @@
                             <li><a class="dropdown-item" href="{{ url_for('targets.target_list') }}"><i class="bi bi-crosshair me-2"></i>Intel Targets</a></li>
                         </ul>
                     </li>
+                    {% endif %}
                     <!-- Policy & Forms -->
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">

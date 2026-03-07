@@ -6,9 +6,19 @@ from flask import Blueprint, flash, redirect, render_template, request, session,
 from flask_login import current_user, login_required
 
 from ..constants import UNIT_PORTALS
+from ..deadlines import get_alerts_for_user
 from ..models import VALID_TABLES, generate_id, get_db, get_table_columns, log_audit
 from ..rbac import permission_required
 from . import _cfg_module
+
+
+def _check_unit_access(unit):
+    """Return True if current_user may access this unit, else flash and return False."""
+    user_units = current_user.get_assigned_units()
+    if unit not in user_units:
+        flash("You do not have access to this unit.", "danger")
+        return False
+    return True
 
 bp = Blueprint("units", __name__)
 
@@ -147,8 +157,21 @@ def unit_home(unit):
     if unit not in UNIT_PORTALS:
         flash("Invalid unit.", "danger")
         return redirect(url_for("main.home"))
+    if not _check_unit_access(unit):
+        return redirect(url_for("main.home"))
     session["unit"] = unit
     portal = UNIT_PORTALS[unit]
+
+    # Fetch alerts for single-unit users (they skip the home page)
+    alerts = []
+    is_unit_workspace = current_user.get_single_unit() == unit
+    if is_unit_workspace:
+        try:
+            badge = getattr(current_user, "badge_number", None)
+            role = getattr(current_user, "role", "viewer")
+            alerts = get_alerts_for_user(badge=badge, role=role)
+        except Exception:
+            pass
 
     conn = get_db()
     data = {}
@@ -191,13 +214,16 @@ def unit_home(unit):
         ).fetchall()
 
     conn.close()
-    return render_template(f"{unit}/home.html", portal=portal, data=data, unit=unit)
+    return render_template(f"{unit}/home.html", portal=portal, data=data, unit=unit,
+                           alerts=alerts, is_unit_workspace=is_unit_workspace)
 
 
 @bp.route("/unit/<unit>/dashboard")
 @login_required
 def unit_dashboard(unit):
     if unit not in UNIT_PORTALS:
+        return redirect(url_for("main.home"))
+    if not _check_unit_access(unit):
         return redirect(url_for("main.home"))
 
     conn = get_db()
@@ -303,6 +329,8 @@ def unit_dashboard(unit):
 def new_record(unit, subtype=None):
     if unit not in UNIT_PORTALS:
         return redirect(url_for("main.home"))
+    if not _check_unit_access(unit):
+        return redirect(url_for("main.home"))
 
     if request.method == "POST":
         return _save_record(unit, subtype, is_new=True)
@@ -319,6 +347,8 @@ def new_record(unit, subtype=None):
 @login_required
 def edit_record(unit, record_id, subtype=None):
     if unit not in UNIT_PORTALS:
+        return redirect(url_for("main.home"))
+    if not _check_unit_access(unit):
         return redirect(url_for("main.home"))
 
     conn = get_db()

@@ -119,12 +119,16 @@ def create_app(config_name=None):
     @app.context_processor
     def inject_globals():
         from flask_login import current_user as _cu
+        single_unit = None
+        if _cu.is_authenticated and hasattr(_cu, "get_single_unit"):
+            single_unit = _cu.get_single_unit()
         return {
             "portals": UNIT_PORTALS,
             "now": datetime.now(),
             "roles": ROLES,
             "can_access": can_access,
             "current_user": _cu,
+            "user_single_unit": single_unit,
         }
 
     # Register blueprints — existing

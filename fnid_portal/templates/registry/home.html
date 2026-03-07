@@ -8,12 +8,14 @@
             <i class="bi bi-journal-check me-2" style="color: {{ portal.color }};"></i>
             Case Registry & SOP Compliance
         </h4>
+        {% if not is_unit_workspace %}
         <nav aria-label="breadcrumb">
             <ol class="breadcrumb mb-0">
                 <li class="breadcrumb-item"><a href="{{ url_for('main.home') }}">Portal</a></li>
                 <li class="breadcrumb-item active">Registry</li>
             </ol>
         </nav>
+        {% endif %}
     </div>
     <div class="d-flex gap-2">
         <a href="{{ url_for('units.new_record', unit='registry', subtype='cases') }}" class="btn btn-primary btn-sm">
@@ -27,6 +29,8 @@
         </a>
     </div>
 </div>
+
+{% include "_unit_workspace_header.html" %}
 
 <!-- KPI Cards -->
 <div class="row g-3 mb-4">

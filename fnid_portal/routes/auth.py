@@ -129,6 +129,10 @@ def login():
                     flash("You must change your password.", "warning")
                     return redirect(url_for("auth.change_password"))
 
+                # Single-unit users go directly to their unit
+                single_unit = user.get_single_unit()
+                if single_unit:
+                    return redirect(url_for("units.unit_home", unit=single_unit))
                 return redirect(url_for("main.home"))
             else:
                 # Auto-account creation removed for security

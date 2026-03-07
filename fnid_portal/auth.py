@@ -102,6 +102,26 @@ class User(UserMixin):
             locked_at=row["locked_at"] if "locked_at" in keys else None,
         )
 
+    def get_assigned_units(self):
+        """Return list of unit keys this user can access."""
+        from .constants import UNIT_PORTALS
+        if not self.unit_access or self.unit_access == "all":
+            return list(UNIT_PORTALS.keys())
+        units = [u.strip() for u in self.unit_access.split(",") if u.strip()]
+        return [u for u in units if u in UNIT_PORTALS]
+
+    def get_single_unit(self):
+        """Return unit key if user has exactly one assigned unit and is non-supervisory, else None."""
+        SUPERVISOR_ROLES = {"admin", "dco", "ddi", "station_mgr"}
+        if self.role in SUPERVISOR_ROLES:
+            return None
+        if not self.unit_access or self.unit_access == "all":
+            return None
+        units = self.get_assigned_units()
+        if len(units) == 1:
+            return units[0]
+        return None
+
     def check_password(self, password):
         """Verify password against stored hash."""
         if not self.password_hash:

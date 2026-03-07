@@ -1,6 +1,6 @@
 """Main routes: home page, command dashboard, and alerts."""
 
-from flask import Blueprint, render_template
+from flask import Blueprint, redirect, render_template, url_for
 from flask_login import current_user, login_required
 
 from ..constants import UNIT_PORTALS
@@ -13,6 +13,11 @@ bp = Blueprint("main", __name__)
 @bp.route("/")
 @login_required
 def home():
+    # Redirect single-unit basic users directly to their unit
+    single_unit = current_user.get_single_unit()
+    if single_unit:
+        return redirect(url_for("units.unit_home", unit=single_unit))
+
     conn = get_db()
     stats = {}
     table_map = {
@@ -23,7 +28,12 @@ def home():
         "forensics": "chain_of_custody",
         "registry": "cases",
     }
-    for unit_key in UNIT_PORTALS:
+
+    # Filter visible portals for multi-unit (non-"all") users
+    user_units = current_user.get_assigned_units()
+    visible_portals = {k: v for k, v in UNIT_PORTALS.items() if k in user_units}
+
+    for unit_key in visible_portals:
         table = table_map.get(unit_key, "cases")
         count = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
         stats[unit_key] = count
@@ -43,7 +53,8 @@ def home():
     """).fetchall()
 
     conn.close()
-    return render_template("home.html", stats=stats, alerts=alerts, recent=recent)
+    return render_template("home.html", stats=stats, alerts=alerts, recent=recent,
+                           visible_portals=visible_portals)
 
 
 @bp.route("/command")
