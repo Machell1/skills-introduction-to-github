@@ -2,13 +2,38 @@
 
 from scraper import scrape_product, scrape_deal_aggregators, scrape_all_deals, scrape_lifestyle_deals, scrape_category_deals
 from scrapers import get_scraper_for_url, detect_site
+import logging
 from database import (
     get_active_products, update_price, add_product,
     record_alert, get_product_count, get_site_counts,
-    save_aggregator_deal,
+    save_aggregator_deal, log_deal_posted,
 )
 from notifier import send_deal_alert, send_tracking_notification, send_aggregator_deal, send_admin_message
 from config import MIN_DROP_PERCENT, MIN_DROP_DOLLARS, TELEGRAM_CHANNEL_HANDLE
+from earnings import estimate_commission
+
+logger = logging.getLogger("DealBot.Tracker")
+
+
+def _log_posted_deal(deal, source, deal_type="aggregator", product_id=None):
+    """Log a posted deal for earnings tracking. Never blocks deal sending."""
+    try:
+        site_name = deal.get("site", source)
+        price_val = deal.get("price") or 0
+        est, has_tag = estimate_commission(site_name, price_val)
+        log_deal_posted(
+            site=site_name,
+            title=(deal.get("title") or "")[:200],
+            sale_price=price_val,
+            original_price=deal.get("original_price"),
+            affiliate_url=deal.get("affiliate_url") or deal.get("url", ""),
+            has_affiliate_tag=has_tag,
+            estimated_commission=est,
+            deal_type=deal_type,
+            product_id=product_id,
+        )
+    except Exception as e:
+        logger.warning("Failed to log deal for earnings: %s", e)
 
 
 def check_all_prices():
@@ -58,6 +83,7 @@ def check_all_prices():
                 alert_product = {**product, **scraped}
                 send_deal_alert(alert_product, old_price, new_price, drop_percent)
                 record_alert(pid, old_price, new_price, drop_percent)
+                _log_posted_deal(alert_product, site, "price_drop", pid)
                 deals_found += 1
             else:
                 print(f"${new_price:.2f} (small drop: {drop_percent:.1f}%)")
@@ -92,6 +118,7 @@ def scan_deals():
             is_new = save_aggregator_deal(source, title, price, original_price, store, url, category)
             if is_new and price:
                 send_aggregator_deal(deal)
+                _log_posted_deal(deal, source)
                 new_deals += 1
     except Exception as e:
         send_admin_message(f"⚠️ Deal scan error: {e}")
@@ -156,6 +183,7 @@ def scan_lifestyle():
             is_new = save_aggregator_deal(source, title, price, original_price, store, url, category)
             if is_new and (price or title):
                 send_aggregator_deal(deal)
+                _log_posted_deal(deal, source)
                 new_deals += 1
     except Exception as e:
         send_admin_message(f"⚠️ Lifestyle scan error: {e}")
@@ -190,6 +218,7 @@ def scan_category(category):
             is_new = save_aggregator_deal(source, title, price, original_price, store, url, category)
             if is_new and (price or title):
                 send_aggregator_deal(deal)
+                _log_posted_deal(deal, source)
                 new_deals += 1
     except Exception as e:
         send_admin_message(f"⚠️ {label} scan error: {e}")

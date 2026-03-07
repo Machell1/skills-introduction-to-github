@@ -18,6 +18,7 @@ Commands:
     /party           - Party deals
     /holidays        - Holiday/vacation packages
     /sites           - List supported sites
+    /earnings [days] - View estimated affiliate revenue
 """
 
 import asyncio
@@ -39,6 +40,7 @@ from tracker import (
     scan_all_deals, scan_lifestyle, scan_category, get_status_text,
     generate_daily_summary,
 )
+from earnings import format_earnings_report
 from url_safety import is_trusted_url
 
 logging.basicConfig(
@@ -102,6 +104,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "/party - Party deals\n"
             "/holidays - Holiday packages\n"
             "/sites - Supported sites\n"
+            "/earnings - Estimated revenue\n"
             "/help - Show this message\n\n"
             f"Price checks run every {CHECK_INTERVAL_MINUTES} minutes automatically."
         )
@@ -276,6 +279,21 @@ async def sites_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
 
+@admin_only
+async def earnings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /earnings [days] - show estimated affiliate revenue."""
+    days = 1
+    if context.args:
+        try:
+            days = max(1, int(context.args[0]))
+        except ValueError:
+            pass
+
+    loop = asyncio.get_event_loop()
+    report = await loop.run_in_executor(None, format_earnings_report, days)
+    await update.message.reply_text(report, parse_mode=ParseMode.HTML)
+
+
 # --- Scheduled Jobs ---
 
 async def scheduled_price_check(context: ContextTypes.DEFAULT_TYPE):
@@ -310,6 +328,24 @@ async def scheduled_daily_summary(context: ContextTypes.DEFAULT_TYPE):
     logger.info("Daily summary complete.")
 
 
+async def scheduled_earnings_report(context: ContextTypes.DEFAULT_TYPE):
+    """Scheduled job: send daily earnings estimate to admin."""
+    logger.info("Generating daily earnings report...")
+    loop = asyncio.get_event_loop()
+    report = await loop.run_in_executor(None, format_earnings_report, 1)
+    send_admin_message(report)
+    logger.info("Daily earnings report sent.")
+
+
+async def scheduled_weekly_report(context: ContextTypes.DEFAULT_TYPE):
+    """Scheduled job: send weekly earnings summary to admin (Mondays)."""
+    logger.info("Generating weekly earnings report...")
+    loop = asyncio.get_event_loop()
+    report = await loop.run_in_executor(None, format_earnings_report, 7)
+    send_admin_message(report)
+    logger.info("Weekly earnings report sent.")
+
+
 # --- Main ---
 
 def run_bot():
@@ -339,6 +375,7 @@ def run_bot():
     app.add_handler(CommandHandler("party", party_command))
     app.add_handler(CommandHandler("holidays", holidays_command))
     app.add_handler(CommandHandler("sites", sites_command))
+    app.add_handler(CommandHandler("earnings", earnings_command))
 
     # Register scheduled jobs
     job_queue = app.job_queue
@@ -361,6 +398,15 @@ def run_bot():
         scheduled_daily_summary,
         time=datetime.time(hour=18, minute=0),
     )
+    job_queue.run_daily(
+        scheduled_earnings_report,
+        time=datetime.time(hour=21, minute=0),
+    )
+    job_queue.run_daily(
+        scheduled_weekly_report,
+        time=datetime.time(hour=10, minute=0),
+        days=(0,),  # Monday only
+    )
 
     logger.info(
         "Bot started. Prices every %d min, deals every %d min, lifestyle every %d min.",
@@ -374,7 +420,9 @@ def run_bot():
         f"📊 Price checks: every {CHECK_INTERVAL_MINUTES} min\n"
         f"🔍 Deal scans: every {CHECK_INTERVAL_MINUTES * 2} min\n"
         f"✈️ Lifestyle scans: every {CHECK_INTERVAL_MINUTES * 3} min\n"
-        f"🏆 Daily summary: 6:00 PM UTC"
+        f"🏆 Daily summary: 6:00 PM UTC\n"
+        f"💰 Earnings report: 9:00 PM UTC\n"
+        f"📋 Weekly report: Mondays 10:00 AM UTC"
     )
 
     app.run_polling(drop_pending_updates=True)

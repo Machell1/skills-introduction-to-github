@@ -81,6 +81,55 @@ def init_db():
             )
         """)
 
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS deals_posted (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                site TEXT NOT NULL,
+                title TEXT NOT NULL,
+                sale_price REAL,
+                original_price REAL,
+                affiliate_url TEXT,
+                has_affiliate_tag INTEGER DEFAULT 0,
+                estimated_commission REAL DEFAULT 0,
+                deal_type TEXT DEFAULT 'aggregator',
+                product_id TEXT,
+                posted_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS commission_rates (
+                site TEXT PRIMARY KEY,
+                rate_low REAL NOT NULL,
+                rate_high REAL NOT NULL,
+                rate_used REAL NOT NULL,
+                model TEXT DEFAULT 'percentage',
+                cpa_amount REAL DEFAULT 0,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # Seed commission rates if table is empty
+        cursor.execute("SELECT COUNT(*) as cnt FROM commission_rates")
+        if cursor.fetchone()["cnt"] == 0:
+            rates = [
+                ("amazon", 0.01, 0.04, 0.025, "percentage", 0),
+                ("walmart", 0.01, 0.04, 0.025, "percentage", 0),
+                ("target", 0.01, 0.08, 0.04, "percentage", 0),
+                ("bestbuy", 0.005, 0.01, 0.0075, "percentage", 0),
+                ("ebay", 0.01, 0.04, 0.025, "percentage", 0),
+                ("groupon", 0.03, 0.06, 0.045, "percentage", 0),
+                ("skyscanner", 0.0, 0.0, 0.0, "cpa", 0.50),
+                ("expedia", 0.02, 0.06, 0.04, "percentage", 0),
+                ("slickdeals", 0.0, 0.0, 0.0, "percentage", 0),
+                ("dealnews", 0.0, 0.0, 0.0, "percentage", 0),
+            ]
+            cursor.executemany(
+                "INSERT INTO commission_rates (site, rate_low, rate_high, rate_used, model, cpa_amount) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                rates,
+            )
+
         # Migrate: add category column if missing
         try:
             cursor.execute("SELECT category FROM aggregator_deals LIMIT 1")
@@ -312,6 +361,84 @@ def record_referral(user_id, referrer_code):
         )
         conn.commit()
         return True
+    finally:
+        conn.close()
+
+
+def log_deal_posted(site, title, sale_price, original_price, affiliate_url,
+                    has_affiliate_tag, estimated_commission, deal_type="aggregator",
+                    product_id=None):
+    """Log a deal that was posted to the channel for earnings tracking."""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO deals_posted
+            (site, title, sale_price, original_price, affiliate_url,
+             has_affiliate_tag, estimated_commission, deal_type, product_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (site, title, sale_price, original_price, affiliate_url,
+              1 if has_affiliate_tag else 0, estimated_commission, deal_type, product_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_commission_rate(site):
+    """Get commission rate info for a site."""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM commission_rates WHERE site = ?", (site,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def get_earnings_summary(days=1):
+    """Get earnings summary grouped by site for the last N days."""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT site,
+                   COUNT(*) as deal_count,
+                   SUM(estimated_commission) as total_commission,
+                   SUM(CASE WHEN has_affiliate_tag = 1 THEN 1 ELSE 0 END) as with_tag,
+                   SUM(CASE WHEN has_affiliate_tag = 0 THEN 1 ELSE 0 END) as without_tag,
+                   SUM(sale_price) as total_sale_value
+            FROM deals_posted
+            WHERE posted_at >= datetime('now', ? || ' days')
+            GROUP BY site
+            ORDER BY total_commission DESC
+        """, (f"-{days}",))
+        rows = cursor.fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_earnings_total(days=None):
+    """Get total estimated commission, optionally limited to last N days."""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        if days:
+            cursor.execute("""
+                SELECT COUNT(*) as deal_count,
+                       COALESCE(SUM(estimated_commission), 0) as total
+                FROM deals_posted
+                WHERE posted_at >= datetime('now', ? || ' days')
+            """, (f"-{days}",))
+        else:
+            cursor.execute("""
+                SELECT COUNT(*) as deal_count,
+                       COALESCE(SUM(estimated_commission), 0) as total
+                FROM deals_posted
+            """)
+        row = cursor.fetchone()
+        return dict(row)
     finally:
         conn.close()
 
