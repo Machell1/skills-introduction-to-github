@@ -425,7 +425,7 @@ function renderFooter() {
           <p style="margin-top:0.5rem">Some links on this site are affiliate links. We may earn a commission at no extra cost to you.</p>
           <div class="footer-social" style="margin-top:0.75rem">
             <a href="https://t.me/dailydeals" target="_blank" rel="noopener" aria-label="Telegram">Telegram</a>
-            <a href="https://x.com/MachellWil66296" target="_blank" rel="noopener" aria-label="X (Twitter)">X / Twitter</a>
+            <a href="https://x.com/MyDailyBestDeals" target="_blank" rel="noopener" aria-label="X (Twitter)">X / Twitter</a>
           </div>
         </div>
         <div>
@@ -557,7 +557,7 @@ function renderShareButtons() {
 
   container.innerHTML = `
     <div class="share-buttons">
-      <a href="https://x.com/intent/tweet?text=${pageTitle}&url=${pageUrl}&via=MachellWil66296" target="_blank" rel="noopener" class="share-btn share-btn-x">Share on X</a>
+      <a href="https://x.com/intent/tweet?text=${pageTitle}&url=${pageUrl}&via=MyDailyBestDeals" target="_blank" rel="noopener" class="share-btn share-btn-x">Share on X</a>
       <a href="https://t.me/share/url?url=${pageUrl}&text=${pageTitle}" target="_blank" rel="noopener" class="share-btn share-btn-telegram">Share on Telegram</a>
       <button class="share-btn share-btn-copy" onclick="navigator.clipboard.writeText(window.location.href).then(()=>{this.textContent='Copied!';this.classList.add('copied');setTimeout(()=>{this.textContent='Copy Link';this.classList.remove('copied')},2000)})">Copy Link</button>
     </div>
