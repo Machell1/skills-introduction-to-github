@@ -1,0 +1,16 @@
+# Railway project-level configuration for Jobsy
+# Each service has its own railway.json for service-specific settings
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5
+
+[environment]
+# These are overridden per-service in Railway dashboard
+# Listed here as documentation of required environment variables
+# DATABASE_URL = "provided by Railway Postgres plugin"
+# REDIS_URL = "provided by Railway Redis plugin"
+# RABBITMQ_URL = "provided by Railway or CloudAMQP"
+# JWT_SECRET = "set in Railway secrets"

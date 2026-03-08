@@ -1,0 +1,41 @@
+# Python
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+htmlcov
+.coverage
+coverage.xml
+*.egg-info
+
+# Virtual environments
+.venv
+venv
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Git
+.git
+.gitignore
+
+# Docs
+*.md
+LICENSE
+
+# Tests (not needed in production images)
+*/tests/
+conftest.py
+pytest.ini
+requirements-test.txt
+
+# Environment
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db

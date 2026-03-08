@@ -1,0 +1,25 @@
+# Ruff linter and formatter configuration for Jobsy
+
+target-version = "py311"
+line-length = 120
+
+[lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "UP",   # pyupgrade
+    "S",    # flake8-bandit (security)
+    "SIM",  # flake8-simplify
+]
+ignore = [
+    "S101",  # assert used (fine in tests)
+    "S104",  # bind to all interfaces (needed in containers)
+    "B008",  # function call in default arg (FastAPI Depends pattern)
+]
+
+[lint.per-file-ignores]
+"*/tests/*" = ["S101", "S106"]  # allow assert and hardcoded passwords in tests
+"alembic/*" = ["E501"]          # allow long lines in migrations
