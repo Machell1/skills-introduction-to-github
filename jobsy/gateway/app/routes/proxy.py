@@ -58,3 +58,13 @@ async def proxy_swipes(path: str, request: Request, user: dict = Depends(get_cur
 @router.api_route("/matches/{path:path}", methods=["GET", "PUT"])
 async def proxy_matches(path: str, request: Request, user: dict = Depends(get_current_user)):
     return await _proxy_request("matches", f"/{path}", request, user)
+
+
+@router.api_route("/geo/{path:path}", methods=["GET"])
+async def proxy_geo(path: str, request: Request, user: dict = Depends(get_current_user)):
+    return await _proxy_request("geo", f"/{path}", request, user)
+
+
+@router.api_route("/recommendations/{path:path}", methods=["GET", "POST", "PUT"])
+async def proxy_recommendations(path: str, request: Request, user: dict = Depends(get_current_user)):
+    return await _proxy_request("recommendations", f"/{path}", request, user)

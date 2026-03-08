@@ -53,6 +53,8 @@ services:
       LISTINGS_SERVICE_URL: http://listings:8000
       SWIPES_SERVICE_URL: http://swipes:8000
       MATCHES_SERVICE_URL: http://matches:8000
+      GEOSHARD_SERVICE_URL: http://geoshard:8000
+      RECOMMENDATIONS_SERVICE_URL: http://recommendations:8000
     depends_on:
       postgres:
         condition: service_healthy
@@ -115,6 +117,39 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://jobsy:localdev@postgres:5432/jobsy
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  geoshard:
+    build:
+      context: .
+      dockerfile: geoshard/Dockerfile
+    ports:
+      - "8005:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://jobsy:localdev@postgres:5432/jobsy
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  recommendations:
+    build:
+      context: .
+      dockerfile: recommendations/Dockerfile
+    ports:
+      - "8006:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://jobsy:localdev@postgres:5432/jobsy
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      GEOSHARD_SERVICE_URL: http://geoshard:8000
+      LISTINGS_SERVICE_URL: http://listings:8000
+      PROFILES_SERVICE_URL: http://profiles:8000
     depends_on:
       postgres:
         condition: service_healthy
