@@ -59,6 +59,10 @@ services:
       NOTIFICATIONS_SERVICE_URL: http://notifications:8000
       STORAGE_SERVICE_URL: http://storage:8000
       ADVERTISING_SERVICE_URL: http://advertising:8000
+      PAYMENTS_SERVICE_URL: http://payments:8000
+      REVIEWS_SERVICE_URL: http://reviews:8000
+      SEARCH_SERVICE_URL: http://search:8000
+      ADMIN_SERVICE_URL: http://admin:8000
     depends_on:
       postgres:
         condition: service_healthy
@@ -238,6 +242,80 @@ services:
       postgres:
         condition: service_healthy
 
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.3
+    ports:
+      - "9200:9200"
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms256m -Xmx256m"
+    volumes:
+      - esdata:/var/lib/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  payments:
+    build:
+      context: .
+      dockerfile: payments/Dockerfile
+    ports:
+      - "8011:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://jobsy:localdev@postgres:5432/jobsy
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  reviews:
+    build:
+      context: .
+      dockerfile: reviews/Dockerfile
+    ports:
+      - "8012:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://jobsy:localdev@postgres:5432/jobsy
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  search:
+    build:
+      context: .
+      dockerfile: search/Dockerfile
+    ports:
+      - "8013:8000"
+    environment:
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  admin:
+    build:
+      context: .
+      dockerfile: admin/Dockerfile
+    ports:
+      - "8014:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://jobsy:localdev@postgres:5432/jobsy
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   pgdata:
   miniodata:
+  esdata:

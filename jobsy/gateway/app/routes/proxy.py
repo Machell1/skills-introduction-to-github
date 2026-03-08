@@ -88,3 +88,23 @@ async def proxy_storage(path: str, request: Request, user: dict = Depends(get_cu
 @router.api_route("/ads/{path:path}", methods=["GET", "POST"])
 async def proxy_ads(path: str, request: Request, user: dict = Depends(get_current_user)):
     return await _proxy_request("ads", f"/{path}", request, user)
+
+
+@router.api_route("/payments/{path:path}", methods=["GET", "POST", "PUT"])
+async def proxy_payments(path: str, request: Request, user: dict = Depends(get_current_user)):
+    return await _proxy_request("payments", f"/{path}", request, user)
+
+
+@router.api_route("/reviews/{path:path}", methods=["GET", "POST", "PUT"])
+async def proxy_reviews(path: str, request: Request, user: dict = Depends(get_current_user)):
+    return await _proxy_request("reviews", f"/{path}", request, user)
+
+
+@router.api_route("/search/{path:path}", methods=["GET"])
+async def proxy_search(path: str, request: Request, user: dict = Depends(get_current_user)):
+    return await _proxy_request("search", f"/{path}", request, user)
+
+
+@router.api_route("/admin/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def proxy_admin(path: str, request: Request, user: dict = Depends(get_current_user)):
+    return await _proxy_request("admin", f"/{path}", request, user)

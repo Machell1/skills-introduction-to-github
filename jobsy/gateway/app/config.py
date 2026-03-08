@@ -14,6 +14,10 @@ SERVICE_URLS = {
     "notifications": os.getenv("NOTIFICATIONS_SERVICE_URL", "http://notifications.railway.internal:8000"),
     "storage": os.getenv("STORAGE_SERVICE_URL", "http://storage.railway.internal:8000"),
     "ads": os.getenv("ADVERTISING_SERVICE_URL", "http://advertising.railway.internal:8000"),
+    "payments": os.getenv("PAYMENTS_SERVICE_URL", "http://payments.railway.internal:8000"),
+    "reviews": os.getenv("REVIEWS_SERVICE_URL", "http://reviews.railway.internal:8000"),
+    "search": os.getenv("SEARCH_SERVICE_URL", "http://search.railway.internal:8000"),
+    "admin": os.getenv("ADMIN_SERVICE_URL", "http://admin.railway.internal:8000"),
 }
 
 # Rate limiting
