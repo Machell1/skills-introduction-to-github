@@ -64,7 +64,8 @@
                         <ul class="dropdown-menu dropdown-menu-dark">
                             <li><a class="dropdown-item" href="{{ url_for('units.unit_home', unit=user_single_unit) }}"><i class="bi bi-house me-2"></i>Unit Home</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('units.unit_dashboard', unit=user_single_unit) }}"><i class="bi bi-speedometer2 me-2"></i>Unit Dashboard</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('units.new_record', unit=user_single_unit) }}"><i class="bi bi-plus-circle me-2"></i>New Record</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ url_for('upload.submit_report') }}"><i class="bi bi-robot me-2"></i>Upload Report</a></li>
                         </ul>
                     </li>
                     {% else %}

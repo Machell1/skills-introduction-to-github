@@ -137,10 +137,12 @@ def create_app(config_name=None):
     from .routes.data import bp as data_bp
     from .routes.main import bp as main_bp
     from .routes.units import bp as units_bp
+    from .routes.upload import bp as upload_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
     app.register_blueprint(units_bp)
+    app.register_blueprint(upload_bp)
     app.register_blueprint(data_bp)
     app.register_blueprint(api_bp)
 

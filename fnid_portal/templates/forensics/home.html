@@ -18,12 +18,18 @@
         {% endif %}
     </div>
     <div class="d-flex gap-2">
+        {% if is_unit_workspace %}
+        <a href="{{ url_for('upload.submit_report') }}" class="btn btn-primary btn-sm">
+            <i class="bi bi-robot me-1"></i> Upload Report
+        </a>
+        {% else %}
         <a href="{{ url_for('units.new_record', unit='forensics', subtype='custody') }}" class="btn btn-primary btn-sm">
             <i class="bi bi-plus-circle me-1"></i> New Exhibit Entry
         </a>
         <a href="{{ url_for('units.new_record', unit='forensics', subtype='lab') }}" class="btn btn-success btn-sm">
             <i class="bi bi-plus-circle me-1"></i> New Lab Submission
         </a>
+        {% endif %}
         <a href="{{ url_for('units.unit_dashboard', unit='forensics') }}" class="btn btn-outline-primary btn-sm">
             <i class="bi bi-graph-up me-1"></i> Dashboard
         </a>

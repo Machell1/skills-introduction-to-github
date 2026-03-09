@@ -332,6 +332,11 @@ def new_record(unit, subtype=None):
     if not _check_unit_access(unit):
         return redirect(url_for("main.home"))
 
+    # Basic users must use the report upload flow instead of manual entry
+    if current_user.get_single_unit():
+        flash("Please upload a report. The bot will extract the information.", "info")
+        return redirect(url_for("upload.submit_report"))
+
     if request.method == "POST":
         return _save_record(unit, subtype, is_new=True)
 
