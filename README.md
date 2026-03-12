@@ -1,59 +1,127 @@
-# Introduction to GitHub
+# Claw Claw
 
-<!-- ![](https://github.com/Machell1/skills-introduction-to-github/actions/workflows/0-start-exercise.yml/badge.svg) -->
-![](https://github.com/Machell1/skills-introduction-to-github/actions/workflows/1-create-a-branch.yml/badge.svg)
-![](https://github.com/Machell1/skills-introduction-to-github/actions/workflows/2-commit-a-file.yml/badge.svg)
-![](https://github.com/Machell1/skills-introduction-to-github/actions/workflows/3-open-a-pull-request.yml/badge.svg)
-![](https://github.com/Machell1/skills-introduction-to-github/actions/workflows/4-merge-your-pull-request.yml/badge.svg)
+Claw Claw is a safety-first, multi-bot BTCUSD trading framework for MetaTrader 5 (Deriv). It runs locally, connects to a logged-in MT5 terminal, and evaluates strategies on closed M5 candles. Only the centralized trade controller can execute orders, and every trade is gated by risk checks.
 
-_Get started using GitHub in less than an hour._
+## Key Features
 
-## Welcome
+- **Hub-and-spoke architecture**: bots only propose trades; the execution engine is centralized.
+- **Risk Gate** with strict controls: one-trade-at-a-time, max trades/day, cooldowns, max spread, daily loss limit, consecutive-loss breaker, exposure caps, slippage controls, and stake-based loss cuts.
+- **Deriv symbol resolver** to handle suffix variations like `BTCUSD.` or `BTCUSDm`.
+- **Paper/Demo/Live modes** with an explicit unlock phrase for demo/live.
+- **Kill switch** file to halt trading immediately.
+- **Rotating logs** with redaction and a local SQLite audit store.
 
-People use GitHub to build some of the most advanced technologies in the world. Whether you’re visualizing data or building a new game, there’s a whole community and set of tools on GitHub that can help you do it even better. GitHub Skills’ “Introduction to GitHub” exercise guides you through everything you need to start contributing in less than an hour.
+## Project Structure
 
-- **Who is this for**: New developers, new GitHub users, and students.
-- **What you'll learn**: We'll introduce repositories, branches, commits, and pull requests.
-- **What you'll build**: We'll make a short Markdown file you can use as your [profile README](https://docs.github.com/account-and-profile/setting-up-and-managing-your-github-profile/customizing-your-profile/managing-your-profile-readme).
-- **Prerequisites**: None. This exercise is a great introduction for your first day on GitHub.
-- **How long**: This exercise takes less than one hour to complete.
+```
+claw_claw/
+  main.py
+  config.json
+  mt5_connector.py
+  symbol_resolver.py
+  data_feed.py
+  bots/
+    __init__.py
+    init.py
+    base.py
+    trend_bot.py
+    mean_reversion_bot.py
+    arbiter.py
+  risk_manager.py
+  execution.py
+  trade_monitor.py
+  state.py
+  audit_db.py
+  logger.py
+  utils.py
+requirements.txt
+README.md
+```
 
-In this exercise, you will:
+## Setup (PyCharm on Windows)
 
-1. Create a branch
-2. Commit a file
-3. Open a pull request
-4. Merge your pull request
+**Easiest option (automatic setup):**
+1. Double-click `setup_pycharm_windows.bat`.
+2. Wait for it to finish installing everything.
+3. Open the project in PyCharm and select the `.venv` interpreter it created.
+4. Run:
+   - `claw_claw_full.py` (single-file option), or
+   - `claw_claw/main.py` (modular package).
 
-### How to start this exercise
+### If you downloaded the ZIP and only see GitHub Skills files
+You should see a `claw_claw/` folder and `claw_claw_full.py` at the repository root. If your ZIP only shows `.github/` and a generic GitHub Skills README, the bot files were not downloaded. In that case:
 
-1. Right-click **Copy Exercise** and open the link in a new tab.
+1. **Confirm you downloaded the correct repo/branch** (the root should include `claw_claw/`).
+2. **Re-download the ZIP** from the correct branch on GitHub (use the branch selector on the repo page).
+3. If you still don’t see `claw_claw/`, the bot files haven’t been pushed to GitHub yet — ask the maintainer to push the latest changes.
 
-   <a id="copy-exercise">
-      <img src="https://img.shields.io/badge/📠_Copy_Exercise-AAA" height="25pt"/>
-   </a>
+### MT5 disconnects when the bot starts
+If MT5 disconnects right when the bot initializes, keep `auto_login` set to `false` and log in manually in the MT5 terminal first. Auto-login can force MT5 to reconnect, which may drop the existing broker session on some setups. After you’re logged in, start the bot again and it should attach without reauthenticating.
 
-2. In the new tab, most of the prompts will automatically fill in for you.
-   - For owner, choose your personal account or an organization to host the repository.
-   - We recommend creating a public repository, as private repositories will [use Actions minutes](https://docs.github.chttps://github.com/Machell1/skills-introduction-to-github/billing/managing-billing-for-github-actions/about-billing-for-github-actions).
-   - Scroll down and click the **Create repository** button at the bottom of the form.
+If you still see connection issues, the bot will retry MT5 initialization a few times. You can tune this in `config.json` via `connection_retries` and `connection_delay_seconds`.
 
-3. After your new repository is created, wait about 20 seconds for the exercise to be prepared and buttons updated. You will continue working from your copy of the exercise.
-   - The **Copy Exercise** button will deactivate, changing to gray.
-   - The **Start Exercise** button will activate, changing to green.
-   - You will likely need to refresh the page.
+**Manual option (if you prefer):**
+1. **Clone the repository** and open it in PyCharm.
+2. **Create a virtual environment** (Python 3.9):
+   - PyCharm: *File → Settings → Project → Python Interpreter → Add Interpreter*.
+3. **Install dependencies**:
+   ```bash
+   pip install -r requirements.txt
+   ```
+4. **Open MT5 and log in to Deriv**. Ensure the terminal is connected.
+5. **Run the bot**:
+   - In PyCharm, run `claw_claw/main.py`.
+   - Single-file option: run `claw_claw_full.py` from the repository root.
 
-4. Click **Start Exercise**. Follow the step-by-step instructions and feedback will be provided as you progress.
+> **Important:** The system uses `mt5.initialize()` without credentials by default. Do **not** store credentials in files. If you want to enable auto-login, set environment variables (`MT5_LOGIN`, `MT5_PASSWORD`, `MT5_SERVER`) and set `auto_login` to `true` in `config.json`.
 
-   <a id="start-exercise" href="https://github.com/Machell1/skills-introduction-to-github/issues/1">
-      <img src="https://img.shields.io/badge/🚀_Start_Exercise-008000" height="25pt"/>
-   </a>
+The bot also checks MT5 trading permissions (terminal and account settings). If algo trading is disabled in MT5, it will refuse to start until you enable it.
 
-> [!IMPORTANT]
-> The **Start Exercise** button will activate after copying the repository. You will probably need to refresh the page.
+## Operating Modes
 
----
+- **paper** (default): no orders are sent; logs decisions only.
+- **demo/live**: orders are allowed only if you type the exact unlock phrase on startup.
 
-Get help: [Post in our discussion board](https://github.com/orgs/skills/discussions/categories/introduction-to-github) &bull; [Review the GitHub status page](https://www.githubstatus.com/)
+Unlock phrase default: `I UNDERSTAND LIVE RISK` (configurable in `config.json`).
 
-&copy; 2024 GitHub &bull; [Code of Conduct](https://www.contributor-covenant.org/version/2/1/code_of_conduct/code_of_conduct.md) &bull; [MIT License](https://gh.io/mit)
+## Kill Switch
+
+Create a file named `KILL_SWITCH` in the project root to block new trades. If `flatten_on_kill_switch` is `true`, the system will also close any open position.
+
+## Symbol Safety
+
+Deriv may use suffixes for BTCUSD. The resolver tries the configured symbol first and then searches Market Watch symbols containing `BTC` and `USD`. The resolved symbol is locked for all trades.
+
+## Logs and Audit Database
+
+- **Logs**: `logs/trading.log` and `logs/audit.log`
+- **SQLite DB**: `clawclaw.db`
+
+The logs are redacted to avoid leaking sensitive information. The database stores decisions, orders, trades, equity snapshots, and errors.
+
+## Strategy Bots
+
+Two example bots are included:
+
+- **TrendBot**: simple moving average bias.
+- **MeanReversionBot**: price deviation from a mean.
+
+To add your own bot, subclass `BaseBot` and add it to the list in `main.py`.
+
+## Safety Warnings
+
+- **Use demo first.** BTC is highly volatile and spreads can widen rapidly.
+- **Execution is not guaranteed** during spikes or disconnections.
+- **Do not run live** without understanding the risks and verifying all settings.
+
+## Dry-Run Simulation
+
+A helper `dry_run_simulation()` function is included in `main.py` to validate proposal selection without sending orders.
+
+## Running Tests
+
+Run unit tests with:
+
+```bash
+python -m unittest
+```
