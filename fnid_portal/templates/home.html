@@ -1,23 +1,42 @@
 {% extends "base.html" %}
 {% block title %}Portal Selection{% endblock %}
 
-{% block content %}
-<div class="page-header">
-    <div>
-        <h4><i class="bi bi-shield-shaded me-2"></i>FNID Area 3 Operational Portal</h4>
-        <small class="text-muted">Select a unit portal to access data entry, case management, and dashboards</small>
+{% block breadcrumb %}
+<nav class="fnid-breadcrumb" aria-label="Breadcrumb">
+    <div class="container-fluid">
+        <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item active" aria-current="page"><i class="bi bi-house me-1"></i>Home</li>
+        </ol>
     </div>
-    <a href="{{ url_for('main.command_dashboard') }}" class="btn btn-outline-primary btn-sm no-print">
-        <i class="bi bi-bar-chart-line me-1"></i> Command Dashboard
-    </a>
+</nav>
+{% endblock %}
+
+{% block content %}
+<!-- Welcome Banner -->
+<div class="welcome-banner">
+    <div class="row align-items-center">
+        <div class="col-md-8">
+            <h4><i class="bi bi-shield-shaded me-2"></i>Welcome{% if current_user.is_authenticated %}, {{ current_user.rank }} {{ current_user.full_name }}{% endif %}</h4>
+            <p>FNID Area 3 Operational Portal — Select a unit portal to access data entry, case management, and dashboards.
+               Press <kbd>?</kbd> for keyboard shortcuts.</p>
+        </div>
+        <div class="col-md-4 text-md-end mt-2 mt-md-0">
+            <a href="{{ url_for('main.command_dashboard') }}" class="btn btn-outline-light btn-sm me-1">
+                <i class="bi bi-bar-chart-line me-1"></i> Command Dashboard
+            </a>
+            <button class="btn btn-outline-light btn-sm" data-bs-toggle="modal" data-bs-target="#helpModal">
+                <i class="bi bi-question-circle me-1"></i> Help
+            </button>
+        </div>
+    </div>
 </div>
 
 {% if alerts %}
 <!-- Active Alerts -->
-<div class="mb-3">
+<div class="mb-3" role="region" aria-label="Active alerts">
     {% for alert in alerts[:5] %}
     <div class="alert alert-{{ 'danger' if alert['severity'] == 'critical' else ('warning' if alert['severity'] == 'warning' else 'info') }} py-2 mb-2 d-flex align-items-center" role="alert">
-        <i class="bi {{ 'bi-exclamation-triangle-fill' if alert['severity'] == 'critical' else 'bi-bell-fill' }} me-2"></i>
+        <i class="bi {{ 'bi-exclamation-triangle-fill' if alert['severity'] == 'critical' else 'bi-bell-fill' }} me-2" aria-hidden="true"></i>
         <div class="flex-grow-1">
             <strong>{{ alert['title'] }}</strong>
             {% if alert['message'] %} &mdash; {{ alert['message'][:120] }}{% endif %}
@@ -26,19 +45,21 @@
     </div>
     {% endfor %}
     {% if alerts|length > 5 %}
-    <small class="text-muted">and {{ alerts|length - 5 }} more alerts&hellip;</small>
+    <a href="{{ url_for('notifications.notification_center') }}" class="text-muted small">
+        <i class="bi bi-arrow-right me-1"></i>View all {{ alerts|length }} alerts
+    </a>
     {% endif %}
 </div>
 {% endif %}
 
 <!-- Unit Portal Cards -->
-<div class="row g-3">
+<div class="row g-3" role="region" aria-label="Unit portals">
     {% for key, portal in portals.items() %}
     <div class="col-lg-4 col-md-6">
-        <a href="{{ url_for('units.unit_home', unit=key) }}" class="text-decoration-none">
+        <a href="{{ url_for('units.unit_home', unit=key) }}" class="text-decoration-none" aria-label="{{ portal.name }} - {{ stats.get(key, 0) }} records">
             <div class="card portal-card h-100" style="border-left-color: {{ portal.color }};">
                 <div class="card-body d-flex align-items-start gap-3">
-                    <div class="portal-icon" style="color: {{ portal.color }};">
+                    <div class="portal-icon" style="color: {{ portal.color }};" aria-hidden="true">
                         <i class="bi {{ portal.icon }}"></i>
                     </div>
                     <div class="flex-grow-1">
@@ -48,6 +69,7 @@
                             <span class="portal-count">{{ stats.get(key, 0) }}</span>
                             <small class="text-muted">records</small>
                         </div>
+                        <span class="portal-tooltip mt-1 d-block">Click to open portal</span>
                     </div>
                 </div>
             </div>
@@ -56,38 +78,48 @@
     {% endfor %}
 </div>
 
-<!-- Quick Actions + Recent Activity -->
+<!-- Quick Actions + Recent Activity + System Info -->
 <div class="row mt-4">
     <div class="col-md-4">
         <div class="card">
             <div class="card-header bg-fnid-navy text-white">
-                <i class="bi bi-lightning-charge me-2"></i>Quick Actions
+                <i class="bi bi-lightning-charge me-2" aria-hidden="true"></i>Quick Actions
             </div>
             <div class="card-body">
                 <div class="d-grid gap-2">
-                    <a href="{{ url_for('cases.intake') }}" class="btn btn-outline-primary btn-sm text-start">
-                        <i class="bi bi-plus-circle me-2"></i>New Case Intake
+                    <a href="{{ url_for('cases.intake') }}" class="btn btn-outline-primary btn-sm text-start"
+                       data-bs-toggle="tooltip" data-bs-placement="right" title="Create a new investigation case (Alt+N)">
+                        <i class="bi bi-plus-circle me-2" aria-hidden="true"></i>New Case Intake
                     </a>
-                    <a href="{{ url_for('units.new_record', unit='intel') }}" class="btn btn-outline-primary btn-sm text-start">
-                        <i class="bi bi-plus-circle me-2"></i>Log New Intelligence Report
+                    <a href="{{ url_for('units.new_record', unit='intel') }}" class="btn btn-outline-primary btn-sm text-start"
+                       data-bs-toggle="tooltip" data-bs-placement="right" title="Submit a new intelligence report">
+                        <i class="bi bi-plus-circle me-2" aria-hidden="true"></i>Log New Intelligence Report
                     </a>
-                    <a href="{{ url_for('units.new_record', unit='operations') }}" class="btn btn-outline-primary btn-sm text-start">
-                        <i class="bi bi-plus-circle me-2"></i>Create Operation Record
+                    <a href="{{ url_for('units.new_record', unit='operations') }}" class="btn btn-outline-primary btn-sm text-start"
+                       data-bs-toggle="tooltip" data-bs-placement="right" title="Record a new operation">
+                        <i class="bi bi-plus-circle me-2" aria-hidden="true"></i>Create Operation Record
                     </a>
-                    <a href="{{ url_for('units.new_record', unit='arrests') }}" class="btn btn-outline-primary btn-sm text-start">
-                        <i class="bi bi-plus-circle me-2"></i>Record New Arrest
+                    <a href="{{ url_for('units.new_record', unit='arrests') }}" class="btn btn-outline-primary btn-sm text-start"
+                       data-bs-toggle="tooltip" data-bs-placement="right" title="Record a new arrest with 48-hour tracking">
+                        <i class="bi bi-plus-circle me-2" aria-hidden="true"></i>Record New Arrest
                     </a>
-                    <a href="{{ url_for('data.import_data') }}" class="btn btn-outline-secondary btn-sm text-start">
-                        <i class="bi bi-upload me-2"></i>Import from Word / Excel
+                    <hr class="my-1">
+                    <a href="{{ url_for('data.import_data') }}" class="btn btn-outline-secondary btn-sm text-start"
+                       data-bs-toggle="tooltip" data-bs-placement="right" title="Import data from Word or Excel files">
+                        <i class="bi bi-upload me-2" aria-hidden="true"></i>Import from Word / Excel
                     </a>
-                    <a href="{{ url_for('data.export_workbook') }}" class="btn btn-outline-success btn-sm text-start">
-                        <i class="bi bi-file-earmark-spreadsheet me-2"></i>Export FO 4032 Operational Workbook
+                    <a href="{{ url_for('data.export_workbook') }}" class="btn btn-outline-success btn-sm text-start"
+                       data-bs-toggle="tooltip" data-bs-placement="right" title="Export the FO 4032 operational workbook as Excel">
+                        <i class="bi bi-file-earmark-spreadsheet me-2" aria-hidden="true"></i>Export FO 4032 Operational Workbook
                     </a>
-                    <a href="{{ url_for('policy.policy_home') }}" class="btn btn-outline-info btn-sm text-start">
-                        <i class="bi bi-book me-2"></i>Case Management Policy & SOPs
+                    <hr class="my-1">
+                    <a href="{{ url_for('policy.policy_home') }}" class="btn btn-outline-info btn-sm text-start"
+                       data-bs-toggle="tooltip" data-bs-placement="right" title="View JCF Case Management Policy and SOPs">
+                        <i class="bi bi-book me-2" aria-hidden="true"></i>Case Management Policy & SOPs
                     </a>
-                    <a href="{{ url_for('policy.forms_library') }}" class="btn btn-outline-warning btn-sm text-start">
-                        <i class="bi bi-file-earmark-text me-2"></i>Case Reference Forms Library
+                    <a href="{{ url_for('policy.forms_library') }}" class="btn btn-outline-warning btn-sm text-start"
+                       data-bs-toggle="tooltip" data-bs-placement="right" title="Access all JCF case reference forms (CR 6-15)">
+                        <i class="bi bi-file-earmark-text me-2" aria-hidden="true"></i>Case Reference Forms Library
                     </a>
                 </div>
             </div>
@@ -96,7 +128,7 @@
     <div class="col-md-4">
         <div class="card">
             <div class="card-header bg-fnid-navy text-white">
-                <i class="bi bi-clock-history me-2"></i>Recent Activity
+                <i class="bi bi-clock-history me-2" aria-hidden="true"></i>Recent Activity
             </div>
             <div class="card-body p-0">
                 {% if recent %}
@@ -117,8 +149,9 @@
                     {% endfor %}
                 </div>
                 {% else %}
-                <div class="text-center text-muted py-3">
-                    <small>No recent activity</small>
+                <div class="empty-state py-4">
+                    <i class="bi bi-clock-history d-block"></i>
+                    <p class="mb-0">No recent activity to display</p>
                 </div>
                 {% endif %}
             </div>
@@ -127,7 +160,7 @@
     <div class="col-md-4">
         <div class="card">
             <div class="card-header bg-fnid-navy text-white">
-                <i class="bi bi-info-circle me-2"></i>System Information
+                <i class="bi bi-info-circle me-2" aria-hidden="true"></i>System Information
             </div>
             <div class="card-body">
                 <table class="table table-sm table-borderless mb-0">
@@ -170,6 +203,49 @@
                         <td>{{ now.strftime('%Y-%m-%d %H:%M') }}</td>
                     </tr>
                 </table>
+            </div>
+        </div>
+
+        <!-- Getting Started Guide (collapsed) -->
+        <div class="card mt-3">
+            <div class="card-header bg-white border-bottom" role="button"
+                 data-bs-toggle="collapse" data-bs-target="#gettingStarted"
+                 aria-expanded="false" aria-controls="gettingStarted">
+                <i class="bi bi-lightbulb me-2 text-warning" aria-hidden="true"></i>
+                <span class="fw-bold text-dark">Getting Started Guide</span>
+                <i class="bi bi-chevron-down float-end text-muted"></i>
+            </div>
+            <div class="collapse" id="gettingStarted">
+                <div class="card-body">
+                    <ol class="list-group list-group-numbered list-group-flush">
+                        <li class="list-group-item border-0 px-0 py-1">
+                            <small><strong>Create a case</strong> using <em>New Case Intake</em> in Quick Actions</small>
+                        </li>
+                        <li class="list-group-item border-0 px-0 py-1">
+                            <small><strong>Log intelligence</strong> through the Intel unit portal</small>
+                        </li>
+                        <li class="list-group-item border-0 px-0 py-1">
+                            <small><strong>Record operations</strong> and seizures in their respective portals</small>
+                        </li>
+                        <li class="list-group-item border-0 px-0 py-1">
+                            <small><strong>Track arrests</strong> with automatic 48-hour deadline calculation</small>
+                        </li>
+                        <li class="list-group-item border-0 px-0 py-1">
+                            <small><strong>Manage evidence</strong> with full chain of custody tracking</small>
+                        </li>
+                        <li class="list-group-item border-0 px-0 py-1">
+                            <small><strong>Generate CR forms</strong> (6-15) for JCF compliance</small>
+                        </li>
+                        <li class="list-group-item border-0 px-0 py-1">
+                            <small><strong>Review dashboards</strong> for performance analytics</small>
+                        </li>
+                    </ol>
+                    <div class="mt-2">
+                        <a href="{{ url_for('policy.policy_home') }}" class="btn btn-outline-primary btn-sm w-100">
+                            <i class="bi bi-book me-1" aria-hidden="true"></i> View Full Policy Guide
+                        </a>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
