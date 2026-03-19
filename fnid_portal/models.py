@@ -60,6 +60,13 @@ def get_table_columns(table_name):
     return columns
 
 
+def _migrate_add_column(cursor, table, column, col_type):
+    """Add a column to an existing table if it doesn't already exist."""
+    cols = [row[1] for row in cursor.execute(f"PRAGMA table_info({table})").fetchall()]
+    if column not in cols:
+        cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
+
+
 def init_db():
     """Initialize database schema."""
     conn = get_db()
@@ -817,6 +824,16 @@ def init_db():
         entered_at TEXT DEFAULT (datetime('now'))
     )""")
 
+    conn.commit()
+
+    # --- Schema migrations for existing databases ---
+    # Add columns that may be missing from older schema versions.
+    _migrate_add_column(c, "officers", "admin_tier", "INTEGER DEFAULT NULL")
+    _migrate_add_column(c, "officers", "verification_status", "TEXT DEFAULT 'active'")
+    _migrate_add_column(c, "officers", "registered_at", "TEXT")
+    _migrate_add_column(c, "officers", "locked_at", "TEXT")
+    _migrate_add_column(c, "officers", "duty_assignment", "TEXT")
+    _migrate_add_column(c, "officers", "regulation_no", "TEXT")
     conn.commit()
 
     # Insert default admin officer if none exist
