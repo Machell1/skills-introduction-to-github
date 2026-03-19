@@ -86,6 +86,7 @@ def init_db():
         registered_at TEXT,
         locked_at TEXT,
         duty_assignment TEXT,
+        regulation_no TEXT,
         created_at TEXT DEFAULT (datetime('now'))
     )""")
 
@@ -850,91 +851,93 @@ def init_db():
 
 
 def _seed_named_accounts(cursor, conn):
-    """Seed the authorised FNID Area 3 roster.
+    """Seed the authorised FNID Area 3 roster (28 officers).
 
     Only officers on this roster may use the system.
-    - Insp. Rodney & Cpl. Williams: full command access (admin)
+    - Insp. Rodney & Cpl. Williams: full command access (admin tier 2)
     - Sgt. Barrett, Det. Sgt. McPherson, Det. Sgt. Henry: supervisor access
     - All others: regular user access
+    Each officer's JCF regulation number is stored for reference.
     """
     import secrets
 
     from werkzeug.security import generate_password_hash
 
-    # (badge, full_name, rank, role, admin_tier, duty_assignment, email)
+    # (badge, full_name, rank, role, admin_tier, duty_assignment, email, reg_no)
     # email uses firstname.lastname@jcf.gov.jm
+    # reg_no = JCF Regulation Number
     ROSTER = [
         # --- Command ---
         ("INSP-RODNEY", "Rayon Rodney", "Inspector",
-         "admin", 2, "Command", "rayon.rodney@jcf.gov.jm"),
+         "admin", 2, "Command", "rayon.rodney@jcf.gov.jm", None),
         # --- 8am-6pm Shift ---
-        ("SGT-ANDERSON", "T. Anderson", "Sergeant",
-         "user", None, "8am-6pm Shift", "t.anderson@jcf.gov.jm"),
-        ("CPL-HINES", "N. Hines", "Corporal",
-         "user", None, "8am-6pm Shift", "n.hines@jcf.gov.jm"),
+        ("SGT-ANDERSON", "Tamecka Anderson", "Sergeant",
+         "user", None, "8am-6pm Shift", "tamecka.anderson@jcf.gov.jm", "12431"),
+        ("CPL-HINES", "Natoya Hines", "Corporal",
+         "user", None, "8am-6pm Shift", "natoya.hines@jcf.gov.jm", "19721"),
         ("CPL-WILLIAMS", "Machell Williams", "Corporal",
-         "admin", 2, "8am-6pm Shift", "machell.williams@jcf.gov.jm"),
-        ("CONS-BROWN", "V. Brown", "Constable",
-         "user", None, "8am-6pm Shift", "v.brown@jcf.gov.jm"),
-        ("CONS-FOSTER", "R. Foster", "Constable",
-         "user", None, "8am-6pm Shift", "r.foster@jcf.gov.jm"),
+         "admin", 2, "8am-6pm Shift", "machell.williams@jcf.gov.jm", "13432"),
+        ("CONS-BROWN", "Vinnette Brown", "Constable",
+         "user", None, "8am-6pm Shift", "vinnette.brown@jcf.gov.jm", "14658"),
+        ("DCONS-FOSTER", "Rodney Foster", "Detective Constable",
+         "user", None, "8am-6pm Shift", "rodney.foster@jcf.gov.jm", "17558"),
         # --- Court ---
         ("DS-MCPHERSON", "Danet McPherson", "Detective Sergeant",
-         "supervisor", None, "Court", "danet.mcpherson@jcf.gov.jm"),
+         "supervisor", None, "Court", "danet.mcpherson@jcf.gov.jm", "10940"),
         # --- Fraud Desk ---
-        ("CONS-GAYLE", "C. Gayle", "Constable",
-         "user", None, "Fraud Desk", "c.gayle@jcf.gov.jm"),
+        ("DCONS-GAYLE", "Chavoun Gayle", "Detective Constable",
+         "user", None, "Fraud Desk", "chavoun.gayle@jcf.gov.jm", "19250"),
         # --- Special Assignment / FS Branch ---
-        ("CPL-BBARRETT", "B. Barrett", "Corporal",
-         "user", None, "FS Branch - Special Assignment", "b.barrett@jcf.gov.jm"),
+        ("CPL-BBARRETT", "Bonthanie Barrett", "Corporal",
+         "user", None, "FS Branch - Special Assignment", "bonthanie.barrett@jcf.gov.jm", "20918"),
         # --- 6pm-8am Shift ---
-        ("DCPL-SWABY", "Z. Swaby", "Detective Corporal",
-         "user", None, "6pm-8am Shift", "z.swaby@jcf.gov.jm"),
-        ("DCONS-ENNIS", "O. Ennis", "Detective Constable",
-         "user", None, "6pm-8am Shift", "o.ennis@jcf.gov.jm"),
-        ("CONS-RUSSELL", "D. Russell", "Constable",
-         "user", None, "6pm-8am Shift", "d.russell@jcf.gov.jm"),
-        ("CONS-CAMPBELL", "E. Campbell", "Constable",
-         "user", None, "6pm-8am Shift", "e.campbell@jcf.gov.jm"),
+        ("DCPL-SWABY", "Zeato Swaby", "Detective Corporal",
+         "user", None, "6pm-8am Shift", "zeato.swaby@jcf.gov.jm", "7871"),
+        ("DCONS-ENNIS", "Ochane Ennis", "Detective Constable",
+         "user", None, "6pm-8am Shift", "ochane.ennis@jcf.gov.jm", "13306"),
+        ("CONS-RUSSELL", "Desmond Russell", "Constable",
+         "user", None, "6pm-8am Shift", "desmond.russell@jcf.gov.jm", "25221"),
+        ("CONS-CAMPBELL", "Evergay Campbell", "Constable",
+         "user", None, "6pm-8am Shift", "evergay.campbell@jcf.gov.jm", "24561"),
         # --- Rest Period ---
-        ("DCPL-MORGAN", "D. Morgan", "Detective Corporal",
-         "user", None, "Rest Period", "d.morgan@jcf.gov.jm"),
-        ("CPL-BAKER", "R. Baker", "Corporal",
-         "user", None, "Rest Period", "r.baker@jcf.gov.jm"),
-        ("CONS-JONES", "A. Jones", "Constable",
-         "user", None, "Rest Period", "a.jones@jcf.gov.jm"),
+        ("DCPL-MORGAN", "Dwight Morgan", "Detective Corporal",
+         "user", None, "Rest Period", "dwight.morgan@jcf.gov.jm", "1345"),
+        ("CPL-BAKER", "Ricardo Baker", "Corporal",
+         "user", None, "Rest Period", "ricardo.baker@jcf.gov.jm", "15766"),
+        ("CONS-JONES", "Ashlee Jones", "Constable",
+         "user", None, "Rest Period", "ashlee.jones@jcf.gov.jm", "24991"),
         # --- Day Off ---
         ("SGT-BARRETT", "Robert Barrett", "Sergeant",
-         "supervisor", None, "Day Off", "robert.barrett@jcf.gov.jm"),
-        ("DCPL-JOHNSON", "N. Johnson", "Detective Corporal",
-         "user", None, "Day Off", "n.johnson@jcf.gov.jm"),
-        ("DCONS-SMITH", "C. Smith", "Detective Constable",
-         "user", None, "Day Off", "c.smith@jcf.gov.jm"),
-        ("CONS-WITTER", "S. Witter", "Constable",
-         "user", None, "Day Off", "s.witter@jcf.gov.jm"),
-        ("CONS-MALCOLM", "R. Malcolm", "Constable",
-         "user", None, "Day Off", "r.malcolm@jcf.gov.jm"),
-        ("CONS-WALLACE", "J. Wallace", "Constable",
-         "user", None, "Day Off", "j.wallace@jcf.gov.jm"),
+         "supervisor", None, "Day Off", "robert.barrett@jcf.gov.jm", "7549"),
+        ("DCPL-JOHNSON", "Nickesha Johnson", "Detective Corporal",
+         "user", None, "Day Off", "nickesha.johnson@jcf.gov.jm", "14816"),
+        ("DCONS-SMITH", "Cassandra Smith", "Detective Constable",
+         "user", None, "Day Off", "cassandra.smith@jcf.gov.jm", "13647"),
+        ("CONS-WITTER", "Shawn Witter", "Constable",
+         "user", None, "Day Off", "shawn.witter@jcf.gov.jm", "24635"),
+        ("CONS-MALCOLM", "Ramoy Malcolm", "Constable",
+         "user", None, "Day Off", "ramoy.malcolm@jcf.gov.jm", "19703"),
+        ("CONS-WALLACE", "Jermaine Wallace", "Constable",
+         "user", None, "Day Off", "jermaine.wallace@jcf.gov.jm", "13658"),
         # --- FIC ---
-        ("DS-HENRY", "Davin Henry", "Detective Sergeant",
-         "supervisor", None, "FIC", "davin.henry@jcf.gov.jm"),
-        ("DCPL-SPENCER", "I. Spencer", "Detective Corporal",
-         "user", None, "FIC", "i.spencer@jcf.gov.jm"),
+        ("DS-HENRY", "Daven Henry", "Detective Sergeant",
+         "supervisor", None, "FIC", "daven.henry@jcf.gov.jm", "13623"),
+        ("DCPL-SPENCER", "Indira Spencer", "Detective Corporal",
+         "user", None, "FIC", "indira.spencer@jcf.gov.jm", "14569"),
         # --- Sick Leave ---
-        ("CONS-RWALLACE", "R. Wallace", "Constable",
-         "user", None, "Sick Leave", "r.wallace@jcf.gov.jm"),
-        ("DCONS-MCLAREN", "M. McLaren", "Detective Constable",
-         "user", None, "Sick Leave", "m.mclaren@jcf.gov.jm"),
-        ("CONS-EWILLIAMS", "E. Williams", "Constable",
-         "user", None, "Sick Leave", "e.williams@jcf.gov.jm"),
-        ("CONS-REID", "S. Reid", "Constable",
-         "user", None, "Sick Leave", "s.reid@jcf.gov.jm"),
+        ("CONS-RWALLACE", "Rasheed Wallace", "Constable",
+         "user", None, "Sick Leave", "rasheed.wallace@jcf.gov.jm", "25241"),
+        ("DCONS-MCLAREN", "Marlon McLaren", "Detective Constable",
+         "user", None, "Sick Leave", "marlon.mclaren@jcf.gov.jm", "13631"),
+        ("CONS-EWILLIAMS", "Emadulu Williams", "Constable",
+         "user", None, "Sick Leave", "emadulu.williams@jcf.gov.jm", "25002"),
+        ("CONS-REID", "Shakary Reid", "Constable",
+         "user", None, "Sick Leave", "shakary.reid@jcf.gov.jm", "24934"),
     ]
 
     section = "FNID Headquarters - Area 3"
     created = []
-    for badge, name, rank, role, tier, duty, email in ROSTER:
+    for badge, name, rank, role, tier, duty, email, reg_no in ROSTER:
         existing = cursor.execute(
             "SELECT badge_number FROM officers WHERE badge_number = ?", (badge,)
         ).fetchone()
@@ -944,10 +947,11 @@ def _seed_named_accounts(cursor, conn):
                 INSERT INTO officers (badge_number, full_name, rank, section,
                                       role, password_hash, email, unit_access,
                                       must_change_password, admin_tier,
-                                      verification_status, duty_assignment)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'all', 1, ?, 'active', ?)
+                                      verification_status, duty_assignment,
+                                      regulation_no)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'all', 1, ?, 'active', ?, ?)
             """, (badge, name, rank, section, role,
-                  generate_password_hash(pw), email, tier, duty))
+                  generate_password_hash(pw), email, tier, duty, reg_no))
             created.append((badge, name, role, pw, email))
 
     if created:
