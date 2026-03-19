@@ -85,6 +85,7 @@ def init_db():
         verification_status TEXT DEFAULT 'active',
         registered_at TEXT,
         locked_at TEXT,
+        duty_assignment TEXT,
         created_at TEXT DEFAULT (datetime('now'))
     )""")
 
@@ -836,6 +837,9 @@ def init_db():
         print(f"[FNID] Default admin created. Badge: ADMIN / Password: {default_pw}")
         print("[FNID] You MUST change this password on first login.")
 
+    # Seed pre-configured command and supervisor accounts
+    _seed_named_accounts(c, conn)
+
     # Seed default system settings if empty
     settings_count = c.execute("SELECT COUNT(*) FROM system_settings").fetchone()[0]
     if settings_count == 0:
@@ -843,6 +847,116 @@ def init_db():
         conn.commit()
 
     conn.close()
+
+
+def _seed_named_accounts(cursor, conn):
+    """Seed the authorised FNID Area 3 roster.
+
+    Only officers on this roster may use the system.
+    - Insp. Rodney & Cpl. Williams: full command access (admin)
+    - Sgt. Barrett, Det. Sgt. McPherson, Det. Sgt. Henry: supervisor access
+    - All others: regular user access
+    """
+    import secrets
+
+    from werkzeug.security import generate_password_hash
+
+    # (badge, full_name, rank, role, admin_tier, duty_assignment, email)
+    # email uses firstname.lastname@jcf.gov.jm
+    ROSTER = [
+        # --- Command ---
+        ("INSP-RODNEY", "Rayon Rodney", "Inspector",
+         "admin", 2, "Command", "rayon.rodney@jcf.gov.jm"),
+        # --- 8am-6pm Shift ---
+        ("SGT-ANDERSON", "T. Anderson", "Sergeant",
+         "user", None, "8am-6pm Shift", "t.anderson@jcf.gov.jm"),
+        ("CPL-HINES", "N. Hines", "Corporal",
+         "user", None, "8am-6pm Shift", "n.hines@jcf.gov.jm"),
+        ("CPL-WILLIAMS", "Machell Williams", "Corporal",
+         "admin", 2, "8am-6pm Shift", "machell.williams@jcf.gov.jm"),
+        ("CONS-BROWN", "V. Brown", "Constable",
+         "user", None, "8am-6pm Shift", "v.brown@jcf.gov.jm"),
+        ("CONS-FOSTER", "R. Foster", "Constable",
+         "user", None, "8am-6pm Shift", "r.foster@jcf.gov.jm"),
+        # --- Court ---
+        ("DS-MCPHERSON", "Danet McPherson", "Detective Sergeant",
+         "supervisor", None, "Court", "danet.mcpherson@jcf.gov.jm"),
+        # --- Fraud Desk ---
+        ("CONS-GAYLE", "C. Gayle", "Constable",
+         "user", None, "Fraud Desk", "c.gayle@jcf.gov.jm"),
+        # --- Special Assignment / FS Branch ---
+        ("CPL-BBARRETT", "B. Barrett", "Corporal",
+         "user", None, "FS Branch - Special Assignment", "b.barrett@jcf.gov.jm"),
+        # --- 6pm-8am Shift ---
+        ("DCPL-SWABY", "Z. Swaby", "Detective Corporal",
+         "user", None, "6pm-8am Shift", "z.swaby@jcf.gov.jm"),
+        ("DCONS-ENNIS", "O. Ennis", "Detective Constable",
+         "user", None, "6pm-8am Shift", "o.ennis@jcf.gov.jm"),
+        ("CONS-RUSSELL", "D. Russell", "Constable",
+         "user", None, "6pm-8am Shift", "d.russell@jcf.gov.jm"),
+        ("CONS-CAMPBELL", "E. Campbell", "Constable",
+         "user", None, "6pm-8am Shift", "e.campbell@jcf.gov.jm"),
+        # --- Rest Period ---
+        ("DCPL-MORGAN", "D. Morgan", "Detective Corporal",
+         "user", None, "Rest Period", "d.morgan@jcf.gov.jm"),
+        ("CPL-BAKER", "R. Baker", "Corporal",
+         "user", None, "Rest Period", "r.baker@jcf.gov.jm"),
+        ("CONS-JONES", "A. Jones", "Constable",
+         "user", None, "Rest Period", "a.jones@jcf.gov.jm"),
+        # --- Day Off ---
+        ("SGT-BARRETT", "Robert Barrett", "Sergeant",
+         "supervisor", None, "Day Off", "robert.barrett@jcf.gov.jm"),
+        ("DCPL-JOHNSON", "N. Johnson", "Detective Corporal",
+         "user", None, "Day Off", "n.johnson@jcf.gov.jm"),
+        ("DCONS-SMITH", "C. Smith", "Detective Constable",
+         "user", None, "Day Off", "c.smith@jcf.gov.jm"),
+        ("CONS-WITTER", "S. Witter", "Constable",
+         "user", None, "Day Off", "s.witter@jcf.gov.jm"),
+        ("CONS-MALCOLM", "R. Malcolm", "Constable",
+         "user", None, "Day Off", "r.malcolm@jcf.gov.jm"),
+        ("CONS-WALLACE", "J. Wallace", "Constable",
+         "user", None, "Day Off", "j.wallace@jcf.gov.jm"),
+        # --- FIC ---
+        ("DS-HENRY", "Davin Henry", "Detective Sergeant",
+         "supervisor", None, "FIC", "davin.henry@jcf.gov.jm"),
+        ("DCPL-SPENCER", "I. Spencer", "Detective Corporal",
+         "user", None, "FIC", "i.spencer@jcf.gov.jm"),
+        # --- Sick Leave ---
+        ("CONS-RWALLACE", "R. Wallace", "Constable",
+         "user", None, "Sick Leave", "r.wallace@jcf.gov.jm"),
+        ("DCONS-MCLAREN", "M. McLaren", "Detective Constable",
+         "user", None, "Sick Leave", "m.mclaren@jcf.gov.jm"),
+        ("CONS-EWILLIAMS", "E. Williams", "Constable",
+         "user", None, "Sick Leave", "e.williams@jcf.gov.jm"),
+        ("CONS-REID", "S. Reid", "Constable",
+         "user", None, "Sick Leave", "s.reid@jcf.gov.jm"),
+    ]
+
+    section = "FNID Headquarters - Area 3"
+    created = []
+    for badge, name, rank, role, tier, duty, email in ROSTER:
+        existing = cursor.execute(
+            "SELECT badge_number FROM officers WHERE badge_number = ?", (badge,)
+        ).fetchone()
+        if not existing:
+            pw = secrets.token_urlsafe(16)
+            cursor.execute("""
+                INSERT INTO officers (badge_number, full_name, rank, section,
+                                      role, password_hash, email, unit_access,
+                                      must_change_password, admin_tier,
+                                      verification_status, duty_assignment)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'all', 1, ?, 'active', ?)
+            """, (badge, name, rank, section, role,
+                  generate_password_hash(pw), email, tier, duty))
+            created.append((badge, name, role, pw, email))
+
+    if created:
+        conn.commit()
+        for badge, name, role, pw, email in created:
+            print(f"[FNID] {role.upper():>10} | {name:<20} | Badge: {badge:<16} "
+                  f"| Email: {email} | Password: {pw}")
+        print(f"[FNID] {len(created)} roster accounts created. "
+              "All MUST change password on first login.")
 
 
 def _seed_default_settings(cursor):

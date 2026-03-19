@@ -26,7 +26,7 @@ class User(UserMixin):
                  password_hash=None, email=None, is_active=True,
                  unit_access="all", must_change_password=False,
                  admin_tier=None, verification_status="active",
-                 registered_at=None, locked_at=None):
+                 registered_at=None, locked_at=None, duty_assignment=None):
         self.id = badge_number  # Flask-Login uses .id
         self.badge_number = badge_number
         self.full_name = full_name
@@ -42,6 +42,7 @@ class User(UserMixin):
         self.verification_status = verification_status or "active"
         self.registered_at = registered_at
         self.locked_at = locked_at
+        self.duty_assignment = duty_assignment
 
     @property
     def is_active(self):
@@ -100,6 +101,7 @@ class User(UserMixin):
             ),
             registered_at=row["registered_at"] if "registered_at" in keys else None,
             locked_at=row["locked_at"] if "locked_at" in keys else None,
+            duty_assignment=row["duty_assignment"] if "duty_assignment" in keys else None,
         )
 
     def get_assigned_units(self):
@@ -112,7 +114,7 @@ class User(UserMixin):
 
     def get_single_unit(self):
         """Return unit key if user has exactly one assigned unit and is non-supervisory, else None."""
-        SUPERVISOR_ROLES = {"admin", "dco", "ddi", "station_mgr"}
+        SUPERVISOR_ROLES = {"admin", "dco", "ddi", "station_mgr", "supervisor"}
         if self.role in SUPERVISOR_ROLES:
             return None
         if not self.unit_access or self.unit_access == "all":

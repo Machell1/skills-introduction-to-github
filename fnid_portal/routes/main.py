@@ -18,6 +18,10 @@ def home():
     if single_unit:
         return redirect(url_for("units.unit_home", unit=single_unit))
 
+    # Regular users get a limited dashboard
+    if getattr(current_user, "role", "viewer") == "user":
+        return _user_dashboard()
+
     conn = get_db()
     stats = {}
     table_map = {
@@ -55,6 +59,38 @@ def home():
     conn.close()
     return render_template("home.html", stats=stats, alerts=alerts, recent=recent,
                            visible_portals=visible_portals)
+
+
+def _user_dashboard():
+    """Render limited dashboard for regular users."""
+    conn = get_db()
+    stats = {
+        "cases": conn.execute("SELECT COUNT(*) FROM cases").fetchone()[0],
+        "operations": conn.execute("SELECT COUNT(*) FROM operations").fetchone()[0],
+        "seizures": conn.execute("SELECT COUNT(*) FROM firearm_seizures").fetchone()[0],
+        "arrests": conn.execute("SELECT COUNT(*) FROM arrests").fetchone()[0],
+    }
+
+    # Limited set of portals for regular users (read-only)
+    user_portals = {}
+    for key in ("registry", "operations", "seizures", "arrests"):
+        if key in UNIT_PORTALS:
+            user_portals[key] = UNIT_PORTALS[key]
+
+    alerts = []
+    try:
+        badge = getattr(current_user, "badge_number", None)
+        alerts = get_alerts_for_user(badge=badge, role="user")
+    except Exception:
+        pass
+
+    recent = conn.execute("""
+        SELECT * FROM audit_log ORDER BY timestamp DESC LIMIT 10
+    """).fetchall()
+
+    conn.close()
+    return render_template("user_dashboard.html", stats=stats, alerts=alerts,
+                           recent=recent, visible_portals=user_portals)
 
 
 @bp.route("/command")

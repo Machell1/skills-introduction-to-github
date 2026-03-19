@@ -18,11 +18,13 @@ ROLES = {
     "dco": "Divisional Crime Officer",
     "ddi": "Divisional Detective Inspector",
     "station_mgr": "Station Manager",
+    "supervisor": "Supervisor",
     "registrar": "Registrar",
     "io": "Investigating Officer",
     "plo": "Police Liaison Officer",
     "intel_officer": "Intelligence Officer",
     "transport_officer": "Transport Officer",
+    "user": "Regular User",
     "viewer": "Read-Only Viewer",
 }
 
@@ -32,11 +34,13 @@ ROLE_HIERARCHY = {
     "ddi": 90,
     "dco": 80,
     "station_mgr": 70,
+    "supervisor": 65,
     "registrar": 60,
     "intel_officer": 55,
     "io": 50,
     "plo": 40,
     "transport_officer": 35,
+    "user": 15,
     "viewer": 10,
 }
 
@@ -54,23 +58,26 @@ ADMIN_TIERS = {
 # ---------------------------------------------------------------------------
 PERMISSIONS = {
     "cases": {
-        "create": {"admin", "dco", "ddi", "station_mgr", "registrar", "io"},
-        "read": {"admin", "dco", "ddi", "station_mgr", "registrar", "io", "plo", "intel_officer", "viewer"},
-        "update": {"admin", "dco", "ddi", "station_mgr", "registrar", "io"},
+        "create": {"admin", "dco", "ddi", "station_mgr", "supervisor", "registrar", "io"},
+        "read": {
+            "admin", "dco", "ddi", "station_mgr", "supervisor", "registrar",
+            "io", "plo", "intel_officer", "user", "viewer",
+        },
+        "update": {"admin", "dco", "ddi", "station_mgr", "supervisor", "registrar", "io"},
         "delete": {"admin", "dco"},
-        "assign": {"admin", "dco", "ddi", "station_mgr"},
-        "approve": {"admin", "dco", "ddi", "station_mgr"},
+        "assign": {"admin", "dco", "ddi", "station_mgr", "supervisor"},
+        "approve": {"admin", "dco", "ddi", "station_mgr", "supervisor"},
         "suspend": {"admin", "dco", "ddi"},
-        "close": {"admin", "dco", "ddi", "station_mgr"},
+        "close": {"admin", "dco", "ddi", "station_mgr", "supervisor"},
         "reopen": {"admin", "dco", "ddi"},
     },
     "cr_forms": {
-        "create": {"admin", "dco", "ddi", "station_mgr", "registrar", "io"},
-        "read": {"admin", "dco", "ddi", "station_mgr", "registrar", "io", "plo", "viewer"},
-        "update": {"admin", "dco", "ddi", "station_mgr", "registrar", "io"},
+        "create": {"admin", "dco", "ddi", "station_mgr", "supervisor", "registrar", "io"},
+        "read": {"admin", "dco", "ddi", "station_mgr", "supervisor", "registrar", "io", "plo", "user", "viewer"},
+        "update": {"admin", "dco", "ddi", "station_mgr", "supervisor", "registrar", "io"},
         "delete": {"admin", "dco"},
-        "approve": {"admin", "dco", "ddi", "station_mgr"},
-        "export_pdf": {"admin", "dco", "ddi", "station_mgr", "registrar", "io", "plo"},
+        "approve": {"admin", "dco", "ddi", "station_mgr", "supervisor"},
+        "export_pdf": {"admin", "dco", "ddi", "station_mgr", "supervisor", "registrar", "io", "plo"},
     },
     "intel": {
         "create": {"admin", "dco", "ddi", "intel_officer"},
@@ -81,39 +88,48 @@ PERMISSIONS = {
         "link_analysis": {"admin", "dco", "ddi", "intel_officer"},
     },
     "operations": {
-        "create": {"admin", "dco", "ddi", "station_mgr", "io"},
-        "read": {"admin", "dco", "ddi", "station_mgr", "io", "intel_officer", "viewer"},
-        "update": {"admin", "dco", "ddi", "station_mgr", "io"},
+        "create": {"admin", "dco", "ddi", "station_mgr", "supervisor", "io"},
+        "read": {"admin", "dco", "ddi", "station_mgr", "supervisor", "io", "intel_officer", "user", "viewer"},
+        "update": {"admin", "dco", "ddi", "station_mgr", "supervisor", "io"},
         "delete": {"admin", "dco"},
     },
     "seizures": {
-        "create": {"admin", "dco", "ddi", "station_mgr", "io"},
-        "read": {"admin", "dco", "ddi", "station_mgr", "registrar", "io", "intel_officer", "plo", "viewer"},
-        "update": {"admin", "dco", "ddi", "station_mgr", "io"},
+        "create": {"admin", "dco", "ddi", "station_mgr", "supervisor", "io"},
+        "read": {
+            "admin", "dco", "ddi", "station_mgr", "supervisor", "registrar",
+            "io", "intel_officer", "plo", "user", "viewer",
+        },
+        "update": {"admin", "dco", "ddi", "station_mgr", "supervisor", "io"},
         "delete": {"admin", "dco"},
     },
     "arrests": {
-        "create": {"admin", "dco", "ddi", "station_mgr", "io"},
-        "read": {"admin", "dco", "ddi", "station_mgr", "registrar", "io", "plo", "viewer"},
-        "update": {"admin", "dco", "ddi", "station_mgr", "io"},
+        "create": {"admin", "dco", "ddi", "station_mgr", "supervisor", "io"},
+        "read": {
+            "admin", "dco", "ddi", "station_mgr", "supervisor", "registrar",
+            "io", "plo", "user", "viewer",
+        },
+        "update": {"admin", "dco", "ddi", "station_mgr", "supervisor", "io"},
         "delete": {"admin", "dco"},
     },
     "forensics": {
         "create": {"admin", "dco", "ddi", "registrar", "io"},
-        "read": {"admin", "dco", "ddi", "station_mgr", "registrar", "io", "plo", "viewer"},
+        "read": {"admin", "dco", "ddi", "station_mgr", "supervisor", "registrar", "io", "plo", "user", "viewer"},
         "update": {"admin", "dco", "ddi", "registrar", "io"},
         "delete": {"admin", "dco"},
     },
     "file_movement": {
         "create": {"admin", "dco", "ddi", "registrar", "io"},
-        "read": {"admin", "dco", "ddi", "station_mgr", "registrar", "io", "viewer"},
+        "read": {"admin", "dco", "ddi", "station_mgr", "supervisor", "registrar", "io", "viewer"},
         "update": {"admin", "dco", "ddi", "registrar"},
         "checkout_original": {"admin", "dco", "registrar"},
-        "checkout_working": {"admin", "dco", "ddi", "station_mgr", "registrar", "io"},
+        "checkout_working": {"admin", "dco", "ddi", "station_mgr", "supervisor", "registrar", "io"},
     },
     "mcr": {
-        "compile": {"admin", "dco", "ddi", "station_mgr", "registrar"},
-        "read": {"admin", "dco", "ddi", "station_mgr", "registrar", "io", "intel_officer", "plo", "viewer"},
+        "compile": {"admin", "dco", "ddi", "station_mgr", "supervisor", "registrar"},
+        "read": {
+            "admin", "dco", "ddi", "station_mgr", "supervisor", "registrar",
+            "io", "intel_officer", "plo", "user", "viewer",
+        },
     },
     "admin": {
         "access": {"admin", "dco"},
@@ -128,30 +144,30 @@ PERMISSIONS = {
     },
     "transport": {
         "create": {"admin", "dco", "transport_officer"},
-        "read": {"admin", "dco", "ddi", "station_mgr", "transport_officer", "viewer"},
+        "read": {"admin", "dco", "ddi", "station_mgr", "supervisor", "transport_officer", "viewer"},
         "update": {"admin", "dco", "transport_officer"},
     },
     "documents": {
         "upload": {
-            "admin", "dco", "ddi", "station_mgr", "registrar",
-            "io", "intel_officer", "plo", "transport_officer",
+            "admin", "dco", "ddi", "station_mgr", "supervisor", "registrar",
+            "io", "intel_officer", "plo", "transport_officer", "user",
         },
         "read": {
-            "admin", "dco", "ddi", "station_mgr", "registrar",
-            "io", "intel_officer", "plo", "transport_officer", "viewer",
+            "admin", "dco", "ddi", "station_mgr", "supervisor", "registrar",
+            "io", "intel_officer", "plo", "transport_officer", "user", "viewer",
         },
         "delete": {"admin", "dco"},
     },
     "kpis": {
         "read": {
-            "admin", "dco", "ddi", "station_mgr", "registrar",
-            "io", "intel_officer", "plo", "transport_officer", "viewer",
+            "admin", "dco", "ddi", "station_mgr", "supervisor", "registrar",
+            "io", "intel_officer", "plo", "transport_officer", "user", "viewer",
         },
         "manage": {"admin"},
     },
     "workflow": {
-        "read": {"admin", "dco", "ddi", "station_mgr", "registrar", "io", "intel_officer"},
-        "advance": {"admin", "dco", "ddi", "station_mgr", "registrar", "io"},
+        "read": {"admin", "dco", "ddi", "station_mgr", "supervisor", "registrar", "io", "intel_officer"},
+        "advance": {"admin", "dco", "ddi", "station_mgr", "supervisor", "registrar", "io"},
     },
     "maintenance": {
         "access": {"admin"},
@@ -241,7 +257,7 @@ def verification_required(f):
 def is_supervisor(user):
     """Check if user has a supervisory role."""
     return getattr(user, "role", "viewer") in {
-        "admin", "dco", "ddi", "station_mgr"
+        "admin", "dco", "ddi", "station_mgr", "supervisor"
     }
 
 

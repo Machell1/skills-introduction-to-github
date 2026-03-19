@@ -19,7 +19,7 @@ bp = Blueprint("analytics", __name__, url_prefix="/analytics")
 analytics_bp = bp
 
 # Roles permitted to access analytics
-_ANALYTICS_ROLES = ("admin", "dco", "ddi", "station_mgr")
+_ANALYTICS_ROLES = ("admin", "dco", "ddi", "station_mgr", "supervisor")
 
 
 # ---------------------------------------------------------------------------

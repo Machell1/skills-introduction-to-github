@@ -128,10 +128,11 @@ def login():
                     flash("You must change your password.", "warning")
                     return redirect(url_for("auth.change_password"))
 
-                # Single-unit users go directly to their unit
+                # Route by role after login
                 single_unit = user.get_single_unit()
                 if single_unit:
                     return redirect(url_for("units.unit_home", unit=single_unit))
+                # Regular users go to user dashboard (via main.home)
                 return redirect(url_for("main.home"))
             else:
                 # Auto-account creation removed for security
@@ -151,56 +152,69 @@ def login():
 
 @bp.route("/register", methods=["GET", "POST"])
 def register():
-    """Self-service registration for JCF officers."""
+    """Activate account — officers claim their pre-seeded roster account
+    by verifying their JCF email and setting a unique password."""
     if current_user.is_authenticated:
         return redirect(url_for("main.home"))
 
     if request.method == "POST":
-        badge = request.form.get("badge_number", "").strip()
-        name = request.form.get("full_name", "").strip()
-        rank = request.form.get("rank", "").strip()
-        section = request.form.get("section", "").strip()
-        email = request.form.get("email", "").strip()
+        email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
         confirm = request.form.get("confirm_password", "")
         ip_addr = request.remote_addr or "unknown"
 
-        if not badge or not name or not rank or not section:
-            flash("Badge, name, rank, and section are required.", "danger")
+        # Require JCF webmail email
+        if not email:
+            flash("A valid JCF email address is required.", "danger")
+            return redirect(url_for("auth.register"))
+        if not email.endswith("@jcf.gov.jm"):
+            flash("Only JCF webmail addresses (@jcf.gov.jm) are accepted.", "danger")
             return redirect(url_for("auth.register"))
 
         if password != confirm:
             flash("Passwords do not match.", "danger")
             return redirect(url_for("auth.register"))
 
-        # Validate password strength
-        is_valid, err_msg = validate_password_strength(password, badge, name)
-        if not is_valid:
-            flash(err_msg, "danger")
-            return redirect(url_for("auth.register"))
-
         conn = get_db()
         try:
-            existing = conn.execute(
-                "SELECT badge_number FROM officers WHERE badge_number = ?", (badge,)
+            # Look up the officer by their roster email
+            row = conn.execute(
+                "SELECT * FROM officers WHERE email = ?", (email,)
             ).fetchone()
-            if existing:
-                flash("Badge number already registered.", "danger")
+
+            if not row:
+                log_audit("officers", email, "REGISTER_UNKNOWN_EMAIL", "", "",
+                          f"Unrecognised email registration attempt from {ip_addr}")
+                flash("Email not found on the authorised roster. "
+                      "Only FNID Area 3 personnel may register.", "danger")
                 return redirect(url_for("auth.register"))
 
-            now = datetime.now().isoformat()
+            badge = row["badge_number"]
+            name = row["full_name"]
+
+            # Check if already activated (must_change_password = 0 means already set)
+            if not row["must_change_password"]:
+                flash("This account has already been activated. Please sign in.", "info")
+                return redirect(url_for("auth.login"))
+
+            # Validate password strength
+            is_valid, err_msg = validate_password_strength(password, badge, name)
+            if not is_valid:
+                flash(err_msg, "danger")
+                return redirect(url_for("auth.register"))
+
+            # Activate the account with the officer's chosen password
             conn.execute("""
-                INSERT INTO officers (badge_number, full_name, rank, section, role,
-                    password_hash, email, verification_status, registered_at,
-                    must_change_password)
-                VALUES (?, ?, ?, ?, 'io', ?, ?, 'pending', ?, 0)
-            """, (badge, name, rank, section,
-                  generate_password_hash(password), email or None, now))
+                UPDATE officers SET password_hash = ?, must_change_password = 0,
+                    verification_status = 'active'
+                WHERE badge_number = ?
+            """, (generate_password_hash(password), badge))
             conn.commit()
 
-            log_audit("officers", badge, "REGISTRATION", badge, name,
-                      f"Self-registration from {ip_addr}")
-            flash("Registration successful. Your account is pending verification (12 hours).", "success")
+            log_audit("officers", badge, "ACCOUNT_ACTIVATED", badge, name,
+                      f"Account activated via email verification from {ip_addr}")
+            flash(f"Account activated for {row['rank']} {name}. "
+                  f"Your badge number is {badge}. Please sign in.", "success")
             return redirect(url_for("auth.login"))
         finally:
             conn.close()
