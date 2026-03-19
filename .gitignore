@@ -44,5 +44,10 @@ htmlcov/
 # Docker
 .dockerignore
 
+# Frontend (React SPA)
+frontend/node_modules/
+frontend/dist/
+fnid_portal/static/spa/
+
 # Misc
 *.log

@@ -216,6 +216,26 @@ def create_app(config_name=None):
     app.register_blueprint(kpis_bp)
     app.register_blueprint(workflow_bp)
 
+    # Register blueprints — React SPA & API v1
+    from .routes.api_v1.auth import bp as api_auth_bp
+    from .routes.api_v1.dashboard import bp as api_dashboard_bp
+    from .routes.spa import bp as spa_bp
+
+    app.register_blueprint(api_auth_bp)
+    app.register_blueprint(api_dashboard_bp)
+    app.register_blueprint(spa_bp)
+
+    # Exempt JSON API from CSRF (session cookies still required)
+    csrf.exempt(api_auth_bp)
+    csrf.exempt(api_dashboard_bp)
+
+    # CSRF token endpoint for the React SPA
+    @app.route("/api/v1/csrf-token")
+    def csrf_token_endpoint():
+        from flask import jsonify
+        from flask_wtf.csrf import generate_csrf
+        return jsonify({"csrf_token": generate_csrf()})
+
     # Register CLI commands
     _register_cli(app)
 
