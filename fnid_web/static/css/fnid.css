@@ -300,6 +300,90 @@ main {
     font-size: 0.82rem;
 }
 
+/* --- Collapsible Form Sections (Quick Entry Mode) --- */
+.form-section-optional {
+    background: white;
+    border-radius: 8px;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    overflow: hidden;
+}
+
+.form-section-optional .form-section-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.5rem;
+    cursor: pointer;
+    border: none;
+    background: none;
+    width: 100%;
+    text-align: left;
+    color: var(--fnid-gray);
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: background 0.15s ease;
+}
+
+.form-section-optional .form-section-toggle:hover {
+    background: var(--fnid-light-gray);
+}
+
+.form-section-optional .form-section-toggle .bi-chevron-down {
+    transition: transform 0.2s ease;
+    font-size: 0.8rem;
+}
+
+.form-section-optional .form-section-toggle[aria-expanded="true"] .bi-chevron-down {
+    transform: rotate(180deg);
+}
+
+.form-section-optional .form-section-toggle .toggle-hint {
+    font-size: 0.78rem;
+    color: #adb5bd;
+    font-weight: 400;
+    margin-left: 0.5rem;
+}
+
+.form-section-optional .collapse-body {
+    padding: 0 1.5rem 1.5rem;
+}
+
+.form-section-optional .form-section-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--fnid-navy);
+    border-bottom: 2px solid var(--fnid-light-blue);
+    padding-bottom: 0.5rem;
+    margin-bottom: 1rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Quick entry mode banner */
+.quick-entry-banner {
+    background: linear-gradient(135deg, #e8f4fd 0%, #f0f7ff 100%);
+    border: 1px solid #bee5eb;
+    border-radius: 8px;
+    padding: 0.75rem 1.25rem;
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.85rem;
+    color: #0c5460;
+}
+
+.quick-entry-banner i {
+    font-size: 1.1rem;
+}
+
+.quick-entry-banner .btn-expand-all {
+    margin-left: auto;
+    font-size: 0.78rem;
+    white-space: nowrap;
+}
+
 /* --- Print Styles --- */
 @media print {
     .navbar, footer, .btn, .no-print { display: none !important; }

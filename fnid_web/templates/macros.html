@@ -49,6 +49,30 @@
 </div>
 {% endmacro %}
 
+{% macro quick_entry_banner() %}
+<div class="quick-entry-banner">
+    <i class="bi bi-lightning-charge-fill"></i>
+    <span><strong>Quick Entry Mode</strong> &mdash; Only required fields are shown. Click section headers below to add optional details.</span>
+    <button type="button" class="btn btn-sm btn-outline-info btn-expand-all" id="expand-all-sections">Show All Fields</button>
+</div>
+{% endmacro %}
+
+{% macro optional_section_start(id, icon, title, hint="Optional") %}
+<div class="form-section-optional">
+    <button class="form-section-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#{{ id }}" aria-expanded="false" aria-controls="{{ id }}">
+        <span><i class="bi {{ icon }} me-2"></i>{{ title }}<span class="toggle-hint">({{ hint }})</span></span>
+        <i class="bi bi-chevron-down"></i>
+    </button>
+    <div class="collapse" id="{{ id }}">
+        <div class="collapse-body">
+{% endmacro %}
+
+{% macro optional_section_end() %}
+        </div>
+    </div>
+</div>
+{% endmacro %}
+
 {% macro status_badge(status) %}
 {% if status %}
 <span class="badge" data-status="{{ status }}">{{ status }}</span>

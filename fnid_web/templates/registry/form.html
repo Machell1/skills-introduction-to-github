@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "macros.html" import select_field, text_field, textarea_field, number_field, submit_controls %}
+{% from "macros.html" import select_field, text_field, textarea_field, number_field, submit_controls, quick_entry_banner, optional_section_start, optional_section_end %}
 {% block title %}{% if is_new %}Register New Case{% else %}Edit Case{% endif %}{% endblock %}
 
 {% block content %}
@@ -96,6 +96,9 @@
 {% elif subtype == 'dpp' %}
 <!-- DPP PIPELINE FORM -->
 <form method="POST" class="needs-validation" novalidate>
+    {% if is_new %}{{ quick_entry_banner() }}{% endif %}
+
+    <!-- Essential: DPP File Details -->
     <div class="form-section">
         <div class="form-section-title"><i class="bi bi-file-earmark-text me-2"></i>DPP File Details (Prosecution Protocol 2012)</div>
         <div class="row">
@@ -110,56 +113,56 @@
                 {{ text_field("oic_name", "OIC Name", record.oic_name if record else session.get('officer_name','')) }}
             </div>
             <div class="col-md-3">
-                {{ text_field("suspect_name", "Suspect Name", record.suspect_name if record else "") }}
+                {{ select_field("dpp_status", "DPP Status", cfg.DPP_FILE_STATUS,
+                                record.dpp_status if record else "", required=true) }}
             </div>
         </div>
         <div class="row">
-            <div class="col-md-6">
+            <div class="col-md-4">
+                {{ text_field("suspect_name", "Suspect Name", record.suspect_name if record else "") }}
+            </div>
+            <div class="col-md-4">
                 {{ textarea_field("offence_summary", "Offence Summary", record.offence_summary if record else "") }}
             </div>
-            <div class="col-md-3">
+            <div class="col-md-4">
                 {{ text_field("dpp_file_date", "DPP File Date", record.dpp_file_date if record else "", type="date") }}
-            </div>
-            <div class="col-md-3">
-                {{ text_field("crown_counsel", "Crown Counsel Assigned", record.crown_counsel if record else "") }}
             </div>
         </div>
     </div>
 
-    <div class="form-section">
-        <div class="form-section-title"><i class="bi bi-clipboard-data me-2"></i>Two-Stage Test (DPP Protocol)</div>
+    <!-- Optional: Two-Stage Test -->
+    {{ optional_section_start("dpp-two-stage", "bi-clipboard-data", "Two-Stage Test & Ruling", "click to add evidential test details") }}
         <div class="row">
-            <div class="col-md-4">
-                {{ select_field("dpp_status", "DPP Status", cfg.DPP_FILE_STATUS,
-                                record.dpp_status if record else "", required=true) }}
+            <div class="col-md-3">
+                {{ text_field("crown_counsel", "Crown Counsel Assigned", record.crown_counsel if record else "") }}
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
                 {{ select_field("evidential_sufficiency", "Stage 1: Evidential Sufficiency Met?", cfg.YES_NO,
                                 record.evidential_sufficiency if record else "No",
                                 help="Is there sufficient evidence to provide a realistic prospect of conviction?") }}
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
                 {{ select_field("public_interest_met", "Stage 2: Public Interest Met?", cfg.YES_NO,
                                 record.public_interest_met if record else "No",
                                 help="Does the public interest require prosecution?") }}
             </div>
-        </div>
-        <div class="row">
             <div class="col-md-3">
                 {{ text_field("ruling_date", "Ruling Date", record.ruling_date if record else "", type="date") }}
             </div>
-            <div class="col-md-3">
+        </div>
+        <div class="row">
+            <div class="col-md-4">
                 {{ text_field("ruling_outcome", "Ruling Outcome", record.ruling_outcome if record else "") }}
             </div>
-            <div class="col-md-6">
+            <div class="col-md-8">
                 {{ textarea_field("ruling_notes", "Ruling Notes / Crown Counsel Opinion",
                                   record.ruling_notes if record else "", rows=2) }}
             </div>
         </div>
-    </div>
+    {{ optional_section_end() }}
 
-    <div class="form-section">
-        <div class="form-section-title"><i class="bi bi-arrow-repeat me-2"></i>Follow-Up Actions</div>
+    <!-- Optional: Follow-Up Actions -->
+    {{ optional_section_start("dpp-followup", "bi-arrow-repeat", "Follow-Up Actions", "click to add follow-up details") }}
         <div class="row">
             <div class="col-md-3">
                 {{ select_field("voluntary_bill", "Voluntary Bill of Indictment Required?", cfg.YES_NO,
@@ -179,7 +182,7 @@
         </div>
         {{ textarea_field("return_reason", "Return Reason / Additional Lines of Enquiry",
                           record.return_reason if record else "", rows=2) }}
-    </div>
+    {{ optional_section_end() }}
 
     {{ submit_controls(record.record_status if record else "Draft") }}
 </form>
@@ -187,6 +190,9 @@
 {% else %}
 <!-- CASE REGISTRATION FORM (Main) -->
 <form method="POST" class="needs-validation" novalidate>
+    {% if is_new %}{{ quick_entry_banner() }}{% endif %}
+
+    <!-- Essential: Case Registration -->
     <div class="form-section">
         <div class="form-section-title"><i class="bi bi-folder2-open me-2"></i>Case Registration</div>
         <div class="row">
@@ -207,6 +213,7 @@
         </div>
     </div>
 
+    <!-- Essential: OIC -->
     <div class="form-section">
         <div class="form-section-title"><i class="bi bi-person-badge me-2"></i>Officer in Charge (OIC)</div>
         <div class="row">
@@ -223,6 +230,7 @@
         </div>
     </div>
 
+    <!-- Essential: Offence Details -->
     <div class="form-section">
         <div class="form-section-title"><i class="bi bi-exclamation-triangle me-2"></i>Offence Details</div>
         <div class="row">
@@ -238,8 +246,8 @@
         </div>
     </div>
 
-    <div class="form-section">
-        <div class="form-section-title"><i class="bi bi-person me-2"></i>Suspect Details</div>
+    <!-- Optional: Suspect Details -->
+    {{ optional_section_start("suspect-details", "bi-person", "Suspect Details", "click to add suspect info") }}
         <div class="row">
             <div class="col-md-3">
                 {{ text_field("suspect_name", "Suspect Full Name", record.suspect_name if record else "") }}
@@ -254,10 +262,10 @@
                 {{ text_field("suspect_occupation", "Occupation", record.suspect_occupation if record else "") }}
             </div>
         </div>
-    </div>
+    {{ optional_section_end() }}
 
-    <div class="form-section">
-        <div class="form-section-title"><i class="bi bi-person-heart me-2"></i>Victim / Complainant</div>
+    <!-- Optional: Victim / Complainant -->
+    {{ optional_section_start("victim-details", "bi-person-heart", "Victim / Complainant", "click to add victim info") }}
         <div class="row">
             <div class="col-md-6">
                 {{ text_field("victim_name", "Victim / Complainant Name", record.victim_name if record else "") }}
@@ -266,10 +274,10 @@
                 {{ text_field("victim_address", "Victim Address", record.victim_address if record else "") }}
             </div>
         </div>
-    </div>
+    {{ optional_section_end() }}
 
-    <div class="form-section">
-        <div class="form-section-title"><i class="bi bi-link-45deg me-2"></i>Linked Records</div>
+    <!-- Optional: Linked Records -->
+    {{ optional_section_start("linked-records", "bi-link-45deg", "Linked Records", "click to link intel, operations, arrests") }}
         <div class="row">
             <div class="col-md-4">
                 {{ text_field("linked_intel_id", "Linked Intelligence ID", record.linked_intel_id if record else "", placeholder="INT-2025-XXX") }}
@@ -281,10 +289,10 @@
                 {{ text_field("linked_arrest_id", "Linked Arrest ID", record.linked_arrest_id if record else "", placeholder="AR-2025-XXX") }}
             </div>
         </div>
-    </div>
+    {{ optional_section_end() }}
 
-    <div class="form-section">
-        <div class="form-section-title"><i class="bi bi-clipboard-data me-2"></i>Case Status & SOP Compliance</div>
+    <!-- Optional: Case Status & SOP -->
+    {{ optional_section_start("case-status", "bi-clipboard-data", "Case Status & SOP Compliance", "click to update status") }}
         <div class="row">
             <div class="col-md-4">
                 {{ select_field("case_status", "Case Status", cfg.CASE_STATUS,
@@ -299,10 +307,10 @@
                                 record.sop_compliance if record else "Under Review") }}
             </div>
         </div>
-    </div>
+    {{ optional_section_end() }}
 
-    <div class="form-section">
-        <div class="form-section-title"><i class="bi bi-file-earmark-text me-2"></i>DPP & Court (per Prosecution Protocol 2012)</div>
+    <!-- Optional: DPP & Court -->
+    {{ optional_section_start("dpp-court", "bi-file-earmark-text", "DPP & Court", "click to add DPP/court details") }}
         <div class="row">
             <div class="col-md-3">
                 {{ text_field("dpp_submission_date", "DPP Submission Date", record.dpp_submission_date if record else "", type="date") }}
@@ -335,12 +343,12 @@
                                 record.poca_status if record else "Not Applicable") }}
             </div>
         </div>
-    </div>
+    {{ optional_section_end() }}
 
-    <div class="form-section">
-        <div class="form-section-title"><i class="bi bi-chat-left-text me-2"></i>Notes</div>
+    <!-- Optional: Notes -->
+    {{ optional_section_start("case-notes", "bi-chat-left-text", "Notes", "click to add notes") }}
         {{ textarea_field("notes", "Case Notes / Remarks", record.notes if record else "", rows=3) }}
-    </div>
+    {{ optional_section_end() }}
 
     {{ submit_controls(record.record_status if record else "Draft") }}
 </form>

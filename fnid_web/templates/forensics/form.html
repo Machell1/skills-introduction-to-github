@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "macros.html" import select_field, text_field, textarea_field, number_field, submit_controls %}
+{% from "macros.html" import select_field, text_field, textarea_field, number_field, submit_controls, quick_entry_banner, optional_section_start, optional_section_end %}
 {% block title %}{% if is_new %}New Forensic Entry{% else %}Edit Forensic Entry{% endif %}{% endblock %}
 
 {% block content %}
@@ -26,9 +26,11 @@
 {% if subtype == 'lab' %}
 <!-- LAB TRACKING FORM -->
 <form method="POST" class="needs-validation" novalidate>
-    <!-- Submission Details -->
+    {% if is_new %}{{ quick_entry_banner() }}{% endif %}
+
+    <!-- Essential: Lab Submission Details -->
     <div class="form-section">
-        <div class="form-section-title"><i class="bi bi-flask me-2"></i>Lab Submission Details (IFSLM)</div>
+        <div class="form-section-title"><i class="bi bi-flask me-2"></i>Lab Submission Details</div>
         <div class="row">
             <div class="col-md-3">
                 {{ text_field("exhibit_tag", "Exhibit Tag", record.exhibit_tag if record else "", required=true,
@@ -61,7 +63,9 @@
                                 record.exam_type if record else "") }}
             </div>
             <div class="col-md-4">
-                {{ text_field("analyst", "Analyst / Examiner Assigned", record.analyst if record else "") }}
+                {{ select_field("certificate_status", "Certificate Status", cfg.FORENSIC_CERT_STATUS,
+                                record.certificate_status if record else "Not Yet Submitted to Lab",
+                                help="Track certificate progress for DPP file readiness") }}
             </div>
             <div class="col-md-4">
                 {{ text_field("expected_date", "Expected Completion Date", record.expected_date if record else '', type="date") }}
@@ -69,14 +73,11 @@
         </div>
     </div>
 
-    <!-- Certificate & Results -->
-    <div class="form-section">
-        <div class="form-section-title"><i class="bi bi-award me-2"></i>Certificate & Results</div>
+    <!-- Optional: Certificate & Results -->
+    {{ optional_section_start("cert-results", "bi-award", "Certificate, Results & Analyst", "click to add certificate details, analyst, results") }}
         <div class="row">
             <div class="col-md-3">
-                {{ select_field("certificate_status", "Certificate Status", cfg.FORENSIC_CERT_STATUS,
-                                record.certificate_status if record else "Not Yet Submitted to Lab",
-                                help="Track certificate progress for DPP file readiness") }}
+                {{ text_field("analyst", "Analyst / Examiner Assigned", record.analyst if record else "") }}
             </div>
             <div class="col-md-3">
                 {{ text_field("certificate_number", "Certificate Number", record.certificate_number if record else "") }}
@@ -97,11 +98,10 @@
                 {{ text_field("collection_date", "Collection Date", record.collection_date if record else '', type="date") }}
             </div>
         </div>
-    </div>
+    {{ optional_section_end() }}
 
-    <!-- IBIS/eTrace (if ballistic) -->
-    <div class="form-section">
-        <div class="form-section-title"><i class="bi bi-database me-2"></i>IBIS & eTrace (Firearm Exhibits Only)</div>
+    <!-- Optional: IBIS/eTrace -->
+    {{ optional_section_start("lab-ibis-etrace", "bi-database", "IBIS & eTrace (Firearm Exhibits Only)", "click to add ballistic/trace status") }}
         <div class="row">
             <div class="col-md-6">
                 {{ select_field("ibis_status", "IBIS Status", cfg.IBIS_STATUS,
@@ -112,13 +112,12 @@
                                 record.etrace_status if record else "") }}
             </div>
         </div>
-    </div>
+    {{ optional_section_end() }}
 
-    <!-- Notes -->
-    <div class="form-section">
-        <div class="form-section-title"><i class="bi bi-chat-left-text me-2"></i>Additional Notes</div>
+    <!-- Optional: Notes -->
+    {{ optional_section_start("lab-notes", "bi-chat-left-text", "Additional Notes", "click to add notes") }}
         {{ textarea_field("notes", "Notes / Remarks", record.notes if record else "", rows=3) }}
-    </div>
+    {{ optional_section_end() }}
 
     {{ submit_controls(record.record_status if record else "Draft") }}
 </form>
@@ -126,7 +125,9 @@
 {% else %}
 <!-- CHAIN OF CUSTODY FORM -->
 <form method="POST" class="needs-validation" novalidate>
-    <!-- Exhibit Details -->
+    {% if is_new %}{{ quick_entry_banner() }}{% endif %}
+
+    <!-- Essential: Exhibit Details -->
     <div class="form-section">
         <div class="form-section-title"><i class="bi bi-box-seam me-2"></i>Exhibit Details</div>
         <div class="row">
@@ -140,63 +141,67 @@
                               placeholder="CR-2025-XXX") }}
             </div>
             <div class="col-md-3">
-                {{ text_field("linked_seizure_id", "Linked Seizure ID", record.linked_seizure_id if record else "",
-                              placeholder="FS-2025-XXX or NS-2025-XXX") }}
+                {{ text_field("seized_by", "Seized / Recovered By", record.seized_by if record else session.get('officer_name','')) }}
             </div>
             <div class="col-md-3">
                 {{ text_field("seized_date", "Date Seized", record.seized_date if record else '', type="date") }}
             </div>
         </div>
         <div class="row">
-            <div class="col-md-6">
+            <div class="col-md-8">
                 {{ textarea_field("description", "Exhibit Description", record.description if record else "", required=true, rows=2,
                                   help="Detailed physical description of the exhibit") }}
             </div>
-            <div class="col-md-3">
-                {{ text_field("seized_by", "Seized / Recovered By", record.seized_by if record else session.get('officer_name','')) }}
-            </div>
-            <div class="col-md-3">
-                {{ text_field("seized_location", "Seizure Location", record.seized_location if record else "") }}
+            <div class="col-md-4">
+                {{ text_field("current_custodian", "Current Custodian", record.current_custodian if record else session.get('officer_name','')) }}
             </div>
         </div>
     </div>
 
-    <!-- Custody Chain -->
-    <div class="form-section">
-        <div class="form-section-title"><i class="bi bi-arrow-left-right me-2"></i>Chain of Custody</div>
+    <!-- Optional: Seizure & Linked Records -->
+    {{ optional_section_start("seizure-link", "bi-link-45deg", "Seizure Location & Linked Records", "click to add seizure location, linked seizure ID") }}
         <div class="row">
-            <div class="col-md-3">
-                {{ text_field("current_custodian", "Current Custodian", record.current_custodian if record else session.get('officer_name','')) }}
+            <div class="col-md-4">
+                {{ text_field("seized_location", "Seizure Location", record.seized_location if record else "") }}
             </div>
-            <div class="col-md-3">
+            <div class="col-md-4">
+                {{ text_field("linked_seizure_id", "Linked Seizure ID", record.linked_seizure_id if record else "",
+                              placeholder="FS-2025-XXX or NS-2025-XXX") }}
+            </div>
+            <div class="col-md-4">
                 {{ text_field("storage_location", "Storage Location", record.storage_location if record else "",
                               placeholder="e.g. FNID Evidence Room, Mandeville") }}
             </div>
+        </div>
+    {{ optional_section_end() }}
+
+    <!-- Optional: Chain of Custody Transfers -->
+    {{ optional_section_start("custody-chain", "bi-arrow-left-right", "Chain of Custody Transfers", "click to log transfers") }}
+        <div class="row">
             <div class="col-md-3">
                 {{ text_field("transfer_date", "Last Transfer Date", record.transfer_date if record else '', type="date") }}
             </div>
             <div class="col-md-3">
                 {{ text_field("transfer_from", "Transferred From", record.transfer_from if record else "") }}
             </div>
-        </div>
-        <div class="row">
-            <div class="col-md-4">
+            <div class="col-md-3">
                 {{ text_field("transfer_to", "Transferred To", record.transfer_to if record else "") }}
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
                 {{ text_field("transfer_reason", "Transfer Reason", record.transfer_reason if record else "",
                               placeholder="e.g. Lab submission, court production") }}
             </div>
+        </div>
+        <div class="row">
             <div class="col-md-4">
                 {{ text_field("condition", "Condition at Transfer", record.condition if record else "",
                               placeholder="e.g. Good, seal intact, no damage") }}
             </div>
         </div>
-    </div>
+    {{ optional_section_end() }}
 
-    <!-- Integrity & Disposal -->
-    <div class="form-section">
-        <div class="form-section-title"><i class="bi bi-shield-check me-2"></i>Exhibit Integrity & Disposal</div>
+    <!-- Optional: Integrity & Disposal -->
+    {{ optional_section_start("integrity-disposal", "bi-shield-check", "Exhibit Integrity & Disposal", "click to add seal/photo/disposal status") }}
         <div class="row">
             <div class="col-md-3">
                 {{ select_field("photos_taken", "Photos Taken?", cfg.YES_NO,
@@ -213,13 +218,12 @@
                                 help="Per s.97 Firearms Act 2022 / POCA 2007") }}
             </div>
         </div>
-    </div>
+    {{ optional_section_end() }}
 
-    <!-- Notes -->
-    <div class="form-section">
-        <div class="form-section-title"><i class="bi bi-chat-left-text me-2"></i>Additional Notes</div>
+    <!-- Optional: Notes -->
+    {{ optional_section_start("coc-notes", "bi-chat-left-text", "Additional Notes", "click to add notes") }}
         {{ textarea_field("notes", "Notes / Remarks", record.notes if record else "", rows=3) }}
-    </div>
+    {{ optional_section_end() }}
 
     {{ submit_controls(record.record_status if record else "Draft") }}
 </form>

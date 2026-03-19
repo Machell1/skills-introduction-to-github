@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "macros.html" import select_field, text_field, textarea_field, number_field, submit_controls %}
+{% from "macros.html" import select_field, text_field, textarea_field, number_field, submit_controls, quick_entry_banner, optional_section_start, optional_section_end %}
 {% block title %}{% if is_new %}New Intel Report{% else %}Edit Intel Report{% endif %}{% endblock %}
 
 {% block content %}
@@ -20,15 +20,14 @@
 </div>
 
 <form method="POST" class="needs-validation" novalidate>
-    <!-- Source & Receipt -->
+    {% if is_new %}{{ quick_entry_banner() }}{% endif %}
+
+    <!-- Essential: Intelligence Receipt -->
     <div class="form-section">
         <div class="form-section-title"><i class="bi bi-broadcast me-2"></i>Intelligence Receipt</div>
         <div class="row">
             <div class="col-md-3">
                 {{ text_field("report_date", "Date Received", record.report_date if record else '', type="date", required=true) }}
-            </div>
-            <div class="col-md-3">
-                {{ text_field("report_time", "Time Received", record.report_time if record else '', type="time") }}
             </div>
             <div class="col-md-3">
                 {{ select_field("source", "Intelligence Source", cfg.INTEL_SOURCES,
@@ -39,31 +38,57 @@
                 {{ select_field("priority", "Priority", cfg.INTEL_PRIORITIES,
                                 record.priority if record else "Medium", required=true) }}
             </div>
+            <div class="col-md-3">
+                {{ select_field("parish", "Parish", cfg.ALL_PARISHES,
+                                record.parish if record else "", required=true) }}
+            </div>
         </div>
         <div class="row">
-            <div class="col-md-4">
+            <div class="col-md-6">
+                {{ textarea_field("intel_summary", "Intelligence Summary", record.intel_summary if record else "",
+                                  required=true, rows=3,
+                                  help="Summarise the intelligence received - who, what, where, when, how") }}
+            </div>
+            <div class="col-md-3">
+                {{ select_field("triage_decision", "Triage Decision", cfg.TRIAGE_DECISIONS,
+                                record.triage_decision if record else "", required=true,
+                                help="Action to be taken based on intelligence assessment") }}
+            </div>
+            <div class="col-md-3">
+                {{ select_field("intel_type", "Intelligence Type",
+                                ["Firearms - Location", "Firearms - Trafficking", "Firearms - Possession",
+                                 "Narcotics - Cultivation", "Narcotics - Trafficking", "Narcotics - Distribution",
+                                 "Gang Activity", "Murder / Shooting", "Organised Crime",
+                                 "Port / Shipping", "Financial / POCA", "Other"],
+                                record.intel_type if record else "") }}
+            </div>
+        </div>
+    </div>
+
+    <!-- Optional: Source & Receiving Officer Details -->
+    {{ optional_section_start("source-details", "bi-person-badge", "Source & Receiving Officer Details", "click to add time, officer, source reference") }}
+        <div class="row">
+            <div class="col-md-3">
+                {{ text_field("report_time", "Time Received", record.report_time if record else '', type="time") }}
+            </div>
+            <div class="col-md-3">
                 {{ text_field("received_by", "Received By (Officer)", record.received_by if record else session.get('officer_name','')) }}
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
                 {{ select_field("received_by_rank", "Rank", cfg.JCF_RANKS,
                                 record.received_by_rank if record else session.get('officer_rank','')) }}
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
                 {{ text_field("source_reference", "Source Reference / Informant Code",
                               record.source_reference if record else "",
                               help="Informant registration number or source file reference") }}
             </div>
         </div>
-    </div>
+    {{ optional_section_end() }}
 
-    <!-- Location & Subject -->
-    <div class="form-section">
-        <div class="form-section-title"><i class="bi bi-geo-alt me-2"></i>Location & Subject</div>
+    <!-- Optional: Subject & Location Details -->
+    {{ optional_section_start("subject-details", "bi-geo-alt", "Subject & Location Details", "click to add subject/person info") }}
         <div class="row">
-            <div class="col-md-3">
-                {{ select_field("parish", "Parish", cfg.ALL_PARISHES,
-                                record.parish if record else "", required=true) }}
-            </div>
             <div class="col-md-3">
                 {{ text_field("division", "Division / Area", record.division if record else "FNID Area 3") }}
             </div>
@@ -74,42 +99,26 @@
                 {{ text_field("subject_name", "Subject / Person of Interest",
                               record.subject_name if record else "") }}
             </div>
-        </div>
-        <div class="row">
-            <div class="col-md-4">
+            <div class="col-md-3">
                 {{ text_field("subject_alias", "Known Alias / Street Name", record.subject_alias if record else "") }}
             </div>
-            <div class="col-md-4">
+        </div>
+        <div class="row">
+            <div class="col-md-6">
                 {{ text_field("subject_address", "Subject Address", record.subject_address if record else "") }}
             </div>
-            <div class="col-md-4">
+            <div class="col-md-6">
                 {{ text_field("subject_phone", "Subject Phone / Contact", record.subject_phone if record else "") }}
             </div>
         </div>
-    </div>
+    {{ optional_section_end() }}
 
-    <!-- Intelligence Summary -->
-    <div class="form-section">
-        <div class="form-section-title"><i class="bi bi-file-earmark-text me-2"></i>Intelligence Summary</div>
-        <div class="row">
-            <div class="col-md-6">
-                {{ textarea_field("intel_summary", "Intelligence Summary", record.intel_summary if record else "",
-                                  required=true, rows=4,
-                                  help="Summarise the intelligence received - who, what, where, when, how") }}
-            </div>
-            <div class="col-md-6">
-                {{ textarea_field("threat_assessment", "Threat Assessment", record.threat_assessment if record else "",
-                                  rows=4, help="Assess reliability of source and credibility of information") }}
-            </div>
-        </div>
+    <!-- Optional: Threat Assessment & Grading -->
+    {{ optional_section_start("assessment-details", "bi-shield-exclamation", "Threat Assessment & 5x5x5 Grading", "click to add reliability/credibility grading") }}
         <div class="row">
             <div class="col-md-4">
-                {{ select_field("intel_type", "Intelligence Type",
-                                ["Firearms - Location", "Firearms - Trafficking", "Firearms - Possession",
-                                 "Narcotics - Cultivation", "Narcotics - Trafficking", "Narcotics - Distribution",
-                                 "Gang Activity", "Murder / Shooting", "Organised Crime",
-                                 "Port / Shipping", "Financial / POCA", "Other"],
-                                record.intel_type if record else "") }}
+                {{ textarea_field("threat_assessment", "Threat Assessment", record.threat_assessment if record else "",
+                                  rows=3, help="Assess reliability of source and credibility of information") }}
             </div>
             <div class="col-md-4">
                 {{ select_field("reliability_grade", "Source Reliability (5x5x5)",
@@ -125,17 +134,11 @@
                                 record.credibility_grade if record else "") }}
             </div>
         </div>
-    </div>
+    {{ optional_section_end() }}
 
-    <!-- Triage & Action -->
-    <div class="form-section">
-        <div class="form-section-title"><i class="bi bi-lightning me-2"></i>Triage & Action Decision</div>
+    <!-- Optional: Triage & Action Details -->
+    {{ optional_section_start("triage-details", "bi-lightning", "Triage & Action Details", "click to add triage supervisor, linked IDs") }}
         <div class="row">
-            <div class="col-md-4">
-                {{ select_field("triage_decision", "Triage Decision", cfg.TRIAGE_DECISIONS,
-                                record.triage_decision if record else "", required=true,
-                                help="Action to be taken based on intelligence assessment") }}
-            </div>
             <div class="col-md-4">
                 {{ text_field("triaged_by", "Triaged By (Supervisor)", record.triaged_by if record else "") }}
             </div>
@@ -157,13 +160,12 @@
                               placeholder="CR-2025-XXX") }}
             </div>
         </div>
-    </div>
+    {{ optional_section_end() }}
 
-    <!-- Notes -->
-    <div class="form-section">
-        <div class="form-section-title"><i class="bi bi-chat-left-text me-2"></i>Additional Notes</div>
+    <!-- Optional: Notes -->
+    {{ optional_section_start("intel-notes", "bi-chat-left-text", "Additional Notes", "click to add notes") }}
         {{ textarea_field("notes", "Notes / Remarks", record.notes if record else "", rows=3) }}
-    </div>
+    {{ optional_section_end() }}
 
     {{ submit_controls(record.record_status if record else "Draft") }}
 </form>

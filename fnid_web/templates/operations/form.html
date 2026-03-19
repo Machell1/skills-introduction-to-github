@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "macros.html" import select_field, text_field, textarea_field, number_field, submit_controls %}
+{% from "macros.html" import select_field, text_field, textarea_field, number_field, submit_controls, quick_entry_banner, optional_section_start, optional_section_end %}
 {% block title %}{% if is_new %}New Operation{% else %}Edit Operation{% endif %}{% endblock %}
 
 {% block content %}
@@ -20,7 +20,9 @@
 </div>
 
 <form method="POST" class="needs-validation" novalidate>
-    <!-- Operation Details -->
+    {% if is_new %}{{ quick_entry_banner() }}{% endif %}
+
+    <!-- Essential: Operation Details -->
     <div class="form-section">
         <div class="form-section-title"><i class="bi bi-bullseye me-2"></i>Operation Details</div>
         <div class="row">
@@ -43,10 +45,12 @@
         </div>
         <div class="row">
             <div class="col-md-4">
-                {{ text_field("target_location", "Target Location / Address", record.target_location if record else "") }}
+                {{ text_field("team_lead", "Team Leader", record.team_lead if record else session.get('officer_name',''), required=true) }}
             </div>
             <div class="col-md-4">
-                {{ text_field("target_person", "Target Person / Subject", record.target_person if record else "") }}
+                {{ select_field("outcome", "Operation Outcome", cfg.OPERATION_OUTCOMES,
+                                record.outcome if record else "", required=true,
+                                help="Successful, Negative, Aborted, etc.") }}
             </div>
             <div class="col-md-4">
                 {{ text_field("linked_intel_id", "Linked Intelligence ID", record.linked_intel_id if record else "",
@@ -55,9 +59,20 @@
         </div>
     </div>
 
-    <!-- Warrant & Legal Basis -->
-    <div class="form-section">
-        <div class="form-section-title"><i class="bi bi-file-earmark-lock me-2"></i>Warrant & Legal Basis</div>
+    <!-- Optional: Target & Location -->
+    {{ optional_section_start("target-details", "bi-geo-alt", "Target & Location Details", "click to add target info") }}
+        <div class="row">
+            <div class="col-md-6">
+                {{ text_field("target_location", "Target Location / Address", record.target_location if record else "") }}
+            </div>
+            <div class="col-md-6">
+                {{ text_field("target_person", "Target Person / Subject", record.target_person if record else "") }}
+            </div>
+        </div>
+    {{ optional_section_end() }}
+
+    <!-- Optional: Warrant & Legal Basis -->
+    {{ optional_section_start("warrant-details", "bi-file-earmark-lock", "Warrant & Legal Basis", "click to add warrant info") }}
         <div class="row">
             <div class="col-md-4">
                 {{ select_field("warrant_basis", "Warrant / Legal Basis", cfg.WARRANT_BASIS,
@@ -72,15 +87,11 @@
                 {{ text_field("issuing_jp", "Issuing Justice of the Peace", record.issuing_jp if record else "") }}
             </div>
         </div>
-    </div>
+    {{ optional_section_end() }}
 
-    <!-- Team & Execution -->
-    <div class="form-section">
-        <div class="form-section-title"><i class="bi bi-people me-2"></i>Team & Execution</div>
+    <!-- Optional: Team & Execution Details -->
+    {{ optional_section_start("team-details", "bi-people", "Team & Timing Details", "click to add team size, times, risk assessment") }}
         <div class="row">
-            <div class="col-md-3">
-                {{ text_field("team_lead", "Team Leader", record.team_lead if record else session.get('officer_name',''), required=true) }}
-            </div>
             <div class="col-md-3">
                 {{ select_field("team_lead_rank", "Team Leader Rank", cfg.JCF_RANKS,
                                 record.team_lead_rank if record else session.get('officer_rank','')) }}
@@ -93,6 +104,9 @@
                 {{ text_field("joint_agency", "Joint Agency (if applicable)", record.joint_agency if record else "",
                               placeholder="e.g. JCA, JDF, MOCA, DEA") }}
             </div>
+            <div class="col-md-3">
+                {{ number_field("duration_hrs", "Duration (hrs)", record.duration_hrs if record else "", step=0.5) }}
+            </div>
         </div>
         <div class="row">
             <div class="col-md-3">
@@ -101,33 +115,14 @@
             <div class="col-md-3">
                 {{ text_field("end_time", "End Time", record.end_time if record else '', type="time") }}
             </div>
-            <div class="col-md-3">
-                {{ number_field("duration_hrs", "Duration (hrs)", record.duration_hrs if record else "", step=0.5) }}
-            </div>
-            <div class="col-md-3">
+            <div class="col-md-6">
                 {{ textarea_field("risk_assessment", "Risk Assessment Notes", record.risk_assessment if record else "", rows=2) }}
             </div>
         </div>
-    </div>
+    {{ optional_section_end() }}
 
-    <!-- Results & Outcome -->
-    <div class="form-section">
-        <div class="form-section-title"><i class="bi bi-trophy me-2"></i>Results & Outcome</div>
-        <div class="row">
-            <div class="col-md-4">
-                {{ select_field("outcome", "Operation Outcome", cfg.OPERATION_OUTCOMES,
-                                record.outcome if record else "", required=true,
-                                help="Successful, Negative, Aborted, etc.") }}
-            </div>
-            <div class="col-md-4">
-                {{ select_field("body_cam", "Body Camera Used?", cfg.YES_NO,
-                                record.body_cam if record else "No") }}
-            </div>
-            <div class="col-md-4">
-                {{ select_field("evidence_tagged", "Evidence Tagged at Scene?", cfg.YES_NO,
-                                record.evidence_tagged if record else "No") }}
-            </div>
-        </div>
+    <!-- Optional: Seizure Counts & Evidence -->
+    {{ optional_section_start("results-details", "bi-trophy", "Seizure Counts & Evidence", "click to log seizures, body cam, evidence") }}
         <div class="row">
             <div class="col-md-3">
                 {{ number_field("firearms_seized", "Firearms Seized", record.firearms_seized if record else 0, min=0) }}
@@ -146,18 +141,23 @@
             <div class="col-md-3">
                 {{ number_field("arrests_made", "Arrests Made", record.arrests_made if record else 0, min=0) }}
             </div>
-            <div class="col-md-9">
-                {{ textarea_field("outcome_notes", "Outcome Notes / Debrief Summary", record.outcome_notes if record else "", rows=3,
-                                  help="Details of what was found, circumstances, and any notable events") }}
+            <div class="col-md-3">
+                {{ select_field("body_cam", "Body Camera Used?", cfg.YES_NO,
+                                record.body_cam if record else "No") }}
+            </div>
+            <div class="col-md-3">
+                {{ select_field("evidence_tagged", "Evidence Tagged at Scene?", cfg.YES_NO,
+                                record.evidence_tagged if record else "No") }}
             </div>
         </div>
-    </div>
+    {{ optional_section_end() }}
 
-    <!-- Notes -->
-    <div class="form-section">
-        <div class="form-section-title"><i class="bi bi-chat-left-text me-2"></i>Additional Notes</div>
+    <!-- Optional: Notes -->
+    {{ optional_section_start("notes-section", "bi-chat-left-text", "Outcome Notes & Remarks", "click to add notes") }}
+        {{ textarea_field("outcome_notes", "Outcome Notes / Debrief Summary", record.outcome_notes if record else "", rows=3,
+                          help="Details of what was found, circumstances, and any notable events") }}
         {{ textarea_field("notes", "Notes / Remarks", record.notes if record else "", rows=3) }}
-    </div>
+    {{ optional_section_end() }}
 
     {{ submit_controls(record.record_status if record else "Draft") }}
 </form>

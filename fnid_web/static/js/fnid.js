@@ -96,6 +96,24 @@ document.addEventListener('DOMContentLoaded', function() {
         updateProgress();
     }
 
+    // Expand/Collapse All optional sections
+    var expandAllBtn = document.getElementById('expand-all-sections');
+    if (expandAllBtn) {
+        expandAllBtn.addEventListener('click', function() {
+            var sections = document.querySelectorAll('.form-section-optional .collapse');
+            var allOpen = Array.from(sections).every(function(s) { return s.classList.contains('show'); });
+            sections.forEach(function(s) {
+                var bsCollapse = bootstrap.Collapse.getOrCreateInstance(s, { toggle: false });
+                if (allOpen) {
+                    bsCollapse.hide();
+                } else {
+                    bsCollapse.show();
+                }
+            });
+            expandAllBtn.textContent = allOpen ? 'Show All Fields' : 'Hide Optional Fields';
+        });
+    }
+
     // Chart rendering helper
     window.fnidChart = function(canvasId, type, labels, datasets, options) {
         var ctx = document.getElementById(canvasId);
