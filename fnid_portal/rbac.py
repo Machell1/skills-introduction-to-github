@@ -58,12 +58,12 @@ ADMIN_TIERS = {
 # ---------------------------------------------------------------------------
 PERMISSIONS = {
     "cases": {
-        "create": {"admin", "dco", "ddi", "station_mgr", "supervisor", "registrar", "io"},
+        "create": {"admin", "dco", "ddi", "station_mgr", "supervisor", "registrar", "io", "user"},
         "read": {
             "admin", "dco", "ddi", "station_mgr", "supervisor", "registrar",
             "io", "plo", "intel_officer", "user", "viewer",
         },
-        "update": {"admin", "dco", "ddi", "station_mgr", "supervisor", "registrar", "io"},
+        "update": {"admin", "dco", "ddi", "station_mgr", "supervisor", "registrar", "io", "user"},
         "delete": {"admin", "dco"},
         "assign": {"admin", "dco", "ddi", "station_mgr", "supervisor"},
         "approve": {"admin", "dco", "ddi", "station_mgr", "supervisor"},
@@ -72,12 +72,12 @@ PERMISSIONS = {
         "reopen": {"admin", "dco", "ddi"},
     },
     "cr_forms": {
-        "create": {"admin", "dco", "ddi", "station_mgr", "supervisor", "registrar", "io"},
+        "create": {"admin", "dco", "ddi", "station_mgr", "supervisor", "registrar", "io", "user"},
         "read": {"admin", "dco", "ddi", "station_mgr", "supervisor", "registrar", "io", "plo", "user", "viewer"},
-        "update": {"admin", "dco", "ddi", "station_mgr", "supervisor", "registrar", "io"},
+        "update": {"admin", "dco", "ddi", "station_mgr", "supervisor", "registrar", "io", "user"},
         "delete": {"admin", "dco"},
         "approve": {"admin", "dco", "ddi", "station_mgr", "supervisor"},
-        "export_pdf": {"admin", "dco", "ddi", "station_mgr", "supervisor", "registrar", "io", "plo"},
+        "export_pdf": {"admin", "dco", "ddi", "station_mgr", "supervisor", "registrar", "io", "plo", "user"},
     },
     "intel": {
         "create": {"admin", "dco", "ddi", "intel_officer"},
@@ -88,33 +88,33 @@ PERMISSIONS = {
         "link_analysis": {"admin", "dco", "ddi", "intel_officer"},
     },
     "operations": {
-        "create": {"admin", "dco", "ddi", "station_mgr", "supervisor", "io"},
+        "create": {"admin", "dco", "ddi", "station_mgr", "supervisor", "io", "user"},
         "read": {"admin", "dco", "ddi", "station_mgr", "supervisor", "io", "intel_officer", "user", "viewer"},
-        "update": {"admin", "dco", "ddi", "station_mgr", "supervisor", "io"},
+        "update": {"admin", "dco", "ddi", "station_mgr", "supervisor", "io", "user"},
         "delete": {"admin", "dco"},
     },
     "seizures": {
-        "create": {"admin", "dco", "ddi", "station_mgr", "supervisor", "io"},
+        "create": {"admin", "dco", "ddi", "station_mgr", "supervisor", "io", "user"},
         "read": {
             "admin", "dco", "ddi", "station_mgr", "supervisor", "registrar",
             "io", "intel_officer", "plo", "user", "viewer",
         },
-        "update": {"admin", "dco", "ddi", "station_mgr", "supervisor", "io"},
+        "update": {"admin", "dco", "ddi", "station_mgr", "supervisor", "io", "user"},
         "delete": {"admin", "dco"},
     },
     "arrests": {
-        "create": {"admin", "dco", "ddi", "station_mgr", "supervisor", "io"},
+        "create": {"admin", "dco", "ddi", "station_mgr", "supervisor", "io", "user"},
         "read": {
             "admin", "dco", "ddi", "station_mgr", "supervisor", "registrar",
             "io", "plo", "user", "viewer",
         },
-        "update": {"admin", "dco", "ddi", "station_mgr", "supervisor", "io"},
+        "update": {"admin", "dco", "ddi", "station_mgr", "supervisor", "io", "user"},
         "delete": {"admin", "dco"},
     },
     "forensics": {
-        "create": {"admin", "dco", "ddi", "registrar", "io"},
+        "create": {"admin", "dco", "ddi", "registrar", "io", "user"},
         "read": {"admin", "dco", "ddi", "station_mgr", "supervisor", "registrar", "io", "plo", "user", "viewer"},
-        "update": {"admin", "dco", "ddi", "registrar", "io"},
+        "update": {"admin", "dco", "ddi", "registrar", "io", "user"},
         "delete": {"admin", "dco"},
     },
     "file_movement": {

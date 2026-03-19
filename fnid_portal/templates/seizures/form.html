@@ -24,6 +24,40 @@
 </div>
 
 {% if subtype == 'narcotics' %}
+<!-- Narcotics Legal Reference Guide -->
+<div class="card border-info mb-3">
+    <div class="card-header bg-info text-white">
+        <i class="bi bi-book me-2"></i>Narcotics Investigation — Legal Reference (Dangerous Drugs Act as amended 2015)
+    </div>
+    <div class="card-body small">
+        <div class="row">
+            <div class="col-md-6">
+                <strong>Part IIIA — Ganja (Cannabis):</strong>
+                <ul class="mb-1">
+                    <li><strong>s.7A</strong> — Import or Export of Ganja (5yr–life)</li>
+                    <li><strong>s.7B</strong> — Cultivation, Selling, Dealing, Transporting Ganja</li>
+                    <li><strong>s.7C</strong> — Possession of Ganja (≤2oz = J$500 ticket; >2oz = criminal)</li>
+                    <li><strong>s.7D</strong> — Smoking Ganja in Public Place</li>
+                </ul>
+                <strong>Part IV — Cocaine, Heroin, Morphine:</strong>
+                <ul class="mb-1">
+                    <li><strong>s.8</strong> — Import or Export (10yr–life)</li>
+                    <li><strong>s.8A</strong> — Selling, Dealing, Transporting (up to 35yr)</li>
+                    <li><strong>s.8B</strong> — Possession (any quantity for cocaine; >1/10oz heroin = deemed dealing)</li>
+                </ul>
+            </div>
+            <div class="col-md-6">
+                <strong>Investigation Workflow:</strong>
+                <ol class="mb-0" style="padding-left: 1.2em;">
+                    {% for step in cfg.NARCOTICS_INVESTIGATION_WORKFLOW[:9] %}
+                    <li>{{ step }}</li>
+                    {% endfor %}
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- NARCOTICS SEIZURE FORM -->
 <form method="POST" class="needs-validation" novalidate>
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -125,6 +159,39 @@
 </form>
 
 {% else %}
+<!-- Firearms Legal Reference Guide -->
+<div class="card border-danger mb-3">
+    <div class="card-header bg-danger text-white">
+        <i class="bi bi-book me-2"></i>Firearm & Ammunition Investigation — Legal Reference (Firearms Act 2022)
+    </div>
+    <div class="card-body small">
+        <div class="row">
+            <div class="col-md-6">
+                <strong>Key Charges — Firearms (Prohibition, Restriction & Regulation) Act, 2022:</strong>
+                <ul class="mb-1">
+                    <li><strong>s.5</strong> — Possession of Prohibited Weapon (15yr min; 25yr max)</li>
+                    <li><strong>s.6</strong> — Stockpiling (3+ firearms or 50+ rounds; 15yr min)</li>
+                    <li><strong>s.7</strong> — Trafficking in Prohibited Weapon (20yr min; life max)</li>
+                    <li><strong>s.10</strong> — Dealing (20+ rounds = deemed dealing; 20yr min)</li>
+                    <li><strong>s.13</strong> — Use/Possession of Firearm in Certain Circumstances</li>
+                    <li><strong>s.15</strong> — Removal/Obliteration of Serial Number/Markings</li>
+                    <li><strong>s.35</strong> — Unauthorised Possession of Firearm (no licence)</li>
+                    <li><strong>s.36</strong> — Unauthorised Possession of Ammunition (no licence)</li>
+                </ul>
+                <em>All firearms offences — mandatory Gun Court referral (Gun Court Act s.4)</em>
+            </div>
+            <div class="col-md-6">
+                <strong>Investigation Workflow:</strong>
+                <ol class="mb-0" style="padding-left: 1.2em;">
+                    {% for step in cfg.FA_INVESTIGATION_WORKFLOW[:10] %}
+                    <li>{{ step }}</li>
+                    {% endfor %}
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- FIREARMS SEIZURE FORM -->
 <form method="POST" class="needs-validation" novalidate>
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

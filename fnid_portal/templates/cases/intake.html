@@ -19,6 +19,63 @@
     </div>
 </div>
 
+<!-- FA & Narcotics Investigation Legal Reference -->
+<div class="card border-secondary mb-3">
+    <div class="card-header bg-secondary text-white" role="button" data-bs-toggle="collapse" data-bs-target="#legalRefGuide" aria-expanded="false">
+        <i class="bi bi-book me-2"></i>Legal Reference Guide — Firearms Act 2022 & Dangerous Drugs Act
+        <i class="bi bi-chevron-down float-end"></i>
+    </div>
+    <div class="collapse" id="legalRefGuide">
+        <div class="card-body small">
+            <div class="row">
+                <div class="col-md-4">
+                    <strong class="text-danger">Firearms (Prohibition, Restriction & Regulation) Act, 2022:</strong>
+                    <ul class="mb-1">
+                        <li><strong>s.5</strong> — Possession of Prohibited Weapon (15yr min; 25yr max)</li>
+                        <li><strong>s.6</strong> — Stockpiling (3+ firearms or 50+ rounds; 15yr min)</li>
+                        <li><strong>s.7</strong> — Trafficking (20yr min; life max)</li>
+                        <li><strong>s.10</strong> — Dealing (20+ rounds deemed dealing; 20yr min)</li>
+                        <li><strong>s.35</strong> — Unauthorised Possession of Firearm</li>
+                        <li><strong>s.36</strong> — Unauthorised Possession of Ammunition</li>
+                        <li><strong>s.42</strong> — Use of Firearm in Commission of Offence</li>
+                        <li><strong>s.43</strong> — Shooting with Intent to do GBH</li>
+                    </ul>
+                    <em>All FA offences — mandatory Gun Court referral</em>
+                </div>
+                <div class="col-md-4">
+                    <strong class="text-info">Dangerous Drugs Act (as amended 2015):</strong>
+                    <ul class="mb-1">
+                        <li><strong>Part IIIA — Ganja:</strong></li>
+                        <li>s.7A — Import/Export Ganja (5yr–life)</li>
+                        <li>s.7B — Dealing, Cultivation, Transporting</li>
+                        <li>s.7C — Possession (≤2oz ticket J$500; >2oz criminal)</li>
+                        <li><strong>Part IV — Cocaine, Heroin:</strong></li>
+                        <li>s.8 — Import/Export (10yr–life)</li>
+                        <li>s.8A — Selling, Dealing, Transporting (up to 35yr)</li>
+                        <li>s.8B — Possession (any cocaine; >1/10oz heroin = deemed dealing)</li>
+                    </ul>
+                </div>
+                <div class="col-md-4">
+                    <strong>Deemed Dealing Thresholds:</strong>
+                    <ul class="mb-1">
+                        <li>Ganja: >2oz = criminal; 5+ plants = trafficking</li>
+                        <li>Cocaine: any quantity = criminal offence</li>
+                        <li>Heroin: >1/10oz = deemed dealing</li>
+                        <li>Ammunition: 20+ rounds = deemed dealing (FA s.10)</li>
+                        <li>Firearms: 3+ = stockpiling (FA s.6)</li>
+                    </ul>
+                    <strong>Court Jurisdiction:</strong>
+                    <ul class="mb-0">
+                        <li>All firearm offences — Gun Court</li>
+                        <li>Drug summary — Parish Court</li>
+                        <li>Drug indictable — Circuit Court</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <form method="POST" action="{{ url_for('cases.intake') }}" class="needs-validation" novalidate>
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 

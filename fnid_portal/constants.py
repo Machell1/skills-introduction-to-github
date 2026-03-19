@@ -189,57 +189,189 @@ DRUG_TYPES = [
 
 DRUG_UNITS = ["kg", "g", "lbs", "oz", "plants", "tablets", "capsules", "ml", "litres"]
 
-# --- Offences (Firearms Act 2022 - key sections) ---
+# --- Offences: Firearms (Prohibition, Restriction & Regulation) Act, 2022 ---
+# Correct sections per the Act (commenced 1 November 2022)
+# Part II — Prohibited Weapons Regime
 FIREARMS_ACT_OFFENCES = [
-    "s.5 - Possession of Prohibited Weapon (mandatory 15yr; max 25yr)",
-    "s.6 - Stockpiling (3+ firearms or 50+ rounds; 15yr min)",
+    # Part II — Prohibited Weapons
+    "s.5 - Possession of Prohibited Weapon (15yr min; 25yr max)",
+    "s.6 - Stockpiling of Prohibited Weapons (3+ firearms or 50+ rounds; 15yr min)",
     "s.7 - Trafficking in Prohibited Weapon (20yr min; life max)",
-    "s.8 - Possession with Intent to Traffic",
-    "s.9 - Manufacture of Prohibited Weapon (20yr min)",
-    "s.10 - Dealing in Prohibited Weapon",
-    "s.11 - Importing / Exporting Prohibited Weapon",
-    "s.12 - Diversion of Lawful Firearm",
-    "s.22 - Possession of Prohibited Ammunition",
-    "s.29 - Possession of Unmarked Firearm",
-    "s.30 - Obliterating Serial Number / Markings",
-    "s.42 - Use of Firearm in Commission of Offence",
-    "s.43 - Shooting with Intent (wounding / grievous bodily harm)",
+    "s.8 - Manufacture of Prohibited Weapon or Possession of Device Therefor (20yr min)",
+    "s.9 - Possession of Prohibited Weapon with Intent to Traffic",
+    "s.10 - Dealing in Prohibited Weapon (20+ rounds deemed dealing; 20yr min)",
+    "s.11 - Prohibition on Taking Firearms or Ammunition in Pawn",
+    "s.12 - Prohibition on Diversion of Lawful Firearm to Unlawful Use",
+    "s.13 - Use or Possession of Firearm or Imitation Firearm in Certain Circumstances",
+    "s.14 - Possession of Firearm or Ammunition with Intent to Injure or Cause Damage",
+    "s.15 - Removal, Alteration or Obliteration of Mark on Firearm",
+    "s.16 - Transfer in Violation of United Nations Security Council Resolution",
+    # Part IV — Authorised Firearms Regime
+    "s.35 - Unauthorised Possession of Firearm (no valid licence)",
+    "s.36 - Unauthorised Possession of Ammunition (no valid licence)",
+    "s.37 - Restriction on Carrying Firearm or Ammunition in Public Place",
+    "s.39 - Restriction on Discharge of Firearm",
+    "s.40 - Failure to Deliver Up Firearm or Ammunition on Demand",
+    "s.41 - Failure to Report Loss or Theft of Firearm or Ammunition",
+    # Part V — Firearm-Related Violent Offences
+    "s.42 - Use of Firearm in Commission of Offence (consecutive sentence)",
+    "s.43 - Shooting with Intent to Do Grievous Bodily Harm",
+    "s.44 - Wounding with Intent (firearm)",
+    "s.45 - Assault with Firearm",
+    # Part VI — Conspiracy & Ancillary
     "s.48 - Conspiracy to Commit Firearms Offence",
-    "Illegal Possession of Firearm (general)",
-    "Illegal Possession of Ammunition (general)",
+    "s.49 - Aiding, Abetting, Counselling or Procuring Firearms Offence",
+    "s.50 - Attempting to Commit Firearms Offence",
+    # General charges
+    "Illegal Possession of Firearm (general — s.35)",
+    "Illegal Possession of Ammunition (general — s.36)",
 ]
 
-# --- Offences (Dangerous Drugs Act - key sections) ---
+# --- Offences: Dangerous Drugs Act (as amended 2015) ---
+# Part IIIA — Ganja (Cannabis): ss.7A-7D
+# Part IV — Cocaine, Morphine, Heroin, etc.: ss.8-8B
 DDA_OFFENCES = [
-    "s.7C - Import/Export Cannabis (DDA Part IIIA; 5yr-life)",
-    "s.7D - Dealing/Trafficking Cannabis",
-    "s.7E - Possession of Cannabis (>2oz = deemed dealing)",
-    "s.7F - Cultivation of Cannabis (>5 plants = trafficking)",
-    "s.8 - Import/Export Cocaine/Heroin (DDA Part IV; 10yr-life)",
-    "s.8 - Dealing/Trafficking Cocaine/Heroin",
-    "s.8 - Possession of Cocaine (any quantity)",
-    "s.8 - Possession of Heroin (>1/10 oz = deemed dealing)",
-    "s.21 - Search & Seizure under DDA",
+    # Part IIIA — Ganja
+    "s.7A - Import or Export of Ganja (Part IIIA; 5yr–life on Circuit Court)",
+    "s.7B - Cultivation, Selling, Dealing in or Transporting Ganja",
+    "s.7B(2) - Cultivation of Cannabis (5+ plants deemed trafficking)",
+    "s.7C - Possession of Ganja (>2oz deemed dealing; ≤2oz ticketable J$500)",
+    "s.7C(1)(b) - Possession of Ganja in Excess of 2 Ounces",
+    "s.7D - Smoking of Ganja in Public Place or within 5m of Public Place",
+    # Part IV — Cocaine, Morphine, Heroin, etc.
+    "s.8 - Import or Export of Cocaine, Heroin or Other Part IV Drug (10yr–life)",
+    "s.8A - Selling, Dealing in, or Transporting Cocaine or Heroin (up to 35yr)",
+    "s.8A(2) - Using Premises for Manufacture or Distribution of Part IV Drug",
+    "s.8A(3) - Using Conveyance to Transport Part IV Drug",
+    "s.8B - Possession of Cocaine, Heroin or Other Part IV Drug",
+    "s.8B(2) - Possession of Cocaine in Any Quantity",
+    "s.8B(3) - Possession of Heroin (>1/10 oz deemed dealing)",
+    # Part V — General DDA provisions
+    "s.21 - Search and Seizure under Dangerous Drugs Act",
+    "s.21(2) - Search under Sergeant Written Directive (DDA)",
+    "s.22 - Obstruction of Authorised Officer (DDA)",
+    "s.23 - Using Postal Service to Transport Controlled Drug (up to 15yr)",
+    # Deemed dealing / Aggravating circumstances
     "Deemed Dealing - Possession near School Premises",
-    "Conspiracy to Import/Export Controlled Drug",
-    "Money Laundering (drug proceeds)",
+    "Deemed Dealing - Possession with Scales, Packaging or Large Cash",
+    "Conspiracy to Import or Export Controlled Drug",
+    "Money Laundering of Drug Proceeds (POCA s.5)",
 ]
 
-# --- Offences (Other relevant statutes) ---
+# --- Offences: Other Relevant Jamaica Statutes ---
 OTHER_OFFENCES = [
-    "Murder (committed with firearm)",
-    "Attempted Murder (firearm)",
-    "Wounding with Intent (s.20 Offences Against the Person Act)",
-    "Robbery with Aggravation (firearm)",
-    "POCA - Dealing in Property of Criminal Origin (s.4)",
-    "POCA - Money Laundering (s.5)",
-    "POCA - Failure to Report Suspicious Transaction (s.6)",
-    "Conspiracy (general)",
-    "Accessory Before/After the Fact",
+    # Offences Against the Person Act
+    "Murder (committed with firearm) — Offences Against the Person Act s.2",
+    "Attempted Murder (firearm) — Offences Against the Person Act s.14",
+    "Wounding with Intent — Offences Against the Person Act s.20",
+    "Unlawful Wounding — Offences Against the Person Act s.22",
+    "Assault Occasioning Bodily Harm — Offences Against the Person Act s.37",
+    # Larceny Act / Robbery
+    "Robbery with Aggravation (firearm) — Larceny Act s.37",
+    "Attempted Robbery with Aggravation (firearm)",
+    # Proceeds of Crime Act (POCA) 2007
+    "POCA s.4 - Dealing in Property Derived from Criminal Conduct",
+    "POCA s.5 - Money Laundering",
+    "POCA s.6 - Failure to Report Suspicious Transaction",
+    "POCA s.40 - Tipping Off re: Money Laundering Investigation",
+    # Gun Court Act 1974 (as amended)
+    "Gun Court Act - Offence Triable in Gun Court (mandatory referral)",
+    # Bail Act 2023
+    "Bail Act s.5 - Breach of Stop Order",
+    "Bail Act s.8 - Breach of Electronic Monitoring Condition",
+    # General
+    "Conspiracy to Commit Indictable Offence",
+    "Accessory Before the Fact",
+    "Accessory After the Fact",
     "Harbouring an Offender",
+    "Perverting the Course of Justice",
 ]
 
 ALL_OFFENCES = FIREARMS_ACT_OFFENCES + DDA_OFFENCES + OTHER_OFFENCES
+
+# --- Firearm & Ammunition Investigation Workflow ---
+# Standard investigative steps for FA investigations per JCF FNID protocol
+FA_INVESTIGATION_WORKFLOW = [
+    "Receipt of Intelligence / Report",
+    "Preliminary Assessment & Triage",
+    "Search Warrant Application (s.91 Firearms Act 2022)",
+    "Operation Planning & Briefing",
+    "Execution of Search / Intercept",
+    "Scene Processing & Evidence Collection",
+    "Seizure Documentation (firearm, ammunition, components)",
+    "IBIS Submission (ballistic signature capture)",
+    "eTrace Submission (ATF origin tracing)",
+    "Forensic Lab Submission to IFSLM (ballistic certificate)",
+    "Suspect Processing (caution, rights, 48-hour rule)",
+    "Charge Sheet Preparation (Firearms Act 2022 charges)",
+    "Gun Court Referral (mandatory per Gun Court Act s.4)",
+    "DPP File Preparation (per Prosecution Protocol 2012)",
+    "Disclosure (per Disclosure Protocol 2013)",
+    "Court Proceedings (Gun Court — in camera, judge alone)",
+    "Post-Conviction: POCA Referral & Forfeiture Application",
+]
+
+# --- Narcotics Investigation Workflow ---
+# Standard investigative steps for narcotics investigations per JCF FNID protocol
+NARCOTICS_INVESTIGATION_WORKFLOW = [
+    "Receipt of Intelligence / Report",
+    "Preliminary Assessment & Triage",
+    "Surveillance / Controlled Delivery Planning",
+    "Search Warrant Application (s.21 DDA)",
+    "Operation Planning & Briefing",
+    "Execution of Search / Intercept / Controlled Delivery",
+    "Scene Processing & Evidence Collection",
+    "Drug Field Test (presumptive)",
+    "Weighing & Quantification (determine deemed dealing threshold)",
+    "Seizure Documentation (drug type, weight, packaging, concealment)",
+    "Forensic Lab Submission to IFSLM (chemistry certificate)",
+    "Suspect Processing (caution, rights, 48-hour rule)",
+    "Charge Sheet Preparation (DDA charges — Part IIIA or Part IV)",
+    "Jurisdiction Determination (Parish Court summary vs Circuit Court indictable)",
+    "DPP File Preparation (per Prosecution Protocol 2012)",
+    "Disclosure (per Disclosure Protocol 2013)",
+    "Court Proceedings",
+    "Post-Conviction: POCA Referral & Asset Recovery",
+]
+
+# --- Deemed Dealing Thresholds (Jamaica Law) ---
+DEEMED_DEALING_THRESHOLDS = {
+    "ganja": {
+        "ticketable_max": "2 oz (56.7g) — fixed penalty J$500, no arrest (DDA s.7C as amended 2015)",
+        "criminal_possession": ">2 oz — arrestable offence, criminal record",
+        "deemed_dealing": ">2 oz with intent indicators (scales, packaging, cash)",
+        "cultivation_trafficking": "5+ plants deemed trafficking (s.7B(2))",
+    },
+    "cocaine": {
+        "any_quantity": "Any quantity — criminal offence (DDA s.8B)",
+        "deemed_dealing": "Possession with intent indicators",
+    },
+    "heroin": {
+        "possession": "Any quantity — criminal offence (DDA s.8B)",
+        "deemed_dealing": ">1/10 oz deemed dealing (DDA s.8B(3))",
+    },
+    "firearms": {
+        "single_weapon": "1 prohibited weapon — s.5 (15yr min; 25yr max)",
+        "stockpiling": "3+ firearms or 50+ rounds — s.6 (15yr min)",
+        "dealing_ammo": "20+ rounds deemed dealing — s.10 (20yr min)",
+    },
+}
+
+# --- Court Jurisdiction Mapping (FA & Narcotics) ---
+COURT_JURISDICTION = {
+    "firearms_all": "Gun Court (mandatory referral per Gun Court Act s.4)",
+    "firearms_murder_treason": "Gun Court Circuit Division (jury trial)",
+    "firearms_other": "Gun Court High Court Division (judge alone, in camera)",
+    "firearms_preliminary": "Gun Court Resident Magistrate Division (PE)",
+    "ganja_under_2oz": "No court — ticketable offence (fixed penalty J$500)",
+    "ganja_over_2oz_summary": "Parish Court (summary offence)",
+    "ganja_trafficking_indictable": "Circuit Court (indictable offence)",
+    "cocaine_heroin_summary": "Parish Court (first offence, small quantity)",
+    "cocaine_heroin_indictable": "Circuit Court (indictable; up to 35yr)",
+    "cocaine_heroin_import_export": "Circuit Court (up to life imprisonment)",
+    "poca_civil_recovery": "Supreme Court (civil recovery proceedings)",
+    "poca_post_conviction": "Sentencing court (forfeiture order)",
+}
 
 # --- Seizure Locations ---
 SEIZURE_LOCATIONS = [
