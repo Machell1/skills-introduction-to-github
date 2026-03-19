@@ -12,16 +12,23 @@ NB: All related forms must be referred to as Case Reference Form
 import os
 
 from flask import (
-    Blueprint, Response, current_app, render_template, request,
-    send_from_directory, url_for,
+    Blueprint,
+    Response,
+    current_app,
+    render_template,
+    send_from_directory,
+    url_for,
 )
 from flask_login import login_required
 
 from ..constants import (
-    CR_FORM_TYPES, JCF_ABBREVIATIONS, CASE_LIFECYCLE_STAGES,
-    CASE_STATUS, REVIEW_TIMELINES, VETTING_TIMELINES,
+    CASE_LIFECYCLE_STAGES,
+    CASE_STATUS,
+    CR_FORM_TYPES,
+    JCF_ABBREVIATIONS,
+    REVIEW_TIMELINES,
+    VETTING_TIMELINES,
 )
-from ..rbac import permission_required
 from .cr_forms import CR_FORM_DEFINITIONS
 
 bp = Blueprint("policy", __name__, url_prefix="/policy")
@@ -171,7 +178,8 @@ def _generate_printable_form_html(form_type, form_def, form_name):
                          font-weight: bold; margin-top: 15px; margin-bottom: 5px; }}
         .form-field {{ height: 30px; border-bottom: 1px solid #999; }}
         .form-field-large {{ height: 80px; border: 1px solid #999; }}
-        .footer {{ margin-top: 30px; border-top: 1px solid #000; padding-top: 10px; font-size: 10px; text-align: center; }}
+        .footer {{ margin-top: 30px; border-top: 1px solid #000;
+                  padding-top: 10px; font-size: 10px; text-align: center; }}
         .signature-line {{ margin-top: 40px; }}
         .signature-line span {{ display: inline-block; width: 45%; border-top: 1px solid #000;
                                text-align: center; padding-top: 5px; margin: 0 2%; }}
@@ -189,7 +197,8 @@ def _generate_printable_form_html(form_type, form_def, form_name):
 <body>
     <div class="no-print" style="background: #fffbcc; padding: 10px; margin-bottom: 15px; border: 1px solid #e6d800;">
         <strong>Instructions:</strong> Fill in the fields below, then print (Ctrl+P) or save.
-        <button onclick="window.print()" style="margin-left: 10px; padding: 5px 15px; cursor: pointer;">Print Form</button>
+        <button onclick="window.print()"
+                style="margin-left: 10px; padding: 5px 15px; cursor: pointer;">Print Form</button>
     </div>
 
     <div class="header">

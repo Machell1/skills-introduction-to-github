@@ -1,6 +1,5 @@
 """Tests for case lifecycle: intake, transitions, and review scheduling."""
 
-import pytest
 
 from fnid_portal.routes.cases import VALID_TRANSITIONS, _validate_transition
 

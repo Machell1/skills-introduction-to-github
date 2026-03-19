@@ -7,15 +7,24 @@ determines the target unit, and generates operational guidance.
 
 import os
 import re
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from .constants import (
-    ALL_OFFENCES, ALL_PARISHES, BAIL_STATUS, CASE_CLASSIFICATIONS,
-    DRUG_TYPES, DRUG_UNITS, FIREARM_CALIBRES, FIREARM_TYPES,
-    INTEL_PRIORITIES, INTEL_SOURCES, OPERATION_TYPES, SEIZURE_LOCATIONS,
-    TRIAGE_DECISIONS, UNIT_PORTALS, WARRANT_BASIS,
+    ALL_OFFENCES,
+    ALL_PARISHES,
+    BAIL_STATUS,
+    CASE_CLASSIFICATIONS,
+    DRUG_TYPES,
+    FIREARM_CALIBRES,
+    FIREARM_TYPES,
+    INTEL_PRIORITIES,
+    INTEL_SOURCES,
+    OPERATION_TYPES,
+    SEIZURE_LOCATIONS,
+    TRIAGE_DECISIONS,
+    UNIT_PORTALS,
+    WARRANT_BASIS,
 )
-
 
 # ---------------------------------------------------------------------------
 # Text extraction from files

@@ -7,9 +7,9 @@ Visual case workflow tracking, stage transitions, and overview dashboard.
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
-from ..models import get_db, log_audit
+from ..models import get_db
 from ..rbac import permission_required, role_required
-from ..workflow import advance_stage, get_workflow_status, CASE_WORKFLOW, VALID_TRANSITIONS
+from ..workflow import CASE_WORKFLOW, VALID_TRANSITIONS, advance_stage, get_workflow_status
 
 bp = Blueprint("workflow", __name__, url_prefix="/workflow")
 

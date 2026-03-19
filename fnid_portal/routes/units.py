@@ -8,7 +8,6 @@ from flask_login import current_user, login_required
 from ..constants import UNIT_PORTALS
 from ..deadlines import get_alerts_for_user
 from ..models import VALID_TABLES, generate_id, get_db, get_table_columns, log_audit
-from ..rbac import permission_required
 from . import _cfg_module
 
 

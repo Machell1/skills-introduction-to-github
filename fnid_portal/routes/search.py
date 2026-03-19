@@ -4,7 +4,7 @@ Search Routes
 Quick search and advanced search across cases, persons, exhibits, and officers.
 """
 
-from flask import Blueprint, redirect, render_template, request, url_for
+from flask import Blueprint, render_template, request
 from flask_login import current_user, login_required
 
 from ..models import get_db

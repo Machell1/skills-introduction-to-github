@@ -23,7 +23,7 @@ member features (registration, documents, KPIs, maintenance).
 import os
 from datetime import datetime, timedelta
 
-from flask import Flask, flash, redirect, request, session, url_for
+from flask import Flask, redirect, request, url_for
 from flask_login import current_user
 from flask_wtf.csrf import CSRFProtect
 
@@ -181,10 +181,10 @@ def create_app(config_name=None):
     app.register_blueprint(notifications_bp)
 
     # Register blueprints — Phase 3 modules
+    from .routes.disclosure import bp as disclosure_bp
     from .routes.dpp import bp as dpp_bp
     from .routes.sop import bp as sop_bp
     from .routes.witnesses import bp as witnesses_bp
-    from .routes.disclosure import bp as disclosure_bp
 
     app.register_blueprint(dpp_bp)
     app.register_blueprint(sop_bp)

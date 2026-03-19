@@ -7,7 +7,7 @@ JCF case management system.
 
 from functools import wraps
 
-from flask import abort, flash, redirect, url_for
+from flask import flash, redirect, url_for
 from flask_login import current_user
 
 # ---------------------------------------------------------------------------
@@ -132,12 +132,21 @@ PERMISSIONS = {
         "update": {"admin", "dco", "transport_officer"},
     },
     "documents": {
-        "upload": {"admin", "dco", "ddi", "station_mgr", "registrar", "io", "intel_officer", "plo", "transport_officer"},
-        "read": {"admin", "dco", "ddi", "station_mgr", "registrar", "io", "intel_officer", "plo", "transport_officer", "viewer"},
+        "upload": {
+            "admin", "dco", "ddi", "station_mgr", "registrar",
+            "io", "intel_officer", "plo", "transport_officer",
+        },
+        "read": {
+            "admin", "dco", "ddi", "station_mgr", "registrar",
+            "io", "intel_officer", "plo", "transport_officer", "viewer",
+        },
         "delete": {"admin", "dco"},
     },
     "kpis": {
-        "read": {"admin", "dco", "ddi", "station_mgr", "registrar", "io", "intel_officer", "plo", "transport_officer", "viewer"},
+        "read": {
+            "admin", "dco", "ddi", "station_mgr", "registrar",
+            "io", "intel_officer", "plo", "transport_officer", "viewer",
+        },
         "manage": {"admin"},
     },
     "workflow": {

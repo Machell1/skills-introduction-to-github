@@ -5,16 +5,15 @@ Full case management lifecycle from intake through closure,
 following the JCF case management policy.
 """
 
-import json
 from datetime import datetime
 
-from flask import Blueprint, flash, redirect, render_template, request, session, url_for
+from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
 from ..case_numbers import generate_case_reference, generate_dcrr_number
 from ..deadlines import schedule_review
 from ..models import get_db, log_audit
-from ..rbac import can_access, permission_required
+from ..rbac import permission_required
 from . import _cfg_module
 
 bp = Blueprint("cases", __name__, url_prefix="/cases")

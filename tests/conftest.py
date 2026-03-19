@@ -4,10 +4,9 @@ import os
 import tempfile
 
 import pytest
-from werkzeug.security import generate_password_hash
-
 from fnid_portal import create_app
 from fnid_portal.config import TestingConfig
+from werkzeug.security import generate_password_hash
 
 TEST_PASSWORD = "TestPass@2026!"
 

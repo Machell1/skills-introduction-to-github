@@ -2,10 +2,7 @@
 
 from datetime import datetime, timedelta
 
-import pytest
-
 from fnid_portal.mcr_engine import (
-    FNID_KEYWORDS,
     _get_mcr_window,
     _is_fnid_relevant,
     compile_mcr,

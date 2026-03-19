@@ -51,7 +51,8 @@ CR_FORM_DEFINITIONS = {
                 {"name": "parish", "label": "Parish", "type": "select", "options": "ALL_PARISHES"},
             ]},
             {"title": "Offence Classification", "fields": [
-                {"name": "classification", "label": "Classification", "type": "select", "options": "CASE_CLASSIFICATIONS"},
+                {"name": "classification", "label": "Classification",
+                 "type": "select", "options": "CASE_CLASSIFICATIONS"},
                 {"name": "offence", "label": "Offence", "type": "select", "options": "ALL_OFFENCES"},
                 {"name": "law_section", "label": "Law & Section", "type": "text"},
                 {"name": "crime_type", "label": "Crime Type", "type": "select",
@@ -101,7 +102,10 @@ CR_FORM_DEFINITIONS = {
     },
     "CR3": {
         "name": "Witness Bio-Data Form",
-        "description": "Witness Bio-Data Form (Appendix 8) - completed for all major crimes and attached to front of statement",
+        "description": (
+            "Witness Bio-Data Form (Appendix 8) - completed for all"
+            " major crimes and attached to front of statement"
+        ),
         "sections": [
             {"title": "Statement Details", "fields": [
                 {"name": "statement_date", "label": "Date", "type": "date", "required": True},
@@ -228,23 +232,31 @@ CR_FORM_DEFINITIONS = {
                 {"name": "interview_witnessed_by", "label": "Witnessed By", "type": "text"},
             ]},
             {"title": "Maker's Certificate", "fields": [
-                {"name": "maker_cert_questions_asked", "label": "Questions were asked of me and I answered", "type": "select",
-                 "options_list": ["Yes", "No"]},
-                {"name": "maker_cert_right_informed", "label": "Informed of right to make additions/alterations/corrections", "type": "select",
-                 "options_list": ["Yes", "No"]},
-                {"name": "maker_cert_answers_free_will", "label": "Answers given of own free will", "type": "select",
-                 "options_list": ["Yes", "No"]},
-                {"name": "maker_cert_read_over", "label": "Questions and answers read over/invited to read", "type": "select",
-                 "options_list": ["Yes", "No"]},
+                {"name": "maker_cert_questions_asked",
+                 "label": "Questions were asked of me and I answered",
+                 "type": "select", "options_list": ["Yes", "No"]},
+                {"name": "maker_cert_right_informed",
+                 "label": "Informed of right to make additions/alterations/corrections",
+                 "type": "select", "options_list": ["Yes", "No"]},
+                {"name": "maker_cert_answers_free_will",
+                 "label": "Answers given of own free will",
+                 "type": "select", "options_list": ["Yes", "No"]},
+                {"name": "maker_cert_read_over",
+                 "label": "Questions and answers read over/invited to read",
+                 "type": "select", "options_list": ["Yes", "No"]},
                 {"name": "maker_signature", "label": "Maker Signature", "type": "text"},
                 {"name": "maker_date", "label": "Date", "type": "date"},
             ]},
             {"title": "Recorder's Certificate", "fields": [
-                {"name": "recorder_cert_questions_asked_by", "label": "All questions asked by", "type": "text"},
-                {"name": "recorder_cert_suspect_informed", "label": "Suspect informed of right to make additions/alterations", "type": "select",
-                 "options_list": ["Yes", "No"]},
-                {"name": "recorder_cert_read_by_letter", "label": "Statement read by him/her/read over to him/her and he/she was invited to make corrections", "type": "select",
-                 "options_list": ["Yes", "No"]},
+                {"name": "recorder_cert_questions_asked_by",
+                 "label": "All questions asked by", "type": "text"},
+                {"name": "recorder_cert_suspect_informed",
+                 "label": "Suspect informed of right to make additions/alterations",
+                 "type": "select", "options_list": ["Yes", "No"]},
+                {"name": "recorder_cert_read_by_letter",
+                 "label": ("Statement read by him/her/read over to him/her"
+                           " and he/she was invited to make corrections"),
+                 "type": "select", "options_list": ["Yes", "No"]},
                 {"name": "recorder_signature", "label": "Recorder Signature", "type": "text"},
                 {"name": "recorder_date", "label": "Date", "type": "date"},
                 {"name": "number_of_pages", "label": "Number of Pages", "type": "number"},
@@ -282,23 +294,31 @@ CR_FORM_DEFINITIONS = {
                 {"name": "interview_witnessed_by", "label": "Witnessed By", "type": "text"},
             ]},
             {"title": "Maker's Certificate", "fields": [
-                {"name": "maker_cert_questions_asked", "label": "Questions were asked of me and I answered", "type": "select",
-                 "options_list": ["Yes", "No"]},
-                {"name": "maker_cert_right_informed", "label": "Informed of right to make additions/alterations/corrections", "type": "select",
-                 "options_list": ["Yes", "No"]},
-                {"name": "maker_cert_answers_free_will", "label": "Answers given of own free will", "type": "select",
-                 "options_list": ["Yes", "No"]},
-                {"name": "maker_cert_read_over", "label": "Questions and answers read over/invited to read", "type": "select",
-                 "options_list": ["Yes", "No"]},
+                {"name": "maker_cert_questions_asked",
+                 "label": "Questions were asked of me and I answered",
+                 "type": "select", "options_list": ["Yes", "No"]},
+                {"name": "maker_cert_right_informed",
+                 "label": "Informed of right to make additions/alterations/corrections",
+                 "type": "select", "options_list": ["Yes", "No"]},
+                {"name": "maker_cert_answers_free_will",
+                 "label": "Answers given of own free will",
+                 "type": "select", "options_list": ["Yes", "No"]},
+                {"name": "maker_cert_read_over",
+                 "label": "Questions and answers read over/invited to read",
+                 "type": "select", "options_list": ["Yes", "No"]},
                 {"name": "maker_signature", "label": "Maker Signature", "type": "text"},
                 {"name": "maker_date", "label": "Date", "type": "date"},
             ]},
             {"title": "Recorder's Certificate", "fields": [
-                {"name": "recorder_cert_questions_asked_by", "label": "All questions asked by", "type": "text"},
-                {"name": "recorder_cert_accused_informed", "label": "Accused informed of right to make additions/alterations", "type": "select",
-                 "options_list": ["Yes", "No"]},
-                {"name": "recorder_cert_read_by_letter", "label": "Statement read by him/her/read over and invited to make corrections", "type": "select",
-                 "options_list": ["Yes", "No"]},
+                {"name": "recorder_cert_questions_asked_by",
+                 "label": "All questions asked by", "type": "text"},
+                {"name": "recorder_cert_accused_informed",
+                 "label": "Accused informed of right to make additions/alterations",
+                 "type": "select", "options_list": ["Yes", "No"]},
+                {"name": "recorder_cert_read_by_letter",
+                 "label": ("Statement read by him/her/read over"
+                           " and invited to make corrections"),
+                 "type": "select", "options_list": ["Yes", "No"]},
                 {"name": "recorder_signature", "label": "Recorder Signature", "type": "text"},
                 {"name": "recorder_date", "label": "Date", "type": "date"},
                 {"name": "number_of_pages", "label": "Number of Pages", "type": "number"},
@@ -346,12 +366,16 @@ CR_FORM_DEFINITIONS = {
                 {"name": "caution_witnessed_by", "label": "Witnessed By", "type": "text"},
             ]},
             {"title": "Certification of Statement", "fields": [
-                {"name": "cert_wish_to_make_statement", "label": "I wish to make a statement (confirmed)", "type": "select",
+                {"name": "cert_wish_to_make_statement",
+                 "label": "I wish to make a statement (confirmed)",
+                 "type": "select",
                  "options_list": ["Yes", "No"], "required": True},
-                {"name": "cert_told_not_obliged", "label": "Told that need not say anything unless wishes to do so", "type": "select",
-                 "options_list": ["Yes", "No"]},
-                {"name": "cert_whatever_given_evidence", "label": "Whatever I say may be given in evidence", "type": "select",
-                 "options_list": ["Yes", "No"]},
+                {"name": "cert_told_not_obliged",
+                 "label": "Told that need not say anything unless wishes to do so",
+                 "type": "select", "options_list": ["Yes", "No"]},
+                {"name": "cert_whatever_given_evidence",
+                 "label": "Whatever I say may be given in evidence",
+                 "type": "select", "options_list": ["Yes", "No"]},
             ]},
             {"title": "Confession Statement", "fields": [
                 {"name": "confession_body", "label": "Statement Body", "type": "textarea", "required": True},
@@ -361,12 +385,17 @@ CR_FORM_DEFINITIONS = {
                 {"name": "interview_witnessed_by", "label": "Witnessed By", "type": "text"},
             ]},
             {"title": "Certificate of the Recorder (where applicable)", "fields": [
-                {"name": "recorder_cert_statement_read", "label": "Above statement was read over to/by the accused", "type": "select",
-                 "options_list": ["Yes", "No"]},
-                {"name": "recorder_cert_no_additions", "label": "No additions/alterations/corrections (or noted)", "type": "select",
+                {"name": "recorder_cert_statement_read",
+                 "label": "Above statement was read over to/by the accused",
+                 "type": "select", "options_list": ["Yes", "No"]},
+                {"name": "recorder_cert_no_additions",
+                 "label": "No additions/alterations/corrections (or noted)",
+                 "type": "select",
                  "options_list": ["Yes - no changes", "Changes noted"]},
-                {"name": "recorder_cert_read_by_letter", "label": "Statement read by him/her/read over to him/her and invited to make corrections", "type": "select",
-                 "options_list": ["Yes", "No"]},
+                {"name": "recorder_cert_read_by_letter",
+                 "label": ("Statement read by him/her/read over to"
+                           " him/her and invited to make corrections"),
+                 "type": "select", "options_list": ["Yes", "No"]},
                 {"name": "recorder_signature", "label": "Recorder Signature", "type": "text"},
                 {"name": "recorder_date", "label": "Date", "type": "date"},
                 {"name": "number_of_pages", "label": "Number of Pages", "type": "number"},
@@ -386,7 +415,9 @@ CR_FORM_DEFINITIONS = {
                 {"name": "date_of_offence", "label": "Date of Offence", "type": "date"},
             ]},
             {"title": "Summary of Evidence in Brief", "fields": [
-                {"name": "summary_of_evidence", "label": "Summary of Evidence in Brief", "type": "textarea", "required": True},
+                {"name": "summary_of_evidence",
+                 "label": "Summary of Evidence in Brief",
+                 "type": "textarea", "required": True},
                 {"name": "number_of_witnesses", "label": "Number of Witnesses", "type": "number"},
                 {"name": "number_of_exhibits", "label": "Number of Exhibits", "type": "number"},
                 {"name": "exhibit_1", "label": "Exhibit 1 (listing)", "type": "text"},
@@ -411,12 +442,16 @@ CR_FORM_DEFINITIONS = {
             {"title": "Post-Charge Tests & Obligations", "fields": [
                 {"name": "forensic_certificate", "label": "Forensic Certificate", "type": "select",
                  "options_list": ["Yes", "No", "N/A"]},
-                {"name": "forensic_cert_1st_party", "label": "Forensic Cert - 1st Party (Scenes and Exhibits/Toxicology)", "type": "text"},
+                {"name": "forensic_cert_1st_party",
+                 "label": "Forensic Cert - 1st Party (Scenes and Exhibits/Toxicology)",
+                 "type": "text"},
                 {"name": "forensic_cert_overdue_reason", "label": "Overdue Reason", "type": "text"},
                 {"name": "forensic_cert_est_due_date", "label": "Est. Due Date", "type": "date"},
                 {"name": "ballistic_certificate", "label": "Ballistic Certificate", "type": "select",
                  "options_list": ["Yes", "No", "N/A"]},
-                {"name": "ballistic_cert_1st_party", "label": "Ballistic Cert - Forensic Science and Ballistic Section", "type": "text"},
+                {"name": "ballistic_cert_1st_party",
+                 "label": "Ballistic Cert - Forensic Science and Ballistic Section",
+                 "type": "text"},
                 {"name": "post_mortem_report", "label": "Post Mortem Report", "type": "select",
                  "options_list": ["Yes", "No", "N/A"]},
                 {"name": "post_mortem_1st_party", "label": "Post Mortem - Legal Medicine (contract)", "type": "text"},
@@ -424,19 +459,32 @@ CR_FORM_DEFINITIONS = {
                  "options_list": ["Yes", "No", "N/A"]},
                 {"name": "medical_certificate", "label": "Medical Certificate", "type": "select",
                  "options_list": ["Yes", "No", "N/A"]},
-                {"name": "medical_institution_officer", "label": "Statement (Medical Institution/Medical Officer)", "type": "text"},
-                {"name": "documents_pub", "label": "Documents (e.g. NIC/ID, PIN, TRN, Driver's Licence etc.)", "type": "text"},
+                {"name": "medical_institution_officer",
+                 "label": "Statement (Medical Institution/Medical Officer)",
+                 "type": "text"},
+                {"name": "documents_pub",
+                 "label": "Documents (e.g. NIC/ID, PIN, TRN, Driver's Licence etc.)",
+                 "type": "text"},
                 {"name": "claim_of_records", "label": "Claim of Records (if Transported/Deceased)", "type": "text"},
                 {"name": "claim_records_party", "label": "Claim Records - Criminal Records Office", "type": "text"},
             ]},
             {"title": "Biographical Information", "fields": [
-                {"name": "bio_info", "label": "Biographical Information (This section should only be used if all the persons indicated have been charged)", "type": "textarea"},
+                {"name": "bio_info",
+                 "label": ("Biographical Information (This section should only"
+                           " be used if all the persons indicated have been charged)"),
+                 "type": "textarea"},
             ]},
             {"title": "Investigator's Summary", "fields": [
-                {"name": "inv_bio_rank_name_station", "label": "Rank, Name and Station of Investigator", "type": "text"},
-                {"name": "inv_statement_deposed", "label": "Investigator's Statement (Statement Deposed)", "type": "textarea"},
+                {"name": "inv_bio_rank_name_station",
+                 "label": "Rank, Name and Station of Investigator",
+                 "type": "text"},
+                {"name": "inv_statement_deposed",
+                 "label": "Investigator's Statement (Statement Deposed)",
+                 "type": "textarea"},
                 {"name": "inv_statement_date", "label": "Date", "type": "date"},
-                {"name": "mode_of_apprehension", "label": "Mode and Conclusion of Apprehension (e.g. bail/remand/PDR)", "type": "textarea"},
+                {"name": "mode_of_apprehension",
+                 "label": "Mode and Conclusion of Apprehension (e.g. bail/remand/PDR)",
+                 "type": "textarea"},
                 {"name": "apprehension_date", "label": "Date", "type": "date"},
                 {"name": "apprehension_reference", "label": "Reference", "type": "text"},
             ]},
@@ -444,7 +492,10 @@ CR_FORM_DEFINITIONS = {
     },
     "CR13": {
         "name": "Court Case File Checklist",
-        "description": "Court Case File Checklist (Appendix 22) - CR 13, ensures all documents accompany case file to court",
+        "description": (
+            "Court Case File Checklist (Appendix 22) - CR 13,"
+            " ensures all documents accompany case file to court"
+        ),
         "sections": [
             {"title": "Case Information", "fields": [
                 {"name": "case_ref", "label": "Case Ref.", "type": "text", "required": True},
@@ -466,7 +517,9 @@ CR_FORM_DEFINITIONS = {
                  "options_list": ["AMT", "N/A"]},
                 {"name": "crime_scene_record", "label": "Crime Scene Record", "type": "select",
                  "options_list": ["AMT", "N/A"]},
-                {"name": "witness_corroboration_tag", "label": "Witness Corroboration & Tag No./Ticket", "type": "select",
+                {"name": "witness_corroboration_tag",
+                 "label": "Witness Corroboration & Tag No./Ticket",
+                 "type": "select",
                  "options_list": ["AMT", "N/A"]},
             ]},
             {"title": "3. Investigation", "fields": [
@@ -494,7 +547,9 @@ CR_FORM_DEFINITIONS = {
                  "options_list": ["AMT", "N/A"]},
                 {"name": "post_mortem", "label": "Post Mortem", "type": "select",
                  "options_list": ["AMT", "N/A"]},
-                {"name": "statement_identifying_body", "label": "Statement of person identifying the body (in case of death)", "type": "select",
+                {"name": "statement_identifying_body",
+                 "label": "Statement of person identifying the body (in case of death)",
+                 "type": "select",
                  "options_list": ["AMT", "N/A"]},
                 {"name": "antecedent_report", "label": "Antecedent Report", "type": "select",
                  "options_list": ["AMT", "N/A"]},
@@ -583,7 +638,10 @@ CR_FORM_DEFINITIONS = {
                 {"name": "referred_date", "label": "Date", "type": "date"},
             ]},
             {"title": "Circumstances of Persons Committed", "fields": [
-                {"name": "circumstances", "label": "Circumstances of Persons Committed (give date & full details of the arrest/conviction)", "type": "textarea"},
+                {"name": "circumstances",
+                 "label": ("Circumstances of Persons Committed"
+                           " (give date & full details of the arrest/conviction)"),
+                 "type": "textarea"},
             ]},
             {"title": "Personal Information", "fields": [
                 {"name": "surname", "label": "Surname", "type": "text", "required": True},
@@ -650,7 +708,9 @@ CR_FORM_DEFINITIONS = {
                  "options_list": ["Straight", "Scruffy", "Eyes"]},
                 {"name": "face_shape", "label": "Face Shape", "type": "select",
                  "options_list": ["Oval", "Triangular", "Roundly", "Square", "Other"]},
-                {"name": "face_colour_condition", "label": "Face Colour/Condition (e.g. freckled, lined, pimply, etc.)", "type": "text"},
+                {"name": "face_colour_condition",
+                 "label": "Face Colour/Condition (e.g. freckled, lined, pimply, etc.)",
+                 "type": "text"},
                 {"name": "group_ethnicity", "label": "Group/Ethnicity", "type": "select",
                  "options_list": ["Oriental", "Other"]},
                 {"name": "beard_style", "label": "Beard Style", "type": "select",
@@ -699,7 +759,9 @@ CR_FORM_DEFINITIONS = {
                 {"name": "surgical_duplicate_key", "label": "Duplicate Key", "type": "checkbox"},
                 {"name": "surgical_other", "label": "Other", "type": "text"},
             ]},
-            {"title": "Criminal Information - particulars of past etc. (search at library, injuries, bullets or implications)", "fields": [
+            {"title": ("Criminal Information - particulars of past etc."
+                       " (search at library, injuries, bullets or implications)"),
+             "fields": [
                 {"name": "criminal_info", "label": "Criminal Information", "type": "textarea"},
             ]},
             {"title": "Full Details of Methods Used in Committing Offences", "fields": [
@@ -722,7 +784,10 @@ CR_FORM_DEFINITIONS = {
             ]},
             {"title": "Specimens of Handwriting", "fields": [
                 {"name": "handwriting_specimens", "label": "Specimens of Handwriting", "type": "textarea"},
-                {"name": "authority_to_detain", "label": "Authority to detain a person wanted (Rank of IO and above) Signature", "type": "text"},
+                {"name": "authority_to_detain",
+                 "label": ("Authority to detain a person wanted"
+                           " (Rank of IO and above) Signature"),
+                 "type": "text"},
             ]},
             {"title": "Photograph", "fields": [
                 {"name": "photo_attached", "label": "Photo(s) Attached", "type": "select",
@@ -733,7 +798,11 @@ CR_FORM_DEFINITIONS = {
     },
     "CR15": {
         "name": "Application for Remand of Accused or Bail Conditions",
-        "description": "Application for Remand of Accused or Bail Conditions (Appendix 25) - CR 15. NB: A copy of this form must be attached to each case file.",
+        "description": (
+            "Application for Remand of Accused or Bail Conditions"
+            " (Appendix 25) - CR 15. NB: A copy of this form must be"
+            " attached to each case file."
+        ),
         "sections": [
             {"title": "Accused Information", "fields": [
                 {"name": "case_ref_no", "label": "1. Case Ref. No.", "type": "text", "required": True},
@@ -742,7 +811,10 @@ CR_FORM_DEFINITIONS = {
                 {"name": "accused_address", "label": "4. Address(es) of Accused", "type": "textarea"},
                 {"name": "offence_charged", "label": "5. Offence(s) Charged", "type": "textarea", "required": True},
                 {"name": "date_charged", "label": "6. Date Charged", "type": "date"},
-                {"name": "previous_charges_convictions", "label": "7. Previous charge(s)/conviction(s) or violation of bail conditions", "type": "textarea"},
+                {"name": "previous_charges_convictions",
+                 "label": ("7. Previous charge(s)/conviction(s)"
+                           " or violation of bail conditions"),
+                 "type": "textarea"},
             ]},
             {"title": "8. Application is for (tick one box only)", "fields": [
                 {"name": "application_type", "label": "Application Type", "type": "select",
@@ -750,11 +822,20 @@ CR_FORM_DEFINITIONS = {
                  "required": True},
             ]},
             {"title": "9. Reasons for Opposing Bail", "fields": [
-                {"name": "reasons_opposing_bail", "label": "Reasons for opposing bail include previous conditions and/or order such as violent nature, HIV status etc. (See Bail Act)", "type": "textarea"},
+                {"name": "reasons_opposing_bail",
+                 "label": ("Reasons for opposing bail include previous"
+                           " conditions and/or order such as violent"
+                           " nature, HIV status etc. (See Bail Act)"),
+                 "type": "textarea"},
             ]},
             {"title": "10. Substantial Grounds (if granted bail, defendant(s) likely to)", "fields": [
-                {"name": "grounds_details", "label": "There are substantial Grounds that if granted bail defendant(s) likely to:", "type": "textarea"},
-                {"name": "offences_while_on_bail", "label": "11. Offence(s) committed while on bail", "type": "textarea"},
+                {"name": "grounds_details",
+                 "label": ("There are substantial Grounds that if granted"
+                           " bail defendant(s) likely to:"),
+                 "type": "textarea"},
+                {"name": "offences_while_on_bail",
+                 "label": "11. Offence(s) committed while on bail",
+                 "type": "textarea"},
             ]},
             {"title": "12. Suggested Conditions of Bail", "fields": [
                 {"name": "bail_surety", "label": "Surety (ies)", "type": "text"},
@@ -769,18 +850,32 @@ CR_FORM_DEFINITIONS = {
                 {"name": "bail_deportee_status", "label": "Deportee Status", "type": "select",
                  "options_list": ["Yes", "No"]},
                 {"name": "deportee_year", "label": "State the year deported", "type": "text"},
-                {"name": "deportee_offence_reason", "label": "State offence/reason for which deported", "type": "textarea"},
+                {"name": "deportee_offence_reason",
+                 "label": "State offence/reason for which deported",
+                 "type": "textarea"},
             ]},
             {"title": "13. Co-Defendant Details", "fields": [
-                {"name": "co_defendant_details", "label": "14. Details of Co-Defendant(s) (Name, Court, Date, relate to other outstanding cases)", "type": "textarea"},
+                {"name": "co_defendant_details",
+                 "label": ("14. Details of Co-Defendant(s) (Name, Court,"
+                           " Date, relate to other outstanding cases)"),
+                 "type": "textarea"},
             ]},
             {"title": "Investigator & Court Officer", "fields": [
                 {"name": "investigator_name_rank", "label": "15. Name & Rank of Investigator", "type": "text"},
-                {"name": "dri_court_liaison_signature", "label": "16. Signature of DRI or Court Liaison Officer", "type": "text"},
+                {"name": "dri_court_liaison_signature",
+                 "label": "16. Signature of DRI or Court Liaison Officer",
+                 "type": "text"},
                 {"name": "officer_sign_date", "label": "Date", "type": "date"},
             ]},
             {"title": "17. Dissemination of Court Information", "fields": [
-                {"name": "dissemination_details", "label": "When conditional bail is granted, note details of any conditions (include contact address and contacts of sureties, reporting times, documents to be surrendered). Persons or places the accused must not contact or visit, address to which curfew order applies.", "type": "textarea"},
+                {"name": "dissemination_details",
+                 "label": ("When conditional bail is granted, note details"
+                           " of any conditions (include contact address and"
+                           " contacts of sureties, reporting times, documents"
+                           " to be surrendered). Persons or places the accused"
+                           " must not contact or visit, address to which"
+                           " curfew order applies."),
+                 "type": "textarea"},
             ]},
             {"title": "18. Appearances Before Court on Application for Bail", "fields": [
                 {"name": "appearance_1_date", "label": "Date of 1st Appearance", "type": "date"},
@@ -803,7 +898,9 @@ CR_FORM_DEFINITIONS = {
                 {"name": "dist_prosecutor", "label": "a. Prosecutor", "type": "checkbox"},
                 {"name": "dist_case_file_station", "label": "b. Case File at Station", "type": "checkbox"},
                 {"name": "dist_dri_nir", "label": "c. DRI / NIR", "type": "checkbox"},
-                {"name": "dist_station_other", "label": "d. Station/other associated report (attached photograph)", "type": "checkbox"},
+                {"name": "dist_station_other",
+                 "label": "d. Station/other associated report (attached photograph)",
+                 "type": "checkbox"},
                 {"name": "photograph_attached", "label": "Photograph Attached", "type": "select",
                  "options_list": ["Yes", "No"]},
             ]},
@@ -823,7 +920,9 @@ CR_FORM_DEFINITIONS = {
                 {"name": "checklist_attached", "label": "Checklist Attached (reviewed)", "type": "select",
                  "options_list": ["Yes", "No"]},
                 {"name": "court_date", "label": "Court Date", "type": "date"},
-                {"name": "court_staff_name_signature", "label": "Name & Signature of Court Staff Receiving", "type": "text"},
+                {"name": "court_staff_name_signature",
+                 "label": "Name & Signature of Court Staff Receiving",
+                 "type": "text"},
                 {"name": "type_of_case", "label": "Type of Case", "type": "select",
                  "options_list": ["Major", "Minor"]},
                 {"name": "remand_bail", "label": "Remand/Bail", "type": "select",

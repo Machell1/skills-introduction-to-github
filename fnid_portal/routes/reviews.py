@@ -254,7 +254,11 @@ def review_calendar():
                 sched = datetime.strptime(review["scheduled_date"], "%Y-%m-%d")
                 week_start = sched - timedelta(days=sched.weekday())
                 week_key = week_start.strftime("%Y-%m-%d")
-                week_label = f"{week_start.strftime('%d %b %Y')} - {(week_start + timedelta(days=6)).strftime('%d %b %Y')}"
+                week_end = week_start + timedelta(days=6)
+                week_label = (
+                    f"{week_start.strftime('%d %b %Y')} - "
+                    f"{week_end.strftime('%d %b %Y')}"
+                )
             except (ValueError, TypeError):
                 week_key = "Unknown"
                 week_label = "Unknown"

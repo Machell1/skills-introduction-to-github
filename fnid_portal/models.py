@@ -821,6 +821,7 @@ def init_db():
     existing = c.execute("SELECT COUNT(*) FROM officers").fetchone()[0]
     if existing == 0:
         import secrets
+
         from werkzeug.security import generate_password_hash
         default_pw = secrets.token_urlsafe(16)
         c.execute("""

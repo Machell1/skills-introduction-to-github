@@ -11,7 +11,7 @@ from datetime import datetime
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
-from ..models import get_db, generate_id, log_audit
+from ..models import get_db, log_audit
 from ..rbac import permission_required
 
 bp = Blueprint("sop", __name__, url_prefix="/sop")

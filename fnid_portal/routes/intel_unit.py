@@ -10,8 +10,8 @@ from datetime import datetime
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
-from ..models import VALID_TABLES, generate_id, get_db, log_audit
-from ..rbac import permission_required, role_required
+from ..models import generate_id, get_db, log_audit
+from ..rbac import permission_required
 from . import _cfg_module
 
 bp = Blueprint("intel_unit", __name__, url_prefix="/intel")

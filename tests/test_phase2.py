@@ -1,6 +1,5 @@
 """Phase 2 tests — transport, DCRR, evidence, analytics, batch, notifications."""
 
-from datetime import datetime, timedelta
 
 
 def test_transport_fleet_page(admin_client):

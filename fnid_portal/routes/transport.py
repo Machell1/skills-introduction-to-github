@@ -11,7 +11,7 @@ from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
 from ..models import generate_id, get_db, log_audit
-from ..rbac import permission_required, role_required
+from ..rbac import permission_required
 
 bp = Blueprint("transport", __name__, url_prefix="/transport")
 
@@ -346,7 +346,9 @@ def return_trip(trip_id):
         # Update vehicle current_mileage and set status back to Available
         if end_mileage:
             conn.execute(
-                "UPDATE transport_vehicles SET current_mileage = ?, status = 'Available', updated_at = ? WHERE vehicle_id = ?",
+                "UPDATE transport_vehicles SET current_mileage = ?, "
+                "status = 'Available', updated_at = ? "
+                "WHERE vehicle_id = ?",
                 (end_mileage, now.isoformat(), trip["vehicle_id"]),
             )
         else:

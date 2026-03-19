@@ -10,8 +10,7 @@ from datetime import datetime, timedelta
 
 from werkzeug.security import generate_password_hash
 
-from .models import get_db, log_audit, generate_id
-
+from .models import generate_id, get_db
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -562,8 +561,6 @@ _OP_OUTCOMES = [
 
 def _seed_operations(conn):
     print("Seeding operations ...")
-
-    case_ids = _seed_cases._case_ids
 
     for i in range(10):
         op_id = generate_id("OP", "operations", "op_id")
@@ -1210,10 +1207,13 @@ def _seed_case_lifecycle(conn):
         ["intake", "appreciation", "vetting", "assignment", "investigation"],
         ["intake", "appreciation", "vetting", "assignment", "investigation", "follow_up"],
         ["intake", "appreciation", "vetting", "assignment", "investigation", "review", "court_preparation"],
-        ["intake", "appreciation", "vetting", "assignment", "investigation", "review", "court_preparation", "before_court"],
+        ["intake", "appreciation", "vetting", "assignment",
+         "investigation", "review", "court_preparation", "before_court"],
         ["intake", "appreciation", "vetting", "assignment", "investigation"],
         ["intake", "appreciation", "vetting"],
-        ["intake", "appreciation", "vetting", "assignment", "investigation", "review", "court_preparation", "before_court", "closed"],
+        ["intake", "appreciation", "vetting", "assignment",
+         "investigation", "review", "court_preparation", "before_court",
+         "closed"],
         ["intake", "appreciation", "suspended"],
     ]
 
@@ -1470,7 +1470,10 @@ def _seed_intel_targets(conn):
         {
             "name": "Orville 'Bucky' Brown",
             "aliases": "Bucky, O-Brown",
-            "description": "Suspected leader of firearms trafficking network operating across Manchester and Clarendon parishes.",
+            "description": (
+                "Suspected leader of firearms trafficking network "
+                "operating across Manchester and Clarendon parishes."
+            ),
             "parish": "Manchester",
             "area": "Mandeville / Porus corridor",
             "linked_cases": f"{case_ids[0]},{case_ids[1]}",
@@ -1480,7 +1483,10 @@ def _seed_intel_targets(conn):
         {
             "name": "Sanjay 'Chemist' Mitchell",
             "aliases": "Chemist, Sanj",
-            "description": "Major cocaine distributor in St. Elizabeth; linked to transnational supply chain via fishing vessels.",
+            "description": (
+                "Major cocaine distributor in St. Elizabeth; "
+                "linked to transnational supply chain via fishing vessels."
+            ),
             "parish": "St. Elizabeth",
             "area": "Black River / Treasure Beach coast",
             "linked_cases": f"{case_ids[5]},{case_ids[6]}",
@@ -1490,7 +1496,10 @@ def _seed_intel_targets(conn):
         {
             "name": "Tyrone 'Trigger' Marshall",
             "aliases": "Trigger, T-Marsh",
-            "description": "Suspected enforcer linked to multiple shooting incidents in Clarendon; known associate of gang network.",
+            "description": (
+                "Suspected enforcer linked to multiple shooting incidents "
+                "in Clarendon; known associate of gang network."
+            ),
             "parish": "Clarendon",
             "area": "May Pen / Lionel Town",
             "linked_cases": f"{case_ids[11]},{case_ids[13]}",

@@ -11,9 +11,9 @@ from datetime import datetime
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
-from ..models import get_db, log_audit
-from ..rbac import permission_required, role_required
 from ..case_numbers import generate_dcrr_number
+from ..models import get_db, log_audit
+from ..rbac import role_required
 
 bp = Blueprint("dcrr", __name__, url_prefix="/dcrr")
 

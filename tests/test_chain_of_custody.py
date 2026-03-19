@@ -1,6 +1,5 @@
 """Tests for chain of custody functionality."""
 
-import pytest
 
 
 def _insert_case(conn, case_id="COC/SD/A3/FNID/2026/0001"):

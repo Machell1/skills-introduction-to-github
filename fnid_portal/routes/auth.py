@@ -9,7 +9,6 @@ from werkzeug.security import generate_password_hash
 from ..auth import User, set_password, validate_password_strength
 from ..constants import FNID_SECTIONS, JCF_RANKS
 from ..models import get_db, get_setting, log_audit
-from ..rbac import ROLES
 
 bp = Blueprint("auth", __name__)
 

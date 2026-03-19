@@ -93,7 +93,6 @@ def dismiss_all():
     conn = get_db()
     try:
         badge = current_user.badge_number
-        role = current_user.role
         # Dismiss alerts targeted to this user or visible to their role
         conn.execute("""
             UPDATE alerts SET is_dismissed = 1

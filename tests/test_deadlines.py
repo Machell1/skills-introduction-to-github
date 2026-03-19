@@ -2,8 +2,6 @@
 
 from datetime import datetime, timedelta
 
-import pytest
-
 from fnid_portal.deadlines import (
     check_all_deadlines,
     dismiss_alert,

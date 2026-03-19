@@ -11,7 +11,7 @@ from datetime import datetime
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
-from ..models import get_db, generate_id, log_audit
+from ..models import generate_id, get_db, log_audit
 from ..rbac import permission_required
 
 bp = Blueprint("disclosure", __name__, url_prefix="/disclosure")
@@ -44,7 +44,9 @@ def disclosure_list():
 
         # Distinct statuses for filter
         statuses = conn.execute(
-            "SELECT DISTINCT disclosure_status FROM disclosure_log WHERE disclosure_status IS NOT NULL ORDER BY disclosure_status"
+            "SELECT DISTINCT disclosure_status FROM disclosure_log "
+            "WHERE disclosure_status IS NOT NULL "
+            "ORDER BY disclosure_status"
         ).fetchall()
 
         return render_template(

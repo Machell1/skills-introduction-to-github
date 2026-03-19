@@ -36,21 +36,30 @@ def reports_home():
         {
             "id": "monthly",
             "title": "Monthly Statistical Return",
-            "description": "Count of new cases, closures, seizures, arrests, court appearances, and conviction rate for a selected month.",
+            "description": (
+                "Count of new cases, closures, seizures, arrests, "
+                "court appearances, and conviction rate for a selected month."
+            ),
             "icon": "bi-calendar-month",
             "url": "/reports/monthly",
         },
         {
             "id": "dcrr",
             "title": "DCRR Summary Report",
-            "description": "Daily Crime Report Register entries by station, classification, and status with outstanding entry tracking.",
+            "description": (
+                "Daily Crime Report Register entries by station, "
+                "classification, and status with outstanding entry tracking."
+            ),
             "icon": "bi-journal-text",
             "url": "/reports/dcrr-summary",
         },
         {
             "id": "caseload",
             "title": "IO Caseload Report",
-            "description": "Investigating Officer workload: assigned cases, open cases, overdue reviews, and oldest case age.",
+            "description": (
+                "Investigating Officer workload: assigned cases, "
+                "open cases, overdue reviews, and oldest case age."
+            ),
             "icon": "bi-people",
             "url": "/reports/caseload",
         },

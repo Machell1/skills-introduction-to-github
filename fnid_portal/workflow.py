@@ -7,7 +7,6 @@ per JCF Case Management Policy (JCF/FW/PL/C&S/0001/2024).
 
 from .models import get_db
 
-
 # Valid stage transitions per policy
 VALID_TRANSITIONS = {
     "intake": {"appreciation", "vetting", "assignment"},

@@ -1,18 +1,16 @@
 """Report upload routes: upload, bot processing, review, and confirm."""
 
-import json
 import os
 import uuid
 from datetime import datetime
 
-from flask import (Blueprint, current_app, flash, redirect, render_template,
-                   request, session, url_for)
+from flask import Blueprint, current_app, flash, redirect, render_template, request, session, url_for
 from flask_login import current_user, login_required
 from werkzeug.utils import secure_filename
 
 from ..bot import process_report
 from ..constants import UNIT_PORTALS
-from ..models import VALID_TABLES, generate_id, get_db, get_table_columns, log_audit
+from ..models import generate_id, get_db, get_table_columns, log_audit
 
 bp = Blueprint("upload", __name__, url_prefix="/upload")
 
@@ -131,7 +129,7 @@ def review():
                     form_data[key] = val
 
         # Determine table and save
-        from .units import _get_table, _get_id_prefix, _get_id_column
+        from .units import _get_id_column, _get_id_prefix, _get_table
         table = _get_table(confirmed_unit, confirmed_subtype)
         valid_columns = get_table_columns(table)
         form_data = {k: v for k, v in form_data.items() if k in valid_columns}

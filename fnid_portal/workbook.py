@@ -149,7 +149,11 @@ def _build_case_register(wb, db_rows):
 
     ncols = len(headers)
     _add_title_row(ws, "JAMAICA CONSTABULARY FORCE — FNID AREA 3 — CASE REGISTER", ncols)
-    _add_subtitle_row(ws, f"Per JCF FO 4032 Case Management Policy & SOPs | Generated: {datetime.now():%Y-%m-%d %H:%M}", ncols, 2)
+    _add_subtitle_row(
+        ws,
+        f"Per JCF FO 4032 Case Management Policy & SOPs | Generated: {datetime.now():%Y-%m-%d %H:%M}",
+        ncols, 2,
+    )
     _apply_header_row(ws, 3, headers, widths)
 
     data_start = 4

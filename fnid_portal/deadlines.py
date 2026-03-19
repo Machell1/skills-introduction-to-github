@@ -98,8 +98,6 @@ def _check_review_deadlines(conn, now, now_str):
 
 def _check_file_overdue(conn, now, now_str):
     """Generate alerts for files not returned within the allowed period."""
-    file_return_hours = _get_deadline_setting("file_return_hours", 48)
-
     overdue_files = conn.execute("""
         SELECT id, case_id, file_type, moved_to, moved_by, moved_at, expected_return
         FROM file_movements
@@ -158,8 +156,6 @@ def _check_forensic_overdue(conn, now, now_str):
 
 def _check_arrest_48hr(conn, now, now_str):
     """Alert on arrests approaching or past the 48-hour charge deadline."""
-    cutoff = (now - timedelta(hours=48)).strftime("%Y-%m-%d %H:%M:%S")
-
     approaching = conn.execute("""
         SELECT id, arrest_id, suspect_name, arrest_date, arrest_time,
                charge_within_48hr, deadline_48hr
